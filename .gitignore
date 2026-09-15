@@ -12,3 +12,6 @@ captures/
 *.apk
 *.aab
 *.idsig
+cloudflare/ai-worker/node_modules/
+cloudflare/ai-worker/.wrangler/
+weeple 앱 사진/

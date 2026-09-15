@@ -2,6 +2,7 @@ package com.moasseum.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -54,6 +56,7 @@ import com.moasseum.app.domain.formatDate
 import com.moasseum.app.domain.formatMonth
 import com.moasseum.app.domain.formatWon
 import com.moasseum.app.ui.components.AmountText
+import com.moasseum.app.ui.components.CategorySpecs
 import com.moasseum.app.ui.components.EmptyState
 import com.moasseum.app.ui.components.FinanceCard
 import com.moasseum.app.ui.components.TransactionRow
@@ -81,6 +84,7 @@ fun HistoryScreen(
     onDeleteTransaction: (Long) -> Unit,
 ) {
     var filterName by rememberSaveable { mutableStateOf(HistoryFilter.ALL.name) }
+    var categoryFilterKey by rememberSaveable { mutableStateOf("ALL") }
     var search by rememberSaveable { mutableStateOf("") }
     var detailId by remember { mutableStateOf<Long?>(null) }
     val filter = HistoryFilter.valueOf(filterName)
@@ -95,6 +99,7 @@ fun HistoryScreen(
         .filter { transaction ->
             search.isBlank() || transaction.merchant.contains(search.trim(), ignoreCase = true) || transaction.memo.contains(search.trim(), ignoreCase = true)
         }
+        .filter { transaction -> categoryFilterKey == "ALL" || transaction.categoryKey == categoryFilterKey }
         .sortedWith(compareByDescending<Transaction> { it.occurredAt }.thenByDescending { it.id })
     val selectedDayTransactions = filteredTransactions.filter { it.occurredDate == selectedDate }
     val detailTransaction = detailId?.let { id -> uiState.transactions.firstOrNull { it.id == id } }
@@ -130,8 +135,37 @@ fun HistoryScreen(
                     )
                 }
                 Spacer(Modifier.weight(1f))
-                IconButton(onClick = {}) {
+                IconButton(enabled = false, onClick = {}) {
                     Icon(Icons.Rounded.FileDownload, contentDescription = "CSV 내보내기", tint = LocalFinanceColors.current.textSecondary)
+                }
+            }
+        }
+        item {
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                Surface(
+                    onClick = { categoryFilterKey = "ALL" },
+                    color = if (categoryFilterKey == "ALL") LocalFinanceColors.current.accent else LocalFinanceColors.current.surfaceRaised,
+                    contentColor = if (categoryFilterKey == "ALL") Color(0xFF06332B) else LocalFinanceColors.current.textSecondary,
+                    shape = RoundedCornerShape(11.dp),
+                ) {
+                    Text("전체", modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp), style = MaterialTheme.typography.labelLarge)
+                }
+                CategorySpecs.forEach { spec ->
+                    Surface(
+                        onClick = { categoryFilterKey = spec.key },
+                        color = if (categoryFilterKey == spec.key) LocalFinanceColors.current.accent else LocalFinanceColors.current.surfaceRaised,
+                        contentColor = if (categoryFilterKey == spec.key) Color(0xFF06332B) else LocalFinanceColors.current.textSecondary,
+                        shape = RoundedCornerShape(11.dp),
+                    ) {
+                        Row(modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(spec.icon, contentDescription = null, tint = if (categoryFilterKey == spec.key) Color(0xFF06332B) else spec.color, modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text(spec.label, style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
                 }
             }
         }

@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Wallet
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -42,6 +43,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.moasseum.app.domain.LedgerUiState
+import com.moasseum.app.domain.NotificationCandidate
+import com.moasseum.app.domain.formatDate
 import com.moasseum.app.domain.formatMonth
 import com.moasseum.app.domain.formatWon
 import com.moasseum.app.ui.components.FinanceCard
@@ -56,6 +59,11 @@ fun ManageScreen(
     onReduceMotionChanged: (Boolean) -> Unit,
     onUpdateBudget: (String) -> Boolean,
     onShowUnavailable: (String) -> Unit,
+    notificationAccessEnabled: Boolean,
+    pendingCandidates: List<NotificationCandidate>,
+    onOpenNotificationSettings: () -> Unit,
+    onAcceptNotificationCandidate: (Long) -> Unit,
+    onDismissNotificationCandidate: (Long) -> Unit,
 ) {
     var showBudgetDialog by rememberSaveable { mutableStateOf(false) }
     val colors = LocalFinanceColors.current
@@ -76,7 +84,7 @@ fun ManageScreen(
                         Icon(Icons.Rounded.Wallet, contentDescription = null, tint = colors.accent, modifier = Modifier.size(22.dp))
                         Spacer(Modifier.width(9.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("${formatMonth(uiState.month)} 예산", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("${formatMonth(uiState.month)} 목표 지출", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text("홈 화면의 진행률에 반영돼요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                         }
                         IconButton(onClick = { showBudgetDialog = true }) {
@@ -116,10 +124,24 @@ fun ManageScreen(
                     onCheckedChange = onReduceMotionChanged,
                 )
                 HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 20.dp))
-                ManageRow(Icons.Rounded.NotificationsActive, "알림 감지", "사용자가 직접 권한을 허용한 뒤 준비", onClick = { onShowUnavailable("결제 알림 감지") })
+                ManageRow(
+                    Icons.Rounded.NotificationsActive,
+                    "결제 알림 감지",
+                    if (notificationAccessEnabled) "허용됨 · 후보 ${pendingCandidates.size}건" else "권한을 허용하면 결제 후보를 읽어요",
+                    onClick = onOpenNotificationSettings,
+                )
                 HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 20.dp))
                 ManageRow(Icons.Rounded.Security, "개인정보와 데이터", "내보내기 · 삭제 · AI 전송 설정", onClick = { onShowUnavailable("개인정보 설정") })
             }
+        }
+        item {
+            NotificationCandidatesCard(
+                candidates = pendingCandidates,
+                notificationAccessEnabled = notificationAccessEnabled,
+                onOpenSettings = onOpenNotificationSettings,
+                onAccept = onAcceptNotificationCandidate,
+                onDismiss = onDismissNotificationCandidate,
+            )
         }
         item {
             Text(
@@ -141,6 +163,72 @@ fun ManageScreen(
                 saved
             },
         )
+    }
+}
+
+@Composable
+private fun NotificationCandidatesCard(
+    candidates: List<NotificationCandidate>,
+    notificationAccessEnabled: Boolean,
+    onOpenSettings: () -> Unit,
+    onAccept: (Long) -> Unit,
+    onDismiss: (Long) -> Unit,
+) {
+    val colors = LocalFinanceColors.current
+    FinanceCard {
+        Column(modifier = Modifier.padding(vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+            Row(modifier = Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("알림 후보함", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (notificationAccessEnabled) "결제 알림은 확인 후에만 거래로 저장돼요." else "알림 접근을 허용하면 이곳에 후보가 쌓여요.",
+                        color = colors.textSecondary,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+                Icon(Icons.Rounded.Info, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
+            }
+            if (!notificationAccessEnabled) {
+                TextButton(onClick = onOpenSettings, modifier = Modifier.padding(horizontal = 12.dp)) { Text("알림 접근 설정 열기") }
+            } else if (candidates.isEmpty()) {
+                Text("아직 검토할 결제 알림이 없어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 5.dp))
+            } else {
+                candidates.take(5).forEachIndexed { index, candidate ->
+                    NotificationCandidateRow(candidate = candidate, onAccept = { onAccept(candidate.id) }, onDismiss = { onDismiss(candidate.id) })
+                    if (index < candidates.take(5).lastIndex) HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 20.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotificationCandidateRow(
+    candidate: NotificationCandidate,
+    onAccept: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = LocalFinanceColors.current
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(com.moasseum.app.ui.components.categoryIcon(candidate.categoryKey), contentDescription = null, tint = colors.accent, modifier = Modifier.size(19.dp))
+            Spacer(Modifier.width(9.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(candidate.merchant, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                Text("${formatDate(candidate.occurredDate)} · ${candidate.title}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            }
+            Text(
+                text = if (candidate.type == com.moasseum.app.domain.TransactionType.EXPENSE) "−${formatWon(candidate.amount)}" else "+${formatWon(candidate.amount)}",
+                color = if (candidate.type == com.moasseum.app.domain.TransactionType.EXPENSE) colors.expense else colors.income,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        Text(candidate.preview, color = colors.textSecondary, style = MaterialTheme.typography.labelMedium, maxLines = 2)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = onAccept) { Text("거래로 저장", color = colors.accent) }
+            TextButton(onClick = onDismiss) { Text("무시", color = colors.textSecondary) }
+        }
     }
 }
 
@@ -207,10 +295,10 @@ private fun BudgetDialog(
     var showError by rememberSaveable { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("월 예산 수정", fontWeight = FontWeight.Bold) },
+        title = { Text("한 달 목표 지출 수정", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("${formatMonth(java.time.YearMonth.now())} 기준 예산", color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                Text("${formatMonth(java.time.YearMonth.now())} 기준 목표", color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.bodyMedium)
                 OutlinedTextField(
                     value = input,
                     onValueChange = { input = it.filter(Char::isDigit); showError = false },

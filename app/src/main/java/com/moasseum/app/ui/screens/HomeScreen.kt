@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.KeyboardVoice
 import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -93,6 +94,8 @@ fun HomeScreen(
             HomeTab.SUMMARY -> {
                 item { MonthlySummaryCard(uiState) }
                 item { BudgetCard(uiState, onOpenManage) }
+                item { TodayAndWeekCard(uiState) }
+                item { DailyInsightCard(uiState) }
                 item { CategorySpendingCard(uiState) }
                 item { RecentTransactionsCard(uiState, onOpenHistory = onOpenHistory) }
             }
@@ -186,14 +189,14 @@ private fun QuickCaptureCard(onAdd: (AddMode) -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CaptureAction(
                     label = "직접 입력",
-                    icon = Icons.Rounded.KeyboardVoice,
+                    icon = Icons.Rounded.TouchApp,
                     onClick = { onAdd(AddMode.DIRECT) },
                     modifier = Modifier.weight(1f),
                 )
                 CaptureAction(
                     label = "AI 문장",
                     icon = Icons.Rounded.AutoAwesome,
-                    onClick = { onAdd(AddMode.AI_NOTICE) },
+                    onClick = { onAdd(AddMode.AI_INPUT) },
                     modifier = Modifier.weight(1f),
                 )
                 CaptureAction(
@@ -316,7 +319,7 @@ private fun BudgetCard(
         Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("월 예산", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                    Text("한 달 목표 지출", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                     Text(
                         text = budget?.let(::formatWon) ?: "아직 설정하지 않았어요",
                         style = MaterialTheme.typography.titleLarge,
@@ -366,13 +369,72 @@ private fun BudgetCard(
 }
 
 @Composable
+private fun TodayAndWeekCard(uiState: LedgerUiState) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        MiniSpendCard(
+            label = "오늘",
+            amount = uiState.todayExpenseTotal,
+            count = uiState.todayTransactionCount,
+            modifier = Modifier.weight(1f),
+        )
+        MiniSpendCard(
+            label = "이번 주",
+            amount = uiState.weekExpenseTotal,
+            count = uiState.weekTransactionCount,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun MiniSpendCard(
+    label: String,
+    amount: Long,
+    count: Int,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LocalFinanceColors.current
+    FinanceCard(modifier = modifier) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(label, color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+            Text(formatWon(amount), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("${count}건 기록", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+@Composable
+private fun DailyInsightCard(uiState: LedgerUiState) {
+    val colors = LocalFinanceColors.current
+    val message = when {
+        uiState.todayExpenseTotal == 0L -> "오늘 소비가 없네요"
+        uiState.todayExpenseTotal <= 10_000L -> "오늘은 가볍게 잘 보내고 있어요"
+        else -> "오늘 ${formatWon(uiState.todayExpenseTotal)}를 기록했어요"
+    }
+    FinanceCard(highlighted = true) {
+        Row(modifier = Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(10.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(message, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    if (uiState.todayExpenseTotal == 0L) "좋은 하루 보내세요" else "기록은 쌓이고, 흐름은 선명해져요",
+                    color = colors.accent,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun CategorySpendingCard(uiState: LedgerUiState) {
     val colors = LocalFinanceColors.current
     FinanceCard {
         Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("주요 카테고리", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("카테고리 TOP", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text("이번 달 지출 기준", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                 }
                 Icon(Icons.Rounded.ChevronRight, contentDescription = "카테고리 전체 보기", tint = colors.textSecondary)

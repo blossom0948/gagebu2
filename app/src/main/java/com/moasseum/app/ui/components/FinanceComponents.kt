@@ -229,14 +229,14 @@ fun BottomNavBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BottomNavItem(
-                label = "홈",
+                label = "대시보드",
                 icon = Icons.Rounded.Home,
                 selected = currentRoute == ROUTE_HOME,
                 onClick = { onNavigate(ROUTE_HOME) },
                 modifier = Modifier.weight(1f),
             )
             BottomNavItem(
-                label = "내역",
+                label = "소비내역",
                 icon = Icons.Rounded.AccountBalanceWallet,
                 selected = currentRoute == ROUTE_HISTORY,
                 onClick = { onNavigate(ROUTE_HISTORY) },

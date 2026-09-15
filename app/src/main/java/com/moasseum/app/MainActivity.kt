@@ -1,7 +1,9 @@
 package com.moasseum.app
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -17,6 +19,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,10 +28,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -49,6 +56,9 @@ import com.moasseum.app.ui.screens.HomeScreen
 import com.moasseum.app.ui.screens.ManageScreen
 import com.moasseum.app.ui.screens.TogetherScreen
 import com.moasseum.app.ui.theme.MoasseumTheme
+import com.moasseum.app.data.AiClient
+import com.moasseum.app.domain.AiParseState
+import com.moasseum.app.notification.NotificationAccess
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -104,8 +114,23 @@ private fun MoasseumApp(
     val currentRoute = backStackEntry?.destination?.route ?: ROUTE_HOME
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val selectedDate by viewModel.date.collectAsStateWithLifecycle()
+    val pendingCandidates by viewModel.pendingNotificationCandidates.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var notificationAccessEnabled by remember { mutableStateOf(NotificationAccess.isEnabled(context)) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                notificationAccessEnabled = NotificationAccess.isEnabled(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+    val aiClient = remember { AiClient() }
+    var aiState by remember { mutableStateOf<AiParseState>(AiParseState.Idle) }
     var addOpen by rememberSaveable { mutableStateOf(false) }
     var addModeName by rememberSaveable { mutableStateOf(AddMode.MENU.name) }
     var unavailableMessage by rememberSaveable { mutableStateOf<String?>(null) }
@@ -114,6 +139,7 @@ private fun MoasseumApp(
     fun closeAdd() {
         addOpen = false
         addModeName = AddMode.MENU.name
+        aiState = AiParseState.Idle
     }
 
     BackHandler(enabled = addOpen) { closeAdd() }
@@ -133,7 +159,7 @@ private fun MoasseumApp(
                 onClick = {
                     if (addOpen) closeAdd() else {
                         addOpen = true
-                        addModeName = AddMode.MENU.name
+                        addModeName = AddMode.AI_INPUT.name
                     }
                 },
             )
@@ -185,6 +211,19 @@ private fun MoasseumApp(
                         onReduceMotionChanged = onReduceMotionChanged,
                         onUpdateBudget = viewModel::updateBudget,
                         onShowUnavailable = { feature -> unavailableMessage = "$feature 기능은 다음 단계에서 연결됩니다." },
+                        notificationAccessEnabled = notificationAccessEnabled,
+                        pendingCandidates = pendingCandidates,
+                        onOpenNotificationSettings = {
+                            context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                        },
+                        onAcceptNotificationCandidate = { id ->
+                            viewModel.acceptNotificationCandidate(id)
+                            coroutineScope.launch { snackbarHostState.showSnackbar("알림을 거래로 저장했어요") }
+                        },
+                        onDismissNotificationCandidate = { id ->
+                            viewModel.dismissNotificationCandidate(id)
+                            coroutineScope.launch { snackbarHostState.showSnackbar("알림 후보를 무시했어요") }
+                        },
                     )
                 }
             }
@@ -203,6 +242,25 @@ private fun MoasseumApp(
                 mode = addMode,
                 onModeChange = { addModeName = it.name },
                 onDismiss = { closeAdd() },
+                aiState = aiState,
+                onParseAi = { text ->
+                    aiState = AiParseState.Loading
+                    coroutineScope.launch {
+                        val result = aiClient.parseTransaction(text)
+                        aiState = result.fold(
+                            onSuccess = { candidate -> AiParseState.Success(candidate) },
+                            onFailure = { error -> AiParseState.Error(error.message ?: "AI 해석에 실패했어요.") },
+                        )
+                    }
+                },
+                onConfirmAi = { amount, type, merchant, categoryKey, memo, occurredAt ->
+                    val saved = viewModel.addTransaction(amount, type, merchant, categoryKey, memo, occurredAt)
+                    if (saved) {
+                        closeAdd()
+                        coroutineScope.launch { snackbarHostState.showSnackbar("AI 거래 후보를 저장했어요") }
+                    }
+                    saved
+                },
                 onSave = { amount, type, merchant, categoryKey, memo ->
                     val saved = viewModel.addTransaction(amount, type, merchant, categoryKey, memo)
                     if (saved) {

@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "moasseum-ai-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-16",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "GEMINI_MODEL": "gemini-2.5-flash-lite",
+    "REQUIRE_AUTH": "true"
+  }
+}

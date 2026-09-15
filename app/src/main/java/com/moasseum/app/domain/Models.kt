@@ -3,13 +3,40 @@ package com.moasseum.app.domain
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.LocalDate
+import java.time.DayOfWeek
 import java.time.ZoneId
 import java.time.YearMonth
 import java.util.Locale
 
+enum class AiCandidateSource {
+    SERVER,
+    LOCAL,
+}
+
 enum class TransactionType {
     EXPENSE,
     INCOME,
+}
+
+data class AiTransactionCandidate(
+    val type: TransactionType,
+    val amount: Long,
+    val occurredDate: LocalDate,
+    val categoryKey: String,
+    val merchant: String,
+    val memo: String,
+    val source: AiCandidateSource,
+    val amountConfidence: Double = 1.0,
+    val dateConfidence: Double = 1.0,
+    val categoryConfidence: Double = 0.7,
+    val needsConfirmation: List<String> = emptyList(),
+)
+
+sealed interface AiParseState {
+    data object Idle : AiParseState
+    data object Loading : AiParseState
+    data class Success(val candidate: AiTransactionCandidate) : AiParseState
+    data class Error(val message: String) : AiParseState
 }
 
 data class Transaction(
@@ -71,6 +98,28 @@ data class LedgerUiState(
         get() = monthTransactions.sortedWith(
             compareByDescending<Transaction> { it.occurredAt }.thenByDescending { it.id },
         )
+
+    val todayExpenseTotal: Long
+        get() = monthTransactions.filter { it.type == TransactionType.EXPENSE && it.occurredDate == LocalDate.now() }.sumOf(Transaction::amount)
+
+    val weekExpenseTotal: Long
+        get() {
+            val today = LocalDate.now()
+            val weekStart = today.with(DayOfWeek.MONDAY)
+            return monthTransactions
+                .filter { it.type == TransactionType.EXPENSE && it.occurredDate in weekStart..today }
+                .sumOf(Transaction::amount)
+        }
+
+    val todayTransactionCount: Int
+        get() = monthTransactions.count { it.occurredDate == LocalDate.now() }
+
+    val weekTransactionCount: Int
+        get() {
+            val today = LocalDate.now()
+            val weekStart = today.with(DayOfWeek.MONDAY)
+            return monthTransactions.count { it.occurredDate in weekStart..today }
+        }
 }
 
 fun parseAmount(input: String): Long? =

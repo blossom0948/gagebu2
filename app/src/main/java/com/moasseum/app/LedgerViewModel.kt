@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.moasseum.app.data.FinanceRepository
 import com.moasseum.app.domain.LedgerUiState
+import com.moasseum.app.domain.NotificationCandidate
 import com.moasseum.app.domain.TransactionType
 import com.moasseum.app.domain.parseAmount
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +34,13 @@ class LedgerViewModel(
 
     val month: StateFlow<YearMonth> = selectedMonth
     val date: StateFlow<LocalDate> = selectedDate
+
+    val pendingNotificationCandidates: StateFlow<List<NotificationCandidate>> =
+        repository.observePendingNotificationCandidates().stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList(),
+        )
 
     private val budget: StateFlow<Long?> =
         selectedMonth
@@ -99,6 +107,14 @@ class LedgerViewModel(
 
     fun deleteTransaction(id: Long) {
         viewModelScope.launch { repository.softDeleteTransaction(id) }
+    }
+
+    fun acceptNotificationCandidate(id: Long) {
+        viewModelScope.launch { repository.acceptNotificationCandidate(id) }
+    }
+
+    fun dismissNotificationCandidate(id: Long) {
+        viewModelScope.launch { repository.dismissNotificationCandidate(id) }
     }
 
     fun updateBudget(amountInput: String): Boolean {

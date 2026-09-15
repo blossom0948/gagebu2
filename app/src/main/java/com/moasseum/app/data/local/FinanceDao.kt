@@ -31,4 +31,22 @@ interface FinanceDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertBudget(budget: BudgetEntity)
+
+    @Query(
+        """
+        SELECT * FROM notification_candidates
+        WHERE status = 'PENDING'
+        ORDER BY postedAt DESC, id DESC
+        """,
+    )
+    fun observePendingNotificationCandidates(): Flow<List<NotificationCandidateEntity>>
+
+    @Query("SELECT * FROM notification_candidates WHERE id = :id LIMIT 1")
+    suspend fun getNotificationCandidate(id: Long): NotificationCandidateEntity?
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertNotificationCandidate(candidate: NotificationCandidateEntity): Long
+
+    @Query("UPDATE notification_candidates SET status = :status WHERE id = :id")
+    suspend fun updateNotificationCandidateStatus(id: Long, status: String)
 }

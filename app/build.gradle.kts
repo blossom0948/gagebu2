@@ -20,6 +20,10 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        val aiBaseUrl = providers.gradleProperty("AI_API_BASE_URL").orNull.orEmpty()
+        val escapedAiBaseUrl = aiBaseUrl.replace("\\", "\\\\").replace("\"", "\\\"")
+        buildConfigField("String", "AI_API_BASE_URL", "\"$escapedAiBaseUrl\"")
     }
 
     buildTypes {

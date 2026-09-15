@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">모아씀</string>
     <string name="app_tagline">내 소비를 가볍게 모으는 습관</string>
+    <string name="notification_listener_label">모아씀 결제 알림 감지</string>
 </resources>
