@@ -33,6 +33,8 @@
 - 관리 화면에서 알림 접근 설정을 열고 보류 후보를 저장/무시
 - 첫 실행 알림 안내 팝업과 Galaxy 알림 접근 설정 상세 화면 바로가기
 - 결제 알림은 중복 fingerprint를 사용하며 사용자 확인 없이 원장에 넣지 않음
+- GitHub Releases 최신 APK 확인·다운로드·Android 설치 화면 연결(수동 업데이트)
+- 릴리스 서명용 로컬 upload key와 버전 코드 주입 설정
 
 ## 검증 결과
 
@@ -41,6 +43,7 @@
 - `npm run typecheck` (`cloudflare/ai-worker`) — 성공
 - APK — `app/build/outputs/apk/debug/app-debug.apk`
 - 기기 설치 — 미실행: 현재 `adb devices`에 연결된 기기와 AVD가 없음
+- 서명 릴리스 — 로컬 upload key 생성 및 release 빌드 경로 검증 중
 
 ## 다음 단계
 
@@ -48,3 +51,4 @@
 - Phase 3: Supabase 인증/RLS와 오프라인 outbox 동기화
 - Phase 4 후속: ML Kit OCR, 음성 입력, AI 분석 탭, 공동 가계부 서버 연결
 - Phase 5 이후: 공통 Motion System과 공유 데이터 모델 고도화
+- 개인 배포: GitHub Release에 서명 APK를 올리고 앱에서 수동 업데이트

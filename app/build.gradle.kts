@@ -13,8 +13,8 @@ android {
         applicationId = "com.moasseum.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = providers.gradleProperty("VERSION_CODE").orNull?.toIntOrNull() ?: 1
+        versionName = providers.gradleProperty("VERSION_NAME").orNull ?: "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -35,6 +35,29 @@ android {
                 "proguard-rules.pro",
             )
         }
+    }
+
+    val releaseKeystorePath = providers.gradleProperty("RELEASE_KEYSTORE_PATH").orNull
+        ?: providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
+    val releaseStorePassword = providers.gradleProperty("RELEASE_STORE_PASSWORD").orNull
+        ?: providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
+    val releaseKeyAlias = providers.gradleProperty("RELEASE_KEY_ALIAS").orNull
+        ?: providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
+    val releaseKeyPassword = providers.gradleProperty("RELEASE_KEY_PASSWORD").orNull
+        ?: providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
+
+    if (releaseKeystorePath != null && releaseStorePassword != null &&
+        releaseKeyAlias != null && releaseKeyPassword != null
+    ) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(releaseKeystorePath)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+        buildTypes.getByName("release").signingConfig = signingConfigs.getByName("release")
     }
 
     compileOptions {

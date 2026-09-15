@@ -23,6 +23,8 @@ Cloudflare Workers는 GitHub 저장소 변경으로 자동 빌드·배포할 수
 3. GitHub Actions로 APK 빌드·테스트를 자동화한다.
 4. 다른 사람에게 배포할 때는 서명된 APK 또는 Google Play App Bundle을 만든다.
 
+본인만 무료로 사용할 때는 4번 대신 **GitHub Release + 앱 안의 수동 업데이트**를 사용한다. GitHub Release는 APK를 공개적으로 내려받게 해 주지만, Android 설치 확인까지 자동으로 처리할 수는 없다.
+
 ---
 
 ## 2. 준비물
@@ -216,7 +218,36 @@ Workflow artifact는 영구 배포물이 아니라 해당 실행에 붙는 빌�
 
 ---
 
-## 8. 다른 사람에게 배포하기
+## 8. 무료 개인용 서명 릴리스와 수동 업데이트
+
+이 저장소의 `docs/android-release.yml`은 `main` push마다 서명 APK/AAB를 만들고 GitHub Release를 생성하는 workflow 템플릿이다. 현재 GitHub 토큰에 workflow 파일 등록 scope가 없으면 이 파일을 먼저 `.github/workflows/android-release.yml`로 옮길 수 없으므로, 권한을 추가한 뒤 이동한다.
+
+### 한 번만 준비할 값
+
+- Android upload keystore를 만든다. 키스토어와 비밀번호는 안전한 곳에 보관한다.
+- GitHub 저장소 Settings → Secrets and variables → Actions에 아래 네 값을 등록한다.
+
+```text
+ANDROID_KEYSTORE_BASE64
+ANDROID_KEYSTORE_PASSWORD
+ANDROID_KEY_ALIAS
+ANDROID_KEY_PASSWORD
+```
+
+`ANDROID_KEYSTORE_BASE64`에는 keystore 바이너리를 Base64로 변환한 값을 넣는다. 비밀번호·키스토어 파일은 README, GitHub 소스, APK, 빌드 로그에 절대 넣지 않는다.
+
+### 릴리스가 만들어지는 과정
+
+1. `main`에 기능을 push한다.
+2. Actions가 unit test와 lint를 실행한다.
+3. `versionCode`에는 Actions 실행 번호가 들어가고, 서명 APK/AAB가 만들어진다.
+4. GitHub Release에 `app-release.apk`와 `app-release.aab`가 첨부된다.
+5. 폰에서 모아씀의 `관리 → 앱 업데이트`를 열고 `업데이트 확인`을 누른다.
+6. APK를 다운로드한 뒤 Android 설치 화면에서 승인한다.
+
+APK 업데이트는 앱의 기존 Room 데이터를 삭제하지 않는다. 다만 Android는 보안상 앱이 설치 확인을 무음으로 승인하지 못하므로, 이 방식은 Play Store의 완전 자동 업데이트와 다르다.
+
+## 9. 다른 사람에게 배포하기
 
 ### 제한된 인원에게 직접 전달
 

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Wallet
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -49,6 +50,8 @@ import com.moasseum.app.domain.formatMonth
 import com.moasseum.app.domain.formatWon
 import com.moasseum.app.ui.components.FinanceCard
 import com.moasseum.app.ui.theme.LocalFinanceColors
+import com.moasseum.app.update.AppRelease
+import com.moasseum.app.update.UpdateCheckState
 
 @Composable
 fun ManageScreen(
@@ -64,6 +67,9 @@ fun ManageScreen(
     onOpenNotificationSettings: () -> Unit,
     onAcceptNotificationCandidate: (Long) -> Unit,
     onDismissNotificationCandidate: (Long) -> Unit,
+    updateState: UpdateCheckState,
+    onCheckForUpdate: () -> Unit,
+    onInstallUpdate: (AppRelease) -> Unit,
 ) {
     var showBudgetDialog by rememberSaveable { mutableStateOf(false) }
     val colors = LocalFinanceColors.current
@@ -144,8 +150,15 @@ fun ManageScreen(
             )
         }
         item {
+            AppUpdateCard(
+                updateState = updateState,
+                onCheckForUpdate = onCheckForUpdate,
+                onInstallUpdate = onInstallUpdate,
+            )
+        }
+        item {
             Text(
-                "모아씀 0.1.0 · 현재는 기기 안에만 저장돼요",
+                "모아씀 ${com.moasseum.app.BuildConfig.VERSION_NAME} · 현재는 기기 안에만 저장돼요",
                 color = colors.textSecondary,
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
@@ -163,6 +176,57 @@ fun ManageScreen(
                 saved
             },
         )
+    }
+}
+
+@Composable
+private fun AppUpdateCard(
+    updateState: UpdateCheckState,
+    onCheckForUpdate: () -> Unit,
+    onInstallUpdate: (AppRelease) -> Unit,
+) {
+    val colors = LocalFinanceColors.current
+    FinanceCard {
+        Column(modifier = Modifier.padding(vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(modifier = Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.SystemUpdate, contentDescription = null, tint = colors.accent, modifier = Modifier.size(21.dp))
+                Spacer(Modifier.width(13.dp))
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("앱 업데이트", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        when (updateState) {
+                            UpdateCheckState.Idle -> "GitHub에서 새 버전을 직접 확인해요."
+                            UpdateCheckState.Checking -> "새 버전을 확인하고 있어요…"
+                            UpdateCheckState.UpToDate -> "현재 최신 버전이에요."
+                            is UpdateCheckState.Available -> "${updateState.release.tagName} 업데이트가 있어요."
+                            is UpdateCheckState.Downloading -> "${updateState.release.tagName} 다운로드 중…"
+                            UpdateCheckState.WaitingForInstallPermission -> "설치 권한을 켠 뒤 다시 업데이트를 눌러주세요."
+                            is UpdateCheckState.Installing -> "Android 설치 화면을 열었어요."
+                            is UpdateCheckState.Error -> updateState.message
+                        },
+                        color = colors.textSecondary,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
+            when (updateState) {
+                UpdateCheckState.Checking,
+                is UpdateCheckState.Downloading,
+                is UpdateCheckState.Installing,
+                -> Unit
+                is UpdateCheckState.Available -> {
+                    val release = updateState.release
+                    TextButton(onClick = { onInstallUpdate(release) }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                        Text("다운로드 및 설치", color = colors.accent)
+                    }
+                }
+                else -> {
+                    TextButton(onClick = onCheckForUpdate, modifier = Modifier.padding(horizontal = 8.dp)) {
+                        Text("업데이트 확인", color = colors.accent)
+                    }
+                }
+            }
+        }
     }
 }
 

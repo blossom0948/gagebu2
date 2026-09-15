@@ -60,6 +60,9 @@ import com.moasseum.app.ui.theme.MoasseumTheme
 import com.moasseum.app.data.AiClient
 import com.moasseum.app.domain.AiParseState
 import com.moasseum.app.notification.NotificationAccess
+import com.moasseum.app.update.AppUpdateManager
+import com.moasseum.app.update.InstallResult
+import com.moasseum.app.update.UpdateCheckState
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -145,6 +148,7 @@ private fun MoasseumApp(
     var addOpen by rememberSaveable { mutableStateOf(false) }
     var addModeName by rememberSaveable { mutableStateOf(AddMode.MENU.name) }
     var unavailableMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    var updateState by remember { mutableStateOf<UpdateCheckState>(UpdateCheckState.Idle) }
     val addMode = AddMode.valueOf(addModeName)
 
     fun closeAdd() {
@@ -224,6 +228,46 @@ private fun MoasseumApp(
                         onShowUnavailable = { feature -> unavailableMessage = "$feature 기능은 다음 단계에서 연결됩니다." },
                         notificationAccessEnabled = notificationAccessEnabled,
                         pendingCandidates = pendingCandidates,
+                        updateState = updateState,
+                        onCheckForUpdate = {
+                            updateState = UpdateCheckState.Checking
+                            coroutineScope.launch {
+                                AppUpdateManager.checkForUpdate()
+                                    .onSuccess { release ->
+                                        updateState = release?.let(UpdateCheckState::Available)
+                                            ?: UpdateCheckState.UpToDate
+                                    }
+                                    .onFailure { error ->
+                                        updateState = UpdateCheckState.Error(
+                                            error.message ?: "업데이트 확인에 실패했어요.",
+                                        )
+                                    }
+                            }
+                        },
+                        onInstallUpdate = { release ->
+                            updateState = UpdateCheckState.Downloading(release)
+                            coroutineScope.launch {
+                                AppUpdateManager.downloadApk(context, release)
+                                    .onSuccess { apkFile ->
+                                        when (val result = AppUpdateManager.install(context, apkFile)) {
+                                            InstallResult.Started -> {
+                                                updateState = UpdateCheckState.Installing(release)
+                                            }
+                                            InstallResult.PermissionRequired -> {
+                                                updateState = UpdateCheckState.WaitingForInstallPermission
+                                            }
+                                            is InstallResult.Failed -> {
+                                                updateState = UpdateCheckState.Error(result.message)
+                                            }
+                                        }
+                                    }
+                                    .onFailure { error ->
+                                        updateState = UpdateCheckState.Error(
+                                            error.message ?: "APK 다운로드에 실패했어요.",
+                                        )
+                                    }
+                            }
+                        },
                         onOpenNotificationSettings = {
                             NotificationAccess.openSettings(context)
                         },
