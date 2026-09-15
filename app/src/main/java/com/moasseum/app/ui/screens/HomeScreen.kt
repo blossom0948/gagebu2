@@ -1,7 +1,6 @@
 package com.moasseum.app.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,8 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -28,7 +25,6 @@ import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -40,24 +36,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.moasseum.app.R
 import com.moasseum.app.domain.LedgerUiState
-import com.moasseum.app.domain.Transaction
-import com.moasseum.app.domain.TransactionType
+import com.moasseum.app.domain.formatLongDate
 import com.moasseum.app.domain.formatMonth
 import com.moasseum.app.domain.formatWon
-import com.moasseum.app.ui.components.CategorySpec
-import com.moasseum.app.ui.components.CategorySpecs
+import com.moasseum.app.ui.components.AddMode
 import com.moasseum.app.ui.components.EmptyState
 import com.moasseum.app.ui.components.FinanceCard
 import com.moasseum.app.ui.components.TransactionRow
 import com.moasseum.app.ui.components.categoryColor
 import com.moasseum.app.ui.components.categoryLabel
-import com.moasseum.app.ui.components.AddMode
 import com.moasseum.app.ui.theme.LocalFinanceColors
 
 private enum class HomeTab(val label: String) {
@@ -79,8 +70,8 @@ fun HomeScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 116.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 96.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item { HomeHeader(onOpenManage = onOpenManage) }
         item { QuickCaptureCard(onAdd = onAdd) }
@@ -92,12 +83,10 @@ fun HomeScreen(
         }
         when (selectedTab) {
             HomeTab.SUMMARY -> {
-                item { MonthlySummaryCard(uiState) }
-                item { BudgetCard(uiState, onOpenManage) }
+                item { MonthlySummaryCard(uiState, onOpenManage) }
                 item { TodayAndWeekCard(uiState) }
                 item { DailyInsightCard(uiState) }
-                item { CategorySpendingCard(uiState) }
-                item { RecentTransactionsCard(uiState, onOpenHistory = onOpenHistory) }
+                item { CategorySpendingCard(uiState, onOpenHistory = onOpenHistory) }
             }
 
             HomeTab.INSIGHTS -> item { InsightsContent(uiState) }
@@ -116,7 +105,7 @@ private fun HomeHeader(onOpenManage: () -> Unit) {
     ) {
         Box(
             modifier = Modifier
-                .size(46.dp)
+                .size(38.dp)
                 .background(colors.accent, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
@@ -127,7 +116,7 @@ private fun HomeHeader(onOpenManage: () -> Unit) {
                 fontWeight = FontWeight.Black,
             )
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(9.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "좋은 하루예요",
@@ -135,16 +124,34 @@ private fun HomeHeader(onOpenManage: () -> Unit) {
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "오늘의 소비도 가볍게 모아볼까요?",
+                text = formatLongDate(java.time.LocalDate.now()),
                 color = colors.textSecondary,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.labelMedium,
             )
         }
-        IconButton(onClick = {}) {
-            Icon(Icons.Rounded.NotificationsNone, contentDescription = "알림")
-        }
-        IconButton(onClick = onOpenManage) {
-            Icon(Icons.Rounded.Settings, contentDescription = "관리 설정")
+        HeaderIconButton(Icons.Rounded.HelpOutline, "도움말")
+        Spacer(Modifier.width(4.dp))
+        HeaderIconButton(Icons.Rounded.NotificationsNone, "알림")
+        Spacer(Modifier.width(4.dp))
+        HeaderIconButton(Icons.Rounded.Settings, "관리 설정", onOpenManage)
+    }
+}
+
+@Composable
+private fun HeaderIconButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit = {},
+) {
+    val colors = LocalFinanceColors.current
+    Surface(
+        modifier = Modifier.size(34.dp),
+        onClick = onClick,
+        color = colors.surfaceRaised,
+        shape = RoundedCornerShape(11.dp),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = contentDescription, tint = colors.textSecondary, modifier = Modifier.size(18.dp))
         }
     }
 }
@@ -153,85 +160,41 @@ private fun HomeHeader(onOpenManage: () -> Unit) {
 private fun QuickCaptureCard(onAdd: (AddMode) -> Unit) {
     val colors = LocalFinanceColors.current
     FinanceCard(highlighted = true) {
-        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Row(verticalAlignment = Alignment.Top) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(18.dp))
-                        Text(
-                            text = "빠른 기록",
-                            color = colors.accent,
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "오늘 쓴 돈, 한 문장으로\n기록해 보세요.",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Spacer(Modifier.height(5.dp))
-                    Text(
-                        text = "예: 어제 점심 8천원",
-                        color = colors.textSecondary,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+        Row(
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(15.dp))
+                    Text("빠른 기록", color = colors.accent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 }
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .background(colors.surfaceOverlay, CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(21.dp))
-                }
+                Text("예: 점심 8,000원", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CaptureAction(
-                    label = "직접 입력",
-                    icon = Icons.Rounded.TouchApp,
-                    onClick = { onAdd(AddMode.DIRECT) },
-                    modifier = Modifier.weight(1f),
-                )
-                CaptureAction(
-                    label = "AI 문장",
-                    icon = Icons.Rounded.AutoAwesome,
-                    onClick = { onAdd(AddMode.AI_INPUT) },
-                    modifier = Modifier.weight(1f),
-                )
-                CaptureAction(
-                    label = "영수증",
-                    icon = Icons.Rounded.CameraAlt,
-                    onClick = { onAdd(AddMode.RECEIPT_NOTICE) },
-                    modifier = Modifier.weight(1f),
-                )
-            }
+            QuickCaptureAction(Icons.Rounded.TouchApp, "직접 입력") { onAdd(AddMode.DIRECT) }
+            QuickCaptureAction(Icons.Rounded.KeyboardVoice, "AI 문장") { onAdd(AddMode.AI_INPUT) }
+            QuickCaptureAction(Icons.Rounded.CameraAlt, "영수증") { onAdd(AddMode.RECEIPT_NOTICE) }
         }
     }
 }
 
 @Composable
-private fun CaptureAction(
-    label: String,
+private fun QuickCaptureAction(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     val colors = LocalFinanceColors.current
     Surface(
-        modifier = modifier.height(42.dp),
+        modifier = Modifier.size(34.dp),
         onClick = onClick,
-        color = colors.surfaceRaised.copy(alpha = 0.72f),
-        shape = RoundedCornerShape(13.dp),
+        color = colors.surfaceOverlay,
+        contentColor = colors.accent,
+        shape = CircleShape,
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            Icon(icon, contentDescription = null, tint = colors.textPrimary, modifier = Modifier.size(17.dp))
-            Spacer(Modifier.width(5.dp))
-            Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        Box(contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = label, modifier = Modifier.size(17.dp))
         }
     }
 }
@@ -243,108 +206,82 @@ private fun HomeTabs(
 ) {
     val colors = LocalFinanceColors.current
     Row(
-        modifier = Modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.surfaceRaised, RoundedCornerShape(24.dp))
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         HomeTab.entries.forEach { tab ->
             Surface(
+                modifier = Modifier.weight(1f).height(36.dp),
                 onClick = { onSelect(tab) },
-                color = if (tab == selected) colors.accent else colors.surfaceRaised,
+                color = if (tab == selected) colors.accent else Color.Transparent,
                 contentColor = if (tab == selected) Color(0xFF06332B) else colors.textSecondary,
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(19.dp),
             ) {
-                Text(
-                    text = tab.label,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun MonthlySummaryCard(uiState: LedgerUiState) {
-    val colors = LocalFinanceColors.current
-    val change = uiState.expenseTotal - uiState.previousExpenseTotal
-    FinanceCard {
-        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("이번 달 지출", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.weight(1f))
-                Text(formatMonth(uiState.month), color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-            }
-            Text(
-                text = formatWon(uiState.expenseTotal),
-                style = MaterialTheme.typography.displaySmall,
-                color = colors.textPrimary,
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("${uiState.expenseCount}건 기록", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.width(10.dp))
-                if (uiState.previousExpenseTotal > 0L) {
-                    Text(
-                        text = if (change >= 0) "지난달보다 ${formatWon(change)} 더 썼어요" else "지난달보다 ${formatWon(-change)} 아꼈어요",
-                        color = if (change > 0) colors.expense else colors.success,
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                } else {
-                    Text("비교할 지난달 기록이 없어요", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                Box(contentAlignment = Alignment.Center) {
+                    Text(text = tab.label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                 }
             }
-            if (uiState.incomeTotal > 0) {
-                Text(
-                    "수입 ${formatWon(uiState.incomeTotal)} 포함",
-                    color = colors.income,
-                    style = MaterialTheme.typography.labelMedium,
-                )
-            }
         }
     }
 }
 
 @Composable
-private fun BudgetCard(
+private fun MonthlySummaryCard(
     uiState: LedgerUiState,
     onOpenManage: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
+    val change = uiState.expenseTotal - uiState.previousExpenseTotal
     val budget = uiState.budgetAmount
     val progress = if (budget != null && budget > 0) {
         (uiState.expenseTotal.toFloat() / budget.toFloat()).coerceIn(0f, 1f)
     } else {
         0f
     }
-    FinanceCard {
-        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("한 달 목표 지출", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        text = budget?.let(::formatWon) ?: "아직 설정하지 않았어요",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-                Surface(
-                    onClick = onOpenManage,
-                    color = colors.accentSoft,
-                    contentColor = colors.accent,
-                    shape = RoundedCornerShape(10.dp),
-                ) {
-                    Text("수정", modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge)
-                }
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("${formatMonth(uiState.month)} 지출", color = colors.textSecondary, style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.weight(1f))
+            Text("${uiState.expenseCount}건", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = formatWon(uiState.expenseTotal),
+                style = MaterialTheme.typography.displaySmall,
+                color = colors.textPrimary,
+            )
+            Spacer(Modifier.weight(1f))
+            Surface(
+                onClick = onOpenManage,
+                color = colors.accentSoft,
+                contentColor = colors.accent,
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text(
+                    text = budget?.let { "목표 ${formatWon(it)}" } ?: "목표 설정",
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                )
             }
+        }
+        if (budget != null) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(9.dp)
-                    .background(colors.surfaceOverlay, RoundedCornerShape(9.dp)),
+                    .height(6.dp)
+                    .background(colors.surfaceOverlay, RoundedCornerShape(8.dp)),
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(progress)
-                        .height(9.dp)
+                        .height(6.dp)
                         .background(if (progress > 0.9f) colors.expense else colors.accent, RoundedCornerShape(9.dp)),
                 )
             }
@@ -356,13 +293,28 @@ private fun BudgetCard(
                     fontWeight = FontWeight.Bold,
                 )
                 Spacer(Modifier.weight(1f))
-                if (budget != null) {
-                    Text(
-                        text = "남은 금액 ${formatWon((budget - uiState.expenseTotal).coerceAtLeast(0))}",
-                        color = colors.textSecondary,
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                }
+                Text(
+                    text = "남은 금액 ${formatWon((budget - uiState.expenseTotal).coerceAtLeast(0))}",
+                    color = colors.textSecondary,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+        } else {
+            Text("한 달 목표 지출을 설정하면 사용량을 보여드려요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (uiState.previousExpenseTotal > 0L) {
+                Text(
+                    text = if (change >= 0) "지난달보다 ${formatWon(change)} 더 썼어요" else "지난달보다 ${formatWon(-change)} 아꼈어요",
+                    color = if (change > 0) colors.expense else colors.success,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            } else {
+                Text("비교할 지난달 기록이 없어요", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            }
+            if (uiState.incomeTotal > 0) {
+                Spacer(Modifier.weight(1f))
+                Text("수입 ${formatWon(uiState.incomeTotal)}", color = colors.income, style = MaterialTheme.typography.labelMedium)
             }
         }
     }
@@ -370,7 +322,7 @@ private fun BudgetCard(
 
 @Composable
 private fun TodayAndWeekCard(uiState: LedgerUiState) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         MiniSpendCard(
             label = "오늘",
             amount = uiState.todayExpenseTotal,
@@ -395,10 +347,10 @@ private fun MiniSpendCard(
 ) {
     val colors = LocalFinanceColors.current
     FinanceCard(modifier = modifier) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text(label, color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
-            Text(formatWon(amount), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("${count}건 기록", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+        Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(label, color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            Text(formatWon(amount), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("${count}건", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         }
     }
 }
@@ -412,9 +364,9 @@ private fun DailyInsightCard(uiState: LedgerUiState) {
         else -> "오늘 ${formatWon(uiState.todayExpenseTotal)}를 기록했어요"
     }
     FinanceCard(highlighted = true) {
-        Row(modifier = Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(22.dp))
-            Spacer(Modifier.width(10.dp))
+        Row(modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(message, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
@@ -428,24 +380,27 @@ private fun DailyInsightCard(uiState: LedgerUiState) {
 }
 
 @Composable
-private fun CategorySpendingCard(uiState: LedgerUiState) {
+private fun CategorySpendingCard(uiState: LedgerUiState, onOpenHistory: () -> Unit) {
     val colors = LocalFinanceColors.current
-    FinanceCard {
-        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("카테고리 TOP", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("이번 달 지출 기준", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-                }
-                Icon(Icons.Rounded.ChevronRight, contentDescription = "카테고리 전체 보기", tint = colors.textSecondary)
+    Column(modifier = Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Text("카테고리 TOP", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("이번 달 지출 기준", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             }
-            if (uiState.categoryTotals.isEmpty()) {
-                Text("거래를 기록하면 카테고리별 흐름이 보여요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
-            } else {
-                val maxValue = uiState.categoryTotals.maxOf { it.total }.coerceAtLeast(1L)
-                uiState.categoryTotals.take(4).forEach { total ->
-                    CategoryBar(total.key, total.total, maxValue, uiState.expenseTotal)
+            Surface(onClick = onOpenHistory, color = Color.Transparent, contentColor = colors.accent) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("전체", style = MaterialTheme.typography.labelMedium)
+                    Icon(Icons.Rounded.ChevronRight, contentDescription = "소비내역 전체 보기", modifier = Modifier.size(17.dp))
                 }
+            }
+        }
+        if (uiState.categoryTotals.isEmpty()) {
+            Text("거래를 기록하면 카테고리별 흐름이 보여요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+        } else {
+            val maxValue = uiState.categoryTotals.maxOf { it.total }.coerceAtLeast(1L)
+            uiState.categoryTotals.take(2).forEach { total ->
+                CategoryBar(total.key, total.total, maxValue, uiState.expenseTotal)
             }
         }
     }
@@ -455,7 +410,7 @@ private fun CategorySpendingCard(uiState: LedgerUiState) {
 private fun CategoryBar(key: String, total: Long, maxValue: Long, allTotal: Long) {
     val colors = LocalFinanceColors.current
     val tint = categoryColor(key)
-    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(categoryLabel(key), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             Text(formatWon(total), color = colors.textPrimary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
@@ -469,13 +424,13 @@ private fun CategoryBar(key: String, total: Long, maxValue: Long, allTotal: Long
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(7.dp)
+                .height(6.dp)
                 .background(colors.surfaceOverlay, RoundedCornerShape(8.dp)),
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth((total.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f))
-                    .height(7.dp)
+                    .height(6.dp)
                     .background(tint, RoundedCornerShape(8.dp)),
             )
         }
@@ -521,7 +476,7 @@ private fun InsightsContent(uiState: LedgerUiState) {
     val colors = LocalFinanceColors.current
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         FinanceCard(highlighted = true) {
-            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(18.dp))
                     Text("숫자로 보는 이번 달", color = colors.accent, style = MaterialTheme.typography.labelLarge)
@@ -537,7 +492,7 @@ private fun InsightsContent(uiState: LedgerUiState) {
             }
         }
         FinanceCard {
-            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Text("이번 달 체크 포인트", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 InsightRow("기록한 거래", "${uiState.monthTransactions.size}건")
                 InsightRow("가장 많이 쓴 곳", uiState.categoryTotals.firstOrNull()?.let { categoryLabel(it.key) } ?: "아직 없음")
@@ -561,7 +516,7 @@ private fun ReportContent(uiState: LedgerUiState) {
     val colors = LocalFinanceColors.current
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         FinanceCard {
-            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("월간 리포트", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     ReportMetric("지출", formatWon(uiState.expenseTotal), colors.expense, Modifier.weight(1f))
@@ -590,7 +545,7 @@ private fun ReportContent(uiState: LedgerUiState) {
             }
         }
         FinanceCard {
-            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text("내보내기", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text("CSV·JSON 내보내기는 데이터 보호 설정과 함께 다음 단계에서 제공됩니다.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
             }
@@ -613,7 +568,7 @@ private fun ReportMetric(label: String, value: String, tint: Color, modifier: Mo
 private fun AiAnalysisUnavailable() {
     val colors = LocalFinanceColors.current
     FinanceCard(highlighted = true) {
-        Column(modifier = Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(26.dp))
             Text("AI 분석은 준비 중이에요", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(

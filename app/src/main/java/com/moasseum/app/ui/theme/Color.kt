@@ -20,18 +20,18 @@ data class FinanceColors(
 )
 
 val DarkFinanceColors = FinanceColors(
-    accent = Color(0xFFA7F3C5),
-    accentSoft = Color(0xFF1D4A40),
+    accent = Color(0xFF2EDAD2),
+    accentSoft = Color(0xFF155154),
     income = Color(0xFF8ED4FF),
     expense = Color(0xFFFFA38F),
     warning = Color(0xFFFFD58A),
-    success = Color(0xFFA7F3C5),
-    surfaceBase = Color(0xFF0B2022),
-    surfaceRaised = Color(0xFF123033),
-    surfaceOverlay = Color(0xFF1A3C3E),
-    textPrimary = Color(0xFFF1FCF6),
-    textSecondary = Color(0xFFA8C4BD),
-    divider = Color(0xFF285154),
+    success = Color(0xFF63E6BE),
+    surfaceBase = Color(0xFF09292B),
+    surfaceRaised = Color(0xFF123739),
+    surfaceOverlay = Color(0xFF1A484A),
+    textPrimary = Color(0xFFE9FBF8),
+    textSecondary = Color(0xFFA2C0BE),
+    divider = Color(0xFF286064),
 )
 
 val LightFinanceColors = FinanceColors(

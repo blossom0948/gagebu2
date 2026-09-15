@@ -106,8 +106,8 @@ fun HistoryScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 116.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 96.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
             HistoryHeader(
@@ -151,7 +151,7 @@ fun HistoryScreen(
                     contentColor = if (categoryFilterKey == "ALL") Color(0xFF06332B) else LocalFinanceColors.current.textSecondary,
                     shape = RoundedCornerShape(11.dp),
                 ) {
-                    Text("전체", modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp), style = MaterialTheme.typography.labelLarge)
+                    Text("전체", modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp), style = MaterialTheme.typography.labelMedium)
                 }
                 CategorySpecs.forEach { spec ->
                     Surface(
@@ -160,7 +160,7 @@ fun HistoryScreen(
                         contentColor = if (categoryFilterKey == spec.key) Color(0xFF06332B) else LocalFinanceColors.current.textSecondary,
                         shape = RoundedCornerShape(11.dp),
                     ) {
-                        Row(modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(spec.icon, contentDescription = null, tint = if (categoryFilterKey == spec.key) Color(0xFF06332B) else spec.color, modifier = Modifier.size(15.dp))
                             Spacer(Modifier.width(5.dp))
                             Text(spec.label, style = MaterialTheme.typography.labelLarge)
@@ -173,7 +173,7 @@ fun HistoryScreen(
             OutlinedTextField(
                 value = search,
                 onValueChange = { search = it },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().height(48.dp),
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
                 trailingIcon = {
@@ -184,7 +184,7 @@ fun HistoryScreen(
                     }
                 },
                 placeholder = { Text("가맹점이나 메모 검색") },
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(14.dp),
             )
         }
         item {
@@ -266,7 +266,7 @@ private fun HistoryHeader(
 private fun HistorySummary(uiState: LedgerUiState) {
     val colors = LocalFinanceColors.current
     FinanceCard {
-        Row(modifier = Modifier.padding(18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(modifier = Modifier.padding(13.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             HistoryMetric("지출", formatWon(uiState.expenseTotal), colors.expense, Modifier.weight(1f))
             HistoryMetric("수입", formatWon(uiState.incomeTotal), colors.income, Modifier.weight(1f))
             HistoryMetric("기록", "${uiState.monthTransactions.size}건", colors.accent, Modifier.weight(0.8f))
@@ -301,7 +301,7 @@ private fun CalendarCard(
     }
     val datesWithTransactions = transactions.groupingBy { it.occurredDate }.eachCount()
     FinanceCard {
-        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.CalendarMonth, contentDescription = null, tint = colors.accent, modifier = Modifier.size(19.dp))
                 Spacer(Modifier.width(7.dp))
@@ -349,7 +349,7 @@ private fun CalendarDay(
     val isSunday = date?.dayOfWeek == DayOfWeek.SUNDAY
     Box(
         modifier = modifier
-            .height(40.dp)
+            .height(34.dp)
             .padding(2.dp)
             .clip(RoundedCornerShape(11.dp))
             .then(if (date != null) Modifier.clickable(onClick = onClick) else Modifier)
@@ -405,7 +405,7 @@ private fun DateGroup(
         FinanceCard {
             transactions.forEachIndexed { index, transaction ->
                 TransactionRow(transaction = transaction, onClick = { onSelectTransaction(transaction) })
-                if (index < transactions.lastIndex) HorizontalDivider(color = LocalFinanceColors.current.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 20.dp))
+                if (index < transactions.lastIndex) HorizontalDivider(color = LocalFinanceColors.current.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
             }
         }
     }

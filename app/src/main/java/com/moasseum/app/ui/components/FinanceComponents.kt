@@ -106,7 +106,7 @@ fun FinanceCard(
     val colors = LocalFinanceColors.current
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (highlighted) colors.accentSoft else colors.surfaceRaised,
         ),
@@ -128,14 +128,14 @@ fun CategoryIcon(
     Box(
         modifier = modifier
             .background(color.copy(alpha = 0.18f), CircleShape)
-            .padding(10.dp),
+            .padding(8.dp),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector = categoryIcon(categoryKey),
             contentDescription = categoryLabel(categoryKey),
             tint = if (iconTint == Color.Unspecified) color else iconTint,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(18.dp),
         )
     }
 }
@@ -148,7 +148,7 @@ fun TypeBadge(type: TransactionType) {
     Row(
         modifier = Modifier
             .background(tint.copy(alpha = 0.13f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 8.dp, vertical = 5.dp),
+            .padding(horizontal = 7.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -189,11 +189,11 @@ fun TransactionRow(
             .then(
                 if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier,
             )
-            .padding(horizontal = 20.dp, vertical = 11.dp),
+            .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(11.dp),
+            horizontalArrangement = Arrangement.spacedBy(9.dp),
     ) {
-        CategoryIcon(transaction.categoryKey, modifier = Modifier.size(42.dp))
+        CategoryIcon(transaction.categoryKey, modifier = Modifier.size(38.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(transaction.merchant, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
             Text(
@@ -215,48 +215,56 @@ fun BottomNavBar(
     onNavigate: (String) -> Unit,
 ) {
     val colors = LocalFinanceColors.current
-    Surface(
-        color = colors.surfaceRaised,
-        tonalElevation = 8.dp,
-        shadowElevation = 12.dp,
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 14.dp, vertical = 6.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(78.dp)
-                .padding(horizontal = 12.dp)
-                .navigationBarsPadding(),
-            verticalAlignment = Alignment.CenterVertically,
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = colors.surfaceRaised,
+            shape = RoundedCornerShape(28.dp),
+            tonalElevation = 8.dp,
+            shadowElevation = 12.dp,
         ) {
-            BottomNavItem(
-                label = "대시보드",
-                icon = Icons.Rounded.Home,
-                selected = currentRoute == ROUTE_HOME,
-                onClick = { onNavigate(ROUTE_HOME) },
-                modifier = Modifier.weight(1f),
-            )
-            BottomNavItem(
-                label = "소비내역",
-                icon = Icons.Rounded.AccountBalanceWallet,
-                selected = currentRoute == ROUTE_HISTORY,
-                onClick = { onNavigate(ROUTE_HISTORY) },
-                modifier = Modifier.weight(1f),
-            )
-            Spacer(Modifier.width(76.dp))
-            BottomNavItem(
-                label = "함께",
-                icon = Icons.Rounded.TrendingUp,
-                selected = currentRoute == ROUTE_TOGETHER,
-                onClick = { onNavigate(ROUTE_TOGETHER) },
-                modifier = Modifier.weight(1f),
-            )
-            BottomNavItem(
-                label = "관리",
-                icon = Icons.Rounded.Payments,
-                selected = currentRoute == ROUTE_MANAGE,
-                onClick = { onNavigate(ROUTE_MANAGE) },
-                modifier = Modifier.weight(1f),
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BottomNavItem(
+                    label = "대시보드",
+                    icon = Icons.Rounded.Home,
+                    selected = currentRoute == ROUTE_HOME,
+                    onClick = { onNavigate(ROUTE_HOME) },
+                    modifier = Modifier.weight(1f),
+                )
+                BottomNavItem(
+                    label = "소비내역",
+                    icon = Icons.Rounded.AccountBalanceWallet,
+                    selected = currentRoute == ROUTE_HISTORY,
+                    onClick = { onNavigate(ROUTE_HISTORY) },
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(58.dp))
+                BottomNavItem(
+                    label = "함께",
+                    icon = Icons.Rounded.TrendingUp,
+                    selected = currentRoute == ROUTE_TOGETHER,
+                    onClick = { onNavigate(ROUTE_TOGETHER) },
+                    modifier = Modifier.weight(1f),
+                )
+                BottomNavItem(
+                    label = "관리",
+                    icon = Icons.Rounded.Payments,
+                    selected = currentRoute == ROUTE_MANAGE,
+                    onClick = { onNavigate(ROUTE_MANAGE) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }
@@ -281,7 +289,7 @@ private fun BottomNavItem(
             .fillMaxHeight()
             .semantics { this.selected = selected }
             .clickable(role = Role.Tab, onClick = onClick)
-            .padding(vertical = 10.dp),
+            .padding(vertical = 5.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -291,11 +299,11 @@ private fun BottomNavItem(
                     color = if (selected) colors.accent.copy(alpha = 0.15f) else Color.Transparent,
                     shape = RoundedCornerShape(14.dp),
                 )
-                .padding(horizontal = 15.dp, vertical = 5.dp),
+                .padding(horizontal = 12.dp, vertical = 4.dp),
         ) {
-            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(21.dp))
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(19.dp))
         }
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(1.dp))
         Text(label, color = tint, style = MaterialTheme.typography.labelMedium)
     }
 }
@@ -340,13 +348,13 @@ fun EmptyState(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 28.dp),
+            .padding(vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Box(
             modifier = Modifier
-                .size(56.dp)
+                .size(48.dp)
                 .background(colors.accentSoft, CircleShape),
             contentAlignment = Alignment.Center,
         ) {

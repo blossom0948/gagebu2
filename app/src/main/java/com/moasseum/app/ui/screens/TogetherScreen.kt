@@ -39,8 +39,8 @@ fun TogetherScreen(
 ) {
     val colors = LocalFinanceColors.current
     LazyColumn(
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 116.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 96.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -50,12 +50,12 @@ fun TogetherScreen(
         }
         item {
             FinanceCard(highlighted = true) {
-                Column(modifier = Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(color = colors.accent, shape = RoundedCornerShape(16.dp)) {
-                            Icon(Icons.Rounded.Group, contentDescription = null, tint = Color(0xFF06332B), modifier = Modifier.padding(12.dp).size(26.dp))
+                            Icon(Icons.Rounded.Group, contentDescription = null, tint = Color(0xFF06332B), modifier = Modifier.padding(9.dp).size(21.dp))
                         }
-                        Spacer(Modifier.width(13.dp))
+                        Spacer(Modifier.width(10.dp))
                         Column {
                             Text("아직 연결된 사람이 없어요", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                             Text("개인 기록은 계속 비공개로 안전하게 남아요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
@@ -79,7 +79,7 @@ fun TogetherScreen(
         }
         item {
             FinanceCard {
-                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
                     Text("함께 쓰기의 약속", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     PrivacyPromise(Icons.Rounded.Lock, "개인 기록은 기본 비공개", "공유로 바꾼 거래만 공동 화면에 보여요.")
                     PrivacyPromise(Icons.Rounded.Shield, "데이터 경계를 먼저 확인", "연결 전에도 개인 원장은 그대로 유지돼요.")
@@ -109,9 +109,9 @@ private fun PrivacyPromise(
 ) {
     val colors = LocalFinanceColors.current
     Row(verticalAlignment = Alignment.Top) {
-        Icon(icon, contentDescription = null, tint = colors.accent, modifier = Modifier.size(21.dp))
-        Spacer(Modifier.width(12.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Icon(icon, contentDescription = null, tint = colors.accent, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(9.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
             Text(message, color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
         }

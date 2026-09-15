@@ -74,8 +74,8 @@ fun ManageScreen(
     var showBudgetDialog by rememberSaveable { mutableStateOf(false) }
     val colors = LocalFinanceColors.current
     LazyColumn(
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 116.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 96.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -85,10 +85,10 @@ fun ManageScreen(
         }
         item {
             FinanceCard(highlighted = true) {
-                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.Wallet, contentDescription = null, tint = colors.accent, modifier = Modifier.size(22.dp))
-                        Spacer(Modifier.width(9.dp))
+                        Icon(Icons.Rounded.Wallet, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text("${formatMonth(uiState.month)} 목표 지출", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text("홈 화면의 진행률에 반영돼요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
@@ -105,9 +105,9 @@ fun ManageScreen(
         item {
             FinanceCard {
                 ManageRow(Icons.Rounded.Category, "카테고리", "식비 · 교통 · 쇼핑 등 기본 7개", onClick = { onShowUnavailable("카테고리 편집") })
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 20.dp))
+                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                 ManageRow(Icons.Rounded.AccountBalance, "결제수단", "카드와 현금 관리", onClick = { onShowUnavailable("결제수단 관리") })
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 20.dp))
+                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                 ManageRow(Icons.Rounded.Repeat, "반복 거래", "고정비를 자동으로 준비", onClick = { onShowUnavailable("반복 거래") })
             }
         }
@@ -121,7 +121,7 @@ fun ManageScreen(
                     checked = darkTheme,
                     onCheckedChange = onDarkThemeChanged,
                 )
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 20.dp))
+                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                 SettingSwitchRow(
                     icon = Icons.Rounded.Palette,
                     title = "모션 줄이기",
@@ -129,14 +129,14 @@ fun ManageScreen(
                     checked = reduceMotion,
                     onCheckedChange = onReduceMotionChanged,
                 )
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 20.dp))
+                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                 ManageRow(
                     Icons.Rounded.NotificationsActive,
                     "결제 알림 감지",
                     if (notificationAccessEnabled) "허용됨 · 후보 ${pendingCandidates.size}건" else "권한을 허용하면 결제 후보를 읽어요",
                     onClick = onOpenNotificationSettings,
                 )
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 20.dp))
+                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                 ManageRow(Icons.Rounded.Security, "개인정보와 데이터", "내보내기 · 삭제 · AI 전송 설정", onClick = { onShowUnavailable("개인정보 설정") })
             }
         }
@@ -161,7 +161,7 @@ fun ManageScreen(
                 "모아씀 ${com.moasseum.app.BuildConfig.VERSION_NAME} · 현재는 기기 안에만 저장돼요",
                 color = colors.textSecondary,
                 style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 5.dp),
             )
         }
     }
@@ -187,10 +187,10 @@ private fun AppUpdateCard(
 ) {
     val colors = LocalFinanceColors.current
     FinanceCard {
-        Column(modifier = Modifier.padding(vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(modifier = Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.SystemUpdate, contentDescription = null, tint = colors.accent, modifier = Modifier.size(21.dp))
-                Spacer(Modifier.width(13.dp))
+        Column(modifier = Modifier.padding(vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Row(modifier = Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.SystemUpdate, contentDescription = null, tint = colors.accent, modifier = Modifier.size(19.dp))
+                Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text("앱 업데이트", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(
@@ -238,8 +238,8 @@ private fun NotificationCandidatesCard(
 ) {
     val colors = LocalFinanceColors.current
     FinanceCard {
-        Column(modifier = Modifier.padding(vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
-            Row(modifier = Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.padding(vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(modifier = Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text("알림 후보함", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(
@@ -251,13 +251,13 @@ private fun NotificationCandidatesCard(
                 Icon(Icons.Rounded.Info, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
             }
             if (!notificationAccessEnabled) {
-                TextButton(onClick = onOpenSettings, modifier = Modifier.padding(horizontal = 12.dp)) { Text("알림 접근 설정 열기") }
+                TextButton(onClick = onOpenSettings, modifier = Modifier.padding(horizontal = 6.dp)) { Text("알림 접근 설정 열기") }
             } else if (candidates.isEmpty()) {
-                Text("아직 검토할 결제 알림이 없어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 5.dp))
+                Text("아직 검토할 결제 알림이 없어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp))
             } else {
                 candidates.take(5).forEachIndexed { index, candidate ->
                     NotificationCandidateRow(candidate = candidate, onAccept = { onAccept(candidate.id) }, onDismiss = { onDismiss(candidate.id) })
-                    if (index < candidates.take(5).lastIndex) HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 20.dp))
+                    if (index < candidates.take(5).lastIndex) HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                 }
             }
         }
@@ -271,7 +271,7 @@ private fun NotificationCandidateRow(
     onDismiss: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(com.moasseum.app.ui.components.categoryIcon(candidate.categoryKey), contentDescription = null, tint = colors.accent, modifier = Modifier.size(19.dp))
             Spacer(Modifier.width(9.dp))
@@ -311,12 +311,12 @@ private fun ManageRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .padding(horizontal = 14.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, tint = colors.accent, modifier = Modifier.size(21.dp))
-        Spacer(Modifier.width(13.dp))
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Icon(icon, contentDescription = null, tint = colors.accent, modifier = Modifier.size(19.dp))
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
             Text(message, color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         }
@@ -334,12 +334,12 @@ private fun SettingSwitchRow(
 ) {
     val colors = LocalFinanceColors.current
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, tint = colors.accent, modifier = Modifier.size(21.dp))
-        Spacer(Modifier.width(13.dp))
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Icon(icon, contentDescription = null, tint = colors.accent, modifier = Modifier.size(19.dp))
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
             Text(message, color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         }

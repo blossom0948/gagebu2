@@ -99,12 +99,12 @@ fun AddTransactionSheet(
 @Composable
 private fun AddMenu(onModeChange: (AddMode) -> Unit) {
     Column(
-        modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(9.dp),
+        modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         Text("새 기록", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text("남기는 방법을 골라주세요.", color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.height(5.dp))
+        Spacer(Modifier.height(2.dp))
         AddActionRow(
             icon = Icons.Rounded.TouchApp,
             title = "직접 입력",
@@ -128,6 +128,29 @@ private fun AddMenu(onModeChange: (AddMode) -> Unit) {
             title = "영수증 가져오기",
             message = "촬영 후 금액을 직접 확인해요.",
             onClick = { onModeChange(AddMode.RECEIPT_NOTICE) },
+        )
+    }
+}
+
+@Composable
+private fun AddModePill(
+    label: String,
+    selected: Boolean = false,
+    onClick: () -> Unit = {},
+) {
+    val colors = LocalFinanceColors.current
+    Surface(
+        modifier = Modifier.height(32.dp),
+        onClick = onClick,
+        color = if (selected) colors.accent else colors.surfaceRaised,
+        contentColor = if (selected) Color(0xFF06332B) else colors.textSecondary,
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Text(
+            label,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
         )
     }
 }
@@ -161,28 +184,32 @@ private fun AiInputForm(
     }
 
     Column(
-        modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(13.dp),
+        modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("AI로 빠르게 기록", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text("AI로 빠르게 기록", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             TextButton(onClick = { onModeChange(AddMode.MENU) }) { Text("방법 바꾸기") }
         }
-        Text("문장을 보내면 거래 후보를 만들고, 확인한 뒤에만 저장해요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            AddModePill(label = "AI", selected = true)
+            AddModePill(label = "직접") { onModeChange(AddMode.DIRECT) }
+            AddModePill(label = "영수증") { onModeChange(AddMode.RECEIPT_NOTICE) }
+        }
+        Text("문장을 보내면 거래 후보를 만들고, 확인한 뒤에만 저장해요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         OutlinedTextField(
             value = input,
             onValueChange = { input = it; showConfirmError = false },
-            modifier = Modifier.fillMaxWidth(),
-            minLines = 2,
-            maxLines = 4,
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            singleLine = true,
             placeholder = { Text("예: 어제 친구랑 치킨 24000원") },
             leadingIcon = { Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent) },
-            shape = RoundedCornerShape(17.dp),
+            shape = RoundedCornerShape(15.dp),
         )
         Button(
             onClick = { onParseAi(input) },
             enabled = input.isNotBlank() && aiState !is AiParseState.Loading,
-            modifier = Modifier.fillMaxWidth().height(50.dp),
+            modifier = Modifier.fillMaxWidth().height(46.dp),
             colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = Color(0xFF06332B)),
             shape = RoundedCornerShape(15.dp),
         ) {
@@ -199,7 +226,7 @@ private fun AiInputForm(
                         "AI API 주소가 없으면 기기 안의 안전한 기본 파서가 작동해요. 서버 AI를 쓰려면 별도 Worker 주소를 설정하세요.",
                         color = colors.textSecondary,
                         style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(13.dp),
+                        modifier = Modifier.padding(10.dp),
                     )
                 }
             }
@@ -210,7 +237,7 @@ private fun AiInputForm(
 
             is AiParseState.Error -> {
                 Surface(color = colors.expense.copy(alpha = 0.12f), shape = RoundedCornerShape(13.dp)) {
-                    Text(aiState.message, color = colors.expense, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(13.dp))
+                    Text(aiState.message, color = colors.expense, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(10.dp))
                 }
             }
 
@@ -256,7 +283,7 @@ private fun CandidateReview(
     onConfirm: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
-    Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text("확인할 거래 후보", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -320,7 +347,7 @@ private fun CandidateReview(
         if (showError) Text("금액과 가맹점을 확인해 주세요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
         Button(
             onClick = onConfirm,
-            modifier = Modifier.fillMaxWidth().height(50.dp),
+            modifier = Modifier.fillMaxWidth().height(46.dp),
             colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = Color(0xFF06332B)),
             shape = RoundedCornerShape(15.dp),
         ) { Text("확인하고 저장", fontWeight = FontWeight.Bold) }
@@ -342,14 +369,14 @@ private fun AddActionRow(
         tonalElevation = 1.dp,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(color = colors.accentSoft, shape = RoundedCornerShape(13.dp)) {
-                Icon(icon, contentDescription = null, tint = colors.accent, modifier = Modifier.padding(11.dp).size(22.dp))
+                Icon(icon, contentDescription = null, tint = colors.accent, modifier = Modifier.padding(9.dp).size(20.dp))
             }
-            Spacer(Modifier.width(13.dp))
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
                 Text(message, color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
             }
@@ -375,8 +402,8 @@ private fun DirectTransactionForm(
     val today = LocalDate.now()
 
     Column(
-        modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("거래 기록", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -445,8 +472,8 @@ private fun DirectTransactionForm(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("메모 (선택)") },
             placeholder = { Text("함께한 사람이나 기억할 내용을 적어보세요") },
-            minLines = 2,
-            maxLines = 3,
+            minLines = 1,
+            maxLines = 2,
             shape = RoundedCornerShape(15.dp),
         )
         Surface(color = colors.surfaceOverlay, shape = RoundedCornerShape(12.dp)) {
@@ -463,7 +490,7 @@ private fun DirectTransactionForm(
             onClick = {
                 if (!onSave(amount, type, merchant, categoryKey, memo)) showError = true
             },
-            modifier = Modifier.fillMaxWidth().height(52.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp),
             colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = Color(0xFF06332B)),
             shape = RoundedCornerShape(15.dp),
         ) {
@@ -482,8 +509,8 @@ private fun FeatureNotice(
 ) {
     val colors = LocalFinanceColors.current
     Column(
-        modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(13.dp),
+        modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         Surface(color = colors.accentSoft, shape = RoundedCornerShape(16.dp)) {
             Icon(icon, contentDescription = null, tint = colors.accent, modifier = Modifier.padding(14.dp).size(26.dp))
