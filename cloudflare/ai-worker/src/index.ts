@@ -9,6 +9,9 @@ interface Env {
 
 const CATEGORY_KEYS = ["FOOD", "TRANSPORT", "SHOPPING", "LIVING", "HEALTH", "LEISURE", "OTHER"] as const;
 const MAX_INPUT_LENGTH = 500;
+const PUBLIC_REQUESTS_PER_MINUTE = 30;
+
+const publicRequestBuckets = new Map<string, { startedAt: number; count: number }>();
 
 type CategoryKey = (typeof CATEGORY_KEYS)[number];
 
@@ -54,6 +57,10 @@ export default {
       return json(request, env, { error: { code: "AI_NOT_CONFIGURED", message: "AI 서버 secret이 설정되지 않았습니다." } }, 503);
     }
 
+    if (env.REQUIRE_AUTH === "false" && !allowPublicRequest(request)) {
+      return json(request, env, { error: { code: "RATE_LIMITED", message: "잠시 후 다시 시도해 주세요." } }, 429);
+    }
+
     if (env.REQUIRE_AUTH !== "false") {
       const authorized = await verifySupabaseUser(request, env);
       if (!authorized) {
@@ -74,7 +81,7 @@ export default {
     }
 
     const today = isIsoDate(input.today) ? input.today : new Date().toISOString().slice(0, 10);
-    const model = env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+    const model = env.GEMINI_MODEL || "gemini-3.5-flash-lite";
     const prompt = [
       "당신은 한국어 가계부 거래 구조화기입니다.",
       "사용자 문장을 해석해 JSON schema에 맞는 거래 후보 하나만 반환하세요.",
@@ -114,7 +121,8 @@ export default {
     try {
       const candidate = validateCandidate(JSON.parse(stripCodeFence(rawText)), today);
       return json(request, env, candidate);
-    } catch {
+    } catch (error) {
+      console.error("AI candidate validation failed", error instanceof Error ? error.message : "unknown error");
       return json(request, env, { error: { code: "AI_SCHEMA_ERROR", message: "AI 응답을 거래 후보로 검증하지 못했습니다." } }, 502);
     }
   },
@@ -151,10 +159,15 @@ function validateCandidate(value: unknown, fallbackDate: string) {
   if (!value || typeof value !== "object") throw new Error("not object");
   const candidate = value as Record<string, unknown>;
   const amount = typeof candidate.amount === "number" && Number.isInteger(candidate.amount) ? candidate.amount : 0;
-  const merchant = typeof candidate.merchant === "string" ? candidate.merchant.trim().slice(0, 80) : "";
+  const rawMerchant = typeof candidate.merchant === "string" ? candidate.merchant.trim().slice(0, 80) : "";
+  const merchant = rawMerchant || "알 수 없음";
   const occurredDate = typeof candidate.occurredDate === "string" && isIsoDate(candidate.occurredDate) ? candidate.occurredDate : fallbackDate;
   const categoryKey = CATEGORY_KEYS.includes(candidate.categoryKey as CategoryKey) ? candidate.categoryKey : "OTHER";
-  if (amount <= 0 || !merchant) throw new Error("invalid candidate");
+  if (amount <= 0) throw new Error("invalid candidate");
+  const needsConfirmation = Array.isArray(candidate.needsConfirmation)
+    ? candidate.needsConfirmation.filter((item): item is string => typeof item === "string").slice(0, 5)
+    : [];
+  if (!rawMerchant && !needsConfirmation.includes("merchant")) needsConfirmation.push("merchant");
   return {
     schemaVersion: 1,
     type: candidate.type === "INCOME" ? "INCOME" : "EXPENSE",
@@ -165,7 +178,7 @@ function validateCandidate(value: unknown, fallbackDate: string) {
     merchant,
     memo: typeof candidate.memo === "string" ? candidate.memo.trim().slice(0, 160) : "",
     confidence: candidate.confidence || { amount: 0.7, date: 0.6, category: 0.6 },
-    needsConfirmation: Array.isArray(candidate.needsConfirmation) ? candidate.needsConfirmation.filter((item): item is string => typeof item === "string").slice(0, 5) : [],
+    needsConfirmation,
   };
 }
 
@@ -175,6 +188,19 @@ function isIsoDate(value: unknown): value is string {
 
 function stripCodeFence(value: string): string {
   return value.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+}
+
+function allowPublicRequest(request: Request): boolean {
+  const now = Date.now();
+  const clientKey = request.headers.get("CF-Connecting-IP") || "unknown";
+  const existing = publicRequestBuckets.get(clientKey);
+  if (!existing || now - existing.startedAt >= 60_000) {
+    publicRequestBuckets.set(clientKey, { startedAt: now, count: 1 });
+    return true;
+  }
+  if (existing.count >= PUBLIC_REQUESTS_PER_MINUTE) return false;
+  existing.count += 1;
+  return true;
 }
 
 async function verifySupabaseUser(request: Request, env: Env): Promise<boolean> {

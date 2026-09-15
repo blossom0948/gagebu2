@@ -27,7 +27,8 @@
 상태: 구현 완료(외부 secret·권한 설정 전 검증 대기)
 
 - `cloudflare/ai-worker`: Gemini 구조화 출력용 `/v1/parse-transaction`, `/health`
-- Worker는 `GEMINI_API_KEY`를 secret으로만 읽고 Supabase Bearer token 검증을 기본 요구
+- Worker는 `GEMINI_API_KEY`를 secret으로만 읽고, 현재 개인 테스트에서는 로그인 없이 제한적으로 호출
+- 실제 배포 URL에서 한국어 거래 문장 파싱 응답 확인
 - Android Manifest에 HTTPS 인터넷 권한과 NotificationListenerService 등록
 - 관리 화면에서 알림 접근 설정을 열고 보류 후보를 저장/무시
 - 첫 실행 알림 안내 팝업과 Galaxy 알림 접근 설정 상세 화면 바로가기

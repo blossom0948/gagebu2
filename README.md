@@ -28,13 +28,15 @@ app/build/outputs/apk/debug/app-debug.apk
 
 현재는 Android 앱만 배포합니다. AI Worker나 Supabase를 추가하는 작업부터는 Android APK 배포와 별도로 Cloudflare Worker 배포 및 Supabase RLS 검증이 필요합니다. Gemini 키와 Supabase secret은 APK·GitHub 소스에 넣지 않고 서버 secret으로만 등록합니다. 상세 절차는 [BUDGET_APP_DEPLOYMENT_GUIDE.md](BUDGET_APP_DEPLOYMENT_GUIDE.md)를 따릅니다.
 
-AI Worker 코드는 `cloudflare/ai-worker`에 있습니다. Worker를 배포한 뒤 아래처럼 주소를 주입해 앱을 빌드합니다.
+AI Worker 코드는 `cloudflare/ai-worker`에 있으며 현재 `https://moasseum-ai-worker.blossom0948.workers.dev`에 배포되어 있습니다. 기본 Debug 빌드에는 이 주소가 들어가고, 다른 환경을 사용할 때만 아래처럼 주소를 덮어씌웁니다.
 
 ```bash
 ./gradlew :app:assembleDebug -PAI_API_BASE_URL=https://<worker-domain>
 ```
 
 앱에서 AI 후보를 바로 원장에 저장하지 않고 금액·날짜·카테고리·가맹점 확인 화면을 거칩니다. 결제 알림도 사용자가 Android 설정에서 알림 접근을 허용한 뒤 후보함에서 확인해야 거래로 저장됩니다.
+
+현재 Worker는 로그인 기능이 아직 앱에 연결되지 않아 개인 테스트용으로 `REQUIRE_AUTH=false`로 실행 중이며, 요청 길이·간단한 호출 제한을 적용합니다. 공개 배포 전에는 Supabase 인증을 연결하고 `REQUIRE_AUTH=true`로 전환해야 합니다.
 
 첫 실행에는 결제 알림 감지 안내 팝업이 표시되고, `설정 열기`를 누르면 Galaxy의 알림 접근 설정에서 모아씀 항목으로 바로 이동합니다. Android의 알림 접근은 일반 런타임 권한이 아니어서 앱이 시스템 토글을 대신 켤 수는 없으며, 사용자가 한 번 허용해야 합니다. 이후에는 관리 화면에서 상태를 확인하거나 다시 설정할 수 있습니다.
 

@@ -21,7 +21,8 @@ android {
             useSupportLibrary = true
         }
 
-        val aiBaseUrl = providers.gradleProperty("AI_API_BASE_URL").orNull.orEmpty()
+        val aiBaseUrl = providers.gradleProperty("AI_API_BASE_URL").orNull?.takeIf { it.isNotBlank() }
+            ?: "https://moasseum-ai-worker.blossom0948.workers.dev"
         val escapedAiBaseUrl = aiBaseUrl.replace("\\", "\\\\").replace("\"", "\\\"")
         buildConfigField("String", "AI_API_BASE_URL", "\"$escapedAiBaseUrl\"")
     }
