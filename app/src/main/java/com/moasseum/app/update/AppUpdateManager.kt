@@ -14,7 +14,7 @@ data class AppRelease(
     val tagName: String,
     val apkUrl: String,
     val releasePageUrl: String,
-    val versionCode: Int,
+    val versionName: String,
 )
 
 sealed interface UpdateCheckState {
@@ -51,7 +51,7 @@ object AppUpdateManager {
                 val json = JSONObject(releaseJson)
                 val tagName = json.optString("tag_name").takeIf { it.isNotBlank() }
                     ?: error("릴리스 버전을 확인하지 못했어요.")
-                val versionCode = parseVersionCode(json, tagName)
+                val versionName = parseVersionName(tagName)
                     ?: error("릴리스 버전 형식을 확인하지 못했어요.")
                 val apkUrl = json.optJSONArray("assets")
                     ?.let { assets ->
@@ -69,12 +69,12 @@ object AppUpdateManager {
                 val releasePageUrl = json.optString("html_url").takeIf { it.isNotBlank() }
                     ?: error("릴리스 페이지를 찾지 못했어요.")
 
-                if (versionCode <= BuildConfig.VERSION_CODE) null
+                if (!isVersionNewer(versionName, BuildConfig.VERSION_NAME)) null
                 else AppRelease(
                     tagName = tagName,
                     apkUrl = apkUrl,
                     releasePageUrl = releasePageUrl,
-                    versionCode = versionCode,
+                    versionName = versionName,
                 )
             }
         }
@@ -89,14 +89,29 @@ object AppUpdateManager {
         }
     }
 
-    private fun parseVersionCode(json: JSONObject, tagName: String): Int? {
-        val explicitCode = json.optInt("version_code", 0).takeIf { it > 0 }
-        if (explicitCode != null) return explicitCode
-        return Regex("v\\d+\\.\\d+\\.(\\d+)")
+    private fun parseVersionName(tagName: String): String? {
+        return Regex("v?(\\d+\\.\\d+\\.\\d+)")
             .find(tagName)
             ?.groupValues
             ?.getOrNull(1)
-            ?.toIntOrNull()
+    }
+
+    private fun isVersionNewer(remote: String, current: String): Boolean {
+        val remoteParts = versionParts(remote) ?: return remote != current
+        val currentParts = versionParts(current) ?: return remote != current
+        return remoteParts.zip(currentParts)
+            .firstOrNull { (remotePart, currentPart) -> remotePart != currentPart }
+            ?.let { (remotePart, currentPart) -> remotePart > currentPart }
+            ?: remoteParts.size > currentParts.size
+    }
+
+    private fun versionParts(version: String): List<Int>? {
+        return Regex("(\\d+)(?:\\.(\\d+))(?:\\.(\\d+))")
+            .find(version)
+            ?.groupValues
+            ?.drop(1)
+            ?.mapNotNull(String::toIntOrNull)
+            ?.takeIf { it.size == 3 }
     }
 
     private inline fun <T> HttpURLConnection.useConnection(block: (Int) -> T): T {
