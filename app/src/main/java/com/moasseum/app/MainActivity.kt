@@ -1,0 +1,233 @@
+package com.moasseum.app
+
+import android.app.Activity
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.FabPosition
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import com.moasseum.app.ui.components.AddFloatingActionButton
+import com.moasseum.app.ui.components.AddMode
+import com.moasseum.app.ui.components.AddTransactionSheet
+import com.moasseum.app.ui.components.BottomNavBar
+import com.moasseum.app.ui.components.ROUTE_HISTORY
+import com.moasseum.app.ui.components.ROUTE_HOME
+import com.moasseum.app.ui.components.ROUTE_MANAGE
+import com.moasseum.app.ui.components.ROUTE_TOGETHER
+import com.moasseum.app.ui.screens.HistoryScreen
+import com.moasseum.app.ui.screens.HomeScreen
+import com.moasseum.app.ui.screens.ManageScreen
+import com.moasseum.app.ui.screens.TogetherScreen
+import com.moasseum.app.ui.theme.MoasseumTheme
+import kotlinx.coroutines.launch
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        val application = application as FinanceApplication
+        setContent {
+            val viewModel: LedgerViewModel = viewModel(
+                factory = LedgerViewModel.Factory(application.financeRepository),
+            )
+            val darkTheme by application.preferencesRepository.isDarkTheme.collectAsStateWithLifecycle(initialValue = true)
+            val reduceMotion by application.preferencesRepository.reduceMotion.collectAsStateWithLifecycle(initialValue = false)
+            MoasseumTheme(darkTheme = darkTheme, reduceMotion = reduceMotion) {
+                UpdateSystemBars(darkTheme)
+                MoasseumApp(
+                    viewModel = viewModel,
+                    darkTheme = darkTheme,
+                    reduceMotion = reduceMotion,
+                    onDarkThemeChanged = { enabled ->
+                        lifecycleScope.launch { application.preferencesRepository.setDarkTheme(enabled) }
+                    },
+                    onReduceMotionChanged = { enabled ->
+                        lifecycleScope.launch { application.preferencesRepository.setReduceMotion(enabled) }
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpdateSystemBars(darkTheme: Boolean) {
+    val view = LocalView.current
+    LaunchedEffect(darkTheme, view) {
+        val activity = view.context as? Activity ?: return@LaunchedEffect
+        WindowCompat.getInsetsController(activity.window, activity.window.decorView).isAppearanceLightStatusBars = !darkTheme
+        WindowCompat.getInsetsController(activity.window, activity.window.decorView).isAppearanceLightNavigationBars = !darkTheme
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun MoasseumApp(
+    viewModel: LedgerViewModel,
+    darkTheme: Boolean,
+    reduceMotion: Boolean,
+    onDarkThemeChanged: (Boolean) -> Unit,
+    onReduceMotionChanged: (Boolean) -> Unit,
+) {
+    val navController = rememberNavController()
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = backStackEntry?.destination?.route ?: ROUTE_HOME
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val selectedDate by viewModel.date.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+    var addOpen by rememberSaveable { mutableStateOf(false) }
+    var addModeName by rememberSaveable { mutableStateOf(AddMode.MENU.name) }
+    var unavailableMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    val addMode = AddMode.valueOf(addModeName)
+
+    fun closeAdd() {
+        addOpen = false
+        addModeName = AddMode.MENU.name
+    }
+
+    BackHandler(enabled = addOpen) { closeAdd() }
+
+    Scaffold(
+        containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        bottomBar = {
+            BottomNavBar(
+                currentRoute = currentRoute,
+                onNavigate = { route -> navigateTo(navController, route) },
+            )
+        },
+        floatingActionButton = {
+            AddFloatingActionButton(
+                expanded = addOpen,
+                onClick = {
+                    if (addOpen) closeAdd() else {
+                        addOpen = true
+                        addModeName = AddMode.MENU.name
+                    }
+                },
+            )
+        },
+        floatingActionButtonPosition = FabPosition.Center,
+    ) { innerPadding ->
+        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            NavHost(
+                navController = navController,
+                startDestination = ROUTE_HOME,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                composable(ROUTE_HOME) {
+                    HomeScreen(
+                        uiState = uiState,
+                        onAdd = { mode ->
+                            addModeName = mode.name
+                            addOpen = true
+                        },
+                        onOpenManage = { navigateTo(navController, ROUTE_MANAGE) },
+                        onOpenHistory = { navigateTo(navController, ROUTE_HISTORY) },
+                    )
+                }
+                composable(ROUTE_HISTORY) {
+                    HistoryScreen(
+                        uiState = uiState,
+                        selectedDate = selectedDate,
+                        onSelectDate = viewModel::selectDate,
+                        onSelectMonth = viewModel::selectMonth,
+                        onDeleteTransaction = { id ->
+                            viewModel.deleteTransaction(id)
+                            coroutineScope.launch { snackbarHostState.showSnackbar("거래를 삭제했어요") }
+                        },
+                    )
+                }
+                composable(ROUTE_TOGETHER) {
+                    TogetherScreen(
+                        onShowUnavailable = {
+                            unavailableMessage = "공동 기능은 인증·서버 연결 후 사용할 수 있어요. 개인 기록은 지금도 기기에 안전하게 남습니다."
+                        },
+                    )
+                }
+                composable(ROUTE_MANAGE) {
+                    ManageScreen(
+                        uiState = uiState,
+                        darkTheme = darkTheme,
+                        reduceMotion = reduceMotion,
+                        onDarkThemeChanged = onDarkThemeChanged,
+                        onReduceMotionChanged = onReduceMotionChanged,
+                        onUpdateBudget = viewModel::updateBudget,
+                        onShowUnavailable = { feature -> unavailableMessage = "$feature 기능은 다음 단계에서 연결됩니다." },
+                    )
+                }
+            }
+        }
+    }
+
+    if (addOpen) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { closeAdd() },
+            sheetState = sheetState,
+            containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background,
+            tonalElevation = 0.dp,
+        ) {
+            AddTransactionSheet(
+                mode = addMode,
+                onModeChange = { addModeName = it.name },
+                onDismiss = { closeAdd() },
+                onSave = { amount, type, merchant, categoryKey, memo ->
+                    val saved = viewModel.addTransaction(amount, type, merchant, categoryKey, memo)
+                    if (saved) {
+                        closeAdd()
+                        coroutineScope.launch { snackbarHostState.showSnackbar("거래가 저장됐어요") }
+                    }
+                    saved
+                },
+            )
+        }
+    }
+
+    unavailableMessage?.let { message ->
+        LaunchedEffect(message) {
+            snackbarHostState.showSnackbar(message)
+            unavailableMessage = null
+        }
+    }
+}
+
+private fun navigateTo(navController: NavHostController, route: String) {
+    if (navController.currentDestination?.route == route) return
+    navController.navigate(route) {
+        popUpTo(navController.graph.startDestinationId) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
+}
