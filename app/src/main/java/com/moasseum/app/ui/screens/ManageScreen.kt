@@ -199,9 +199,8 @@ private fun AppUpdateCard(
                             UpdateCheckState.Checking -> "새 버전을 확인하고 있어요…"
                             UpdateCheckState.UpToDate -> "현재 최신 버전이에요."
                             is UpdateCheckState.Available -> "${updateState.release.tagName} 업데이트가 있어요."
-                            is UpdateCheckState.Downloading -> "${updateState.release.tagName} 다운로드 중…"
-                            UpdateCheckState.WaitingForInstallPermission -> "설치 권한을 켠 뒤 다시 업데이트를 눌러주세요."
-                            is UpdateCheckState.Installing -> "Android 설치 화면을 열었어요."
+                            UpdateCheckState.OpeningDownloadPage -> "GitHub 다운로드 페이지를 여는 중…"
+                            UpdateCheckState.DownloadPageOpened -> "GitHub에서 APK를 내려받아 설치해 주세요."
                             is UpdateCheckState.Error -> updateState.message
                         },
                         color = colors.textSecondary,
@@ -211,13 +210,12 @@ private fun AppUpdateCard(
             }
             when (updateState) {
                 UpdateCheckState.Checking,
-                is UpdateCheckState.Downloading,
-                is UpdateCheckState.Installing,
+                UpdateCheckState.OpeningDownloadPage,
                 -> Unit
                 is UpdateCheckState.Available -> {
                     val release = updateState.release
                     TextButton(onClick = { onInstallUpdate(release) }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                        Text("다운로드 및 설치", color = colors.accent)
+                        Text("다운로드 페이지 열기", color = colors.accent)
                     }
                 }
                 else -> {

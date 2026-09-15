@@ -61,7 +61,6 @@ import com.moasseum.app.data.AiClient
 import com.moasseum.app.domain.AiParseState
 import com.moasseum.app.notification.NotificationAccess
 import com.moasseum.app.update.AppUpdateManager
-import com.moasseum.app.update.InstallResult
 import com.moasseum.app.update.UpdateCheckState
 import kotlinx.coroutines.launch
 
@@ -245,28 +244,16 @@ private fun MoasseumApp(
                             }
                         },
                         onInstallUpdate = { release ->
-                            updateState = UpdateCheckState.Downloading(release)
-                            coroutineScope.launch {
-                                AppUpdateManager.downloadApk(context, release)
-                                    .onSuccess { apkFile ->
-                                        when (val result = AppUpdateManager.install(context, apkFile)) {
-                                            InstallResult.Started -> {
-                                                updateState = UpdateCheckState.Installing(release)
-                                            }
-                                            InstallResult.PermissionRequired -> {
-                                                updateState = UpdateCheckState.WaitingForInstallPermission
-                                            }
-                                            is InstallResult.Failed -> {
-                                                updateState = UpdateCheckState.Error(result.message)
-                                            }
-                                        }
-                                    }
-                                    .onFailure { error ->
-                                        updateState = UpdateCheckState.Error(
-                                            error.message ?: "APK 다운로드에 실패했어요.",
-                                        )
-                                    }
-                            }
+                            updateState = UpdateCheckState.OpeningDownloadPage
+                            AppUpdateManager.openReleasePage(context, release)
+                                .onSuccess {
+                                    updateState = UpdateCheckState.DownloadPageOpened
+                                }
+                                .onFailure { error ->
+                                    updateState = UpdateCheckState.Error(
+                                        error.message ?: "다운로드 페이지를 열지 못했어요.",
+                                    )
+                                }
                         },
                         onOpenNotificationSettings = {
                             NotificationAccess.openSettings(context)

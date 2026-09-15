@@ -243,7 +243,7 @@ ANDROID_KEY_PASSWORD
 3. `versionCode`에는 Actions 실행 번호가 들어가고, 서명 APK/AAB가 만들어진다.
 4. GitHub Release에 `app-release.apk`와 `app-release.aab`가 첨부된다.
 5. 폰에서 모아씀의 `관리 → 앱 업데이트`를 열고 `업데이트 확인`을 누른다.
-6. APK를 다운로드한 뒤 Android 설치 화면에서 승인한다.
+6. GitHub 다운로드 페이지에서 APK를 내려받은 뒤 Android 설치 화면에서 승인한다.
 
 APK 업데이트는 앱의 기존 Room 데이터를 삭제하지 않는다. 다만 Android는 보안상 앱이 설치 확인을 무음으로 승인하지 못하므로, 이 방식은 Play Store의 완전 자동 업데이트와 다르다.
 

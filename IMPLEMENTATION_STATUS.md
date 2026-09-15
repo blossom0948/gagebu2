@@ -33,7 +33,7 @@
 - 관리 화면에서 알림 접근 설정을 열고 보류 후보를 저장/무시
 - 첫 실행 알림 안내 팝업과 Galaxy 알림 접근 설정 상세 화면 바로가기
 - 결제 알림은 중복 fingerprint를 사용하며 사용자 확인 없이 원장에 넣지 않음
-- GitHub Releases 최신 APK 확인·다운로드·Android 설치 화면 연결(수동 업데이트)
+- GitHub Releases 최신 APK 확인·다운로드 페이지·Android 설치 흐름 연결(수동 업데이트)
 - 릴리스 서명용 로컬 upload key와 버전 코드 주입 설정
 
 ## 검증 결과

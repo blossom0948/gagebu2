@@ -24,9 +24,9 @@ app/build/outputs/apk/debug/app-debug.apk
 
 ## 무료 개인 배포와 수동 업데이트
 
-Play Console 없이 본인 Galaxy에서 사용할 때는 GitHub Releases에 서명된 APK를 올리는 방식으로 배포합니다. 앱의 `관리 → 앱 업데이트 → 업데이트 확인`을 누르면 [gagebu2 Releases](https://github.com/blossom0948/gagebu2/releases)의 최신 APK를 확인하고 다운로드합니다. Android가 설치 화면을 열면 설치를 한 번 승인하면 됩니다.
+Play Console 없이 본인 Galaxy에서 사용할 때는 GitHub Releases에 서명된 APK를 올리는 방식으로 배포합니다. 앱의 `관리 → 앱 업데이트 → 업데이트 확인`을 누르면 [gagebu2 Releases](https://github.com/blossom0948/gagebu2/releases)의 최신 APK를 확인하고 다운로드 페이지를 엽니다. GitHub에서 APK를 내려받아 Android 설치 화면에서 한 번 승인하면 됩니다.
 
-처음 한 번은 Android 설정에서 `모아씀의 알 수 없는 앱 설치 허용`을 켜야 할 수 있습니다. 이 권한과 설치 확인은 Android 보안상 앱이 대신 누를 수 없습니다. 기존 앱 데이터는 업데이트해도 Room 저장소에 그대로 남습니다.
+처음 한 번은 Android 설정에서 다운로드에 사용한 브라우저 또는 파일 앱의 `알 수 없는 앱 설치 허용`을 켜야 할 수 있습니다. 이 권한과 설치 확인은 Android 보안상 앱이 대신 누를 수 없습니다. 기존 앱 데이터는 업데이트해도 Room 저장소에 그대로 남습니다.
 
 서명 키는 로컬과 GitHub Actions secret으로만 관리하고 저장소에는 올리지 않습니다. 릴리스마다 `versionCode`를 올려야 앱이 새 버전으로 인식합니다.
 
