@@ -30,6 +30,7 @@
 - Worker는 `GEMINI_API_KEY`를 secret으로만 읽고 Supabase Bearer token 검증을 기본 요구
 - Android Manifest에 HTTPS 인터넷 권한과 NotificationListenerService 등록
 - 관리 화면에서 알림 접근 설정을 열고 보류 후보를 저장/무시
+- 첫 실행 알림 안내 팝업과 Galaxy 알림 접근 설정 상세 화면 바로가기
 - 결제 알림은 중복 fingerprint를 사용하며 사용자 확인 없이 원장에 넣지 않음
 
 ## 검증 결과

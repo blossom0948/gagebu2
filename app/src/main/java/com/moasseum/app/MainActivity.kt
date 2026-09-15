@@ -1,9 +1,7 @@
 package com.moasseum.app
 
 import android.app.Activity
-import android.content.Intent
 import android.os.Bundle
-import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -17,6 +15,9 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -84,6 +85,10 @@ class MainActivity : ComponentActivity() {
                     onReduceMotionChanged = { enabled ->
                         lifecycleScope.launch { application.preferencesRepository.setReduceMotion(enabled) }
                     },
+                    notificationPromptShown = application.preferencesRepository.notificationAccessPromptShown.collectAsStateWithLifecycle(initialValue = false).value,
+                    onMarkNotificationPromptShown = {
+                        lifecycleScope.launch { application.preferencesRepository.setNotificationAccessPromptShown() }
+                    },
                 )
             }
         }
@@ -108,6 +113,8 @@ private fun MoasseumApp(
     reduceMotion: Boolean,
     onDarkThemeChanged: (Boolean) -> Unit,
     onReduceMotionChanged: (Boolean) -> Unit,
+    notificationPromptShown: Boolean,
+    onMarkNotificationPromptShown: () -> Unit,
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -117,6 +124,7 @@ private fun MoasseumApp(
     val pendingCandidates by viewModel.pendingNotificationCandidates.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var notificationAccessEnabled by remember { mutableStateOf(NotificationAccess.isEnabled(context)) }
+    var showNotificationAccessPrompt by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, context) {
         val observer = LifecycleEventObserver { _, event ->
@@ -126,6 +134,9 @@ private fun MoasseumApp(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(notificationPromptShown, notificationAccessEnabled) {
+        showNotificationAccessPrompt = !notificationPromptShown && !notificationAccessEnabled
     }
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -214,7 +225,7 @@ private fun MoasseumApp(
                         notificationAccessEnabled = notificationAccessEnabled,
                         pendingCandidates = pendingCandidates,
                         onOpenNotificationSettings = {
-                            context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                            NotificationAccess.openSettings(context)
                         },
                         onAcceptNotificationCandidate = { id ->
                             viewModel.acceptNotificationCandidate(id)
@@ -278,6 +289,36 @@ private fun MoasseumApp(
             snackbarHostState.showSnackbar(message)
             unavailableMessage = null
         }
+    }
+
+    if (showNotificationAccessPrompt) {
+        AlertDialog(
+            onDismissRequest = {
+                showNotificationAccessPrompt = false
+                onMarkNotificationPromptShown()
+            },
+            title = { Text("결제 알림을 자동으로 읽을까요?") },
+            text = {
+                Text("카드·은행 결제 알림을 기기 안에서 읽어 거래 후보로 모아드려요. 자동 저장하지 않고 확인한 뒤에만 가계부에 넣습니다.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showNotificationAccessPrompt = false
+                    onMarkNotificationPromptShown()
+                    NotificationAccess.openSettings(context)
+                }) {
+                    Text("설정 열기")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showNotificationAccessPrompt = false
+                    onMarkNotificationPromptShown()
+                }) {
+                    Text("나중에")
+                }
+            },
+        )
     }
 }
 

@@ -18,6 +18,9 @@ class UserPreferencesRepository(
     val reduceMotion: Flow<Boolean> =
         context.settingsDataStore.data.map { preferences -> preferences[REDUCE_MOTION] ?: false }
 
+    val notificationAccessPromptShown: Flow<Boolean> =
+        context.settingsDataStore.data.map { preferences -> preferences[NOTIFICATION_ACCESS_PROMPT_SHOWN] ?: false }
+
     suspend fun setDarkTheme(enabled: Boolean) {
         context.settingsDataStore.edit { preferences -> preferences[DARK_THEME] = enabled }
     }
@@ -26,8 +29,13 @@ class UserPreferencesRepository(
         context.settingsDataStore.edit { preferences -> preferences[REDUCE_MOTION] = enabled }
     }
 
+    suspend fun setNotificationAccessPromptShown() {
+        context.settingsDataStore.edit { preferences -> preferences[NOTIFICATION_ACCESS_PROMPT_SHOWN] = true }
+    }
+
     private companion object {
         val DARK_THEME = booleanPreferencesKey("dark_theme")
         val REDUCE_MOTION = booleanPreferencesKey("reduce_motion")
+        val NOTIFICATION_ACCESS_PROMPT_SHOWN = booleanPreferencesKey("notification_access_prompt_shown")
     }
 }
