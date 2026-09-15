@@ -22,8 +22,8 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.KeyboardVoice
 import androidx.compose.material.icons.rounded.NotificationsNone
+import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -172,9 +172,9 @@ private fun QuickCaptureCard(onAdd: (AddMode) -> Unit) {
                 }
                 Text("예: 점심 8,000원", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
             }
-            QuickCaptureAction(Icons.Rounded.TouchApp, "직접 입력") { onAdd(AddMode.DIRECT) }
             QuickCaptureAction(Icons.Rounded.KeyboardVoice, "AI 문장") { onAdd(AddMode.AI_INPUT) }
-            QuickCaptureAction(Icons.Rounded.CameraAlt, "영수증") { onAdd(AddMode.RECEIPT_NOTICE) }
+            QuickCaptureAction(Icons.Rounded.CameraAlt, "카메라") { onAdd(AddMode.RECEIPT_NOTICE) }
+            QuickCaptureAction(Icons.Rounded.PhotoLibrary, "사진") { onAdd(AddMode.RECEIPT_NOTICE) }
         }
     }
 }
@@ -363,7 +363,7 @@ private fun DailyInsightCard(uiState: LedgerUiState) {
         uiState.todayExpenseTotal <= 10_000L -> "오늘은 가볍게 잘 보내고 있어요"
         else -> "오늘 ${formatWon(uiState.todayExpenseTotal)}를 기록했어요"
     }
-    FinanceCard(highlighted = true) {
+    FinanceCard(modifier = Modifier.fillMaxWidth(), highlighted = true) {
         Row(modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
@@ -410,20 +410,15 @@ private fun CategorySpendingCard(uiState: LedgerUiState, onOpenHistory: () -> Un
 private fun CategoryBar(key: String, total: Long, maxValue: Long, allTotal: Long) {
     val colors = LocalFinanceColors.current
     val tint = categoryColor(key)
-    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(categoryLabel(key), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            Text(formatWon(total), color = colors.textPrimary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = "${if (allTotal == 0L) 0 else (total * 100 / allTotal)}%",
-                color = colors.textSecondary,
-                style = MaterialTheme.typography.labelMedium,
-            )
-        }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(Modifier.size(8.dp).background(tint, CircleShape))
+        Text(categoryLabel(key), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(48.dp))
         Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .weight(1f)
                 .height(6.dp)
                 .background(colors.surfaceOverlay, RoundedCornerShape(8.dp)),
         ) {
@@ -434,6 +429,13 @@ private fun CategoryBar(key: String, total: Long, maxValue: Long, allTotal: Long
                     .background(tint, RoundedCornerShape(8.dp)),
             )
         }
+        Text(
+            text = "${if (allTotal == 0L) 0 else (total * 100 / allTotal)}%",
+            color = colors.textSecondary,
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.width(34.dp),
+        )
+        Text(formatWon(total), color = colors.textPrimary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
     }
 }
 

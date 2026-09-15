@@ -192,9 +192,9 @@ private fun AiInputForm(
             TextButton(onClick = { onModeChange(AddMode.MENU) }) { Text("방법 바꾸기") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            AddModePill(label = "개인")
             AddModePill(label = "AI", selected = true)
             AddModePill(label = "직접") { onModeChange(AddMode.DIRECT) }
-            AddModePill(label = "영수증") { onModeChange(AddMode.RECEIPT_NOTICE) }
         }
         Text("문장을 보내면 거래 후보를 만들고, 확인한 뒤에만 저장해요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         OutlinedTextField(

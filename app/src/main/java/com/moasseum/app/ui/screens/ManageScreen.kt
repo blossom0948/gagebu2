@@ -78,10 +78,7 @@ fun ManageScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text("관리", style = MaterialTheme.typography.headlineSmall)
-                Text("나에게 맞는 기록 환경을 설정하세요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
-            }
+            Text("관리", style = MaterialTheme.typography.headlineSmall)
         }
         item {
             FinanceCard(highlighted = true) {

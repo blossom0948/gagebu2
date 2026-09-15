@@ -33,6 +33,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -101,7 +102,6 @@ fun HistoryScreen(
         }
         .filter { transaction -> categoryFilterKey == "ALL" || transaction.categoryKey == categoryFilterKey }
         .sortedWith(compareByDescending<Transaction> { it.occurredAt }.thenByDescending { it.id })
-    val selectedDayTransactions = filteredTransactions.filter { it.occurredDate == selectedDate }
     val detailTransaction = detailId?.let { id -> uiState.transactions.firstOrNull { it.id == id } }
 
     LazyColumn(
@@ -109,36 +109,31 @@ fun HistoryScreen(
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item {
-            HistoryHeader(
-                month = uiState.month,
-                onPrevious = { onSelectMonth(uiState.month.minusMonths(1)) },
-                onNext = { onSelectMonth(uiState.month.plusMonths(1)) },
-            )
-        }
-        item { HistorySummary(uiState) }
+        item { Text("소비내역", style = MaterialTheme.typography.headlineSmall) }
         item {
             CalendarCard(
                 month = uiState.month,
                 selectedDate = selectedDate,
                 transactions = uiState.monthTransactions,
                 onSelectDate = onSelectDate,
+                onPrevious = { onSelectMonth(uiState.month.minusMonths(1)) },
+                onNext = { onSelectMonth(uiState.month.plusMonths(1)) },
             )
         }
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                HistoryFilter.entries.forEach { option ->
-                    FilterChip(
-                        selected = option == filter,
-                        onClick = { filterName = option.name },
-                        label = { Text(option.label) },
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                IconButton(enabled = false, onClick = {}) {
-                    Icon(Icons.Rounded.FileDownload, contentDescription = "CSV 내보내기", tint = LocalFinanceColors.current.textSecondary)
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                OutlinedButton(enabled = false, onClick = {}) {
+                    Icon(Icons.Rounded.FileDownload, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("CSV 가져오기", style = MaterialTheme.typography.labelLarge)
                 }
             }
+        }
+        item {
+            HistoryFilterBar(
+                selected = filter,
+                onSelect = { filterName = it.name },
+            )
         }
         item {
             Row(
@@ -187,26 +182,7 @@ fun HistoryScreen(
                 shape = RoundedCornerShape(14.dp),
             )
         }
-        item {
-            Text("${formatDate(selectedDate)} 기록", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        }
-        if (selectedDayTransactions.isEmpty()) {
-            item {
-                EmptyState(
-                    title = "선택한 날의 기록이 없어요",
-                    message = "다른 날짜를 누르거나 오늘의 소비를 추가해 보세요.",
-                )
-            }
-        } else {
-            items(selectedDayTransactions, key = { it.id }) { transaction ->
-                FinanceCard {
-                    TransactionRow(transaction = transaction, onClick = { detailId = transaction.id })
-                }
-            }
-        }
-        item {
-            Text("이번 달 전체", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        }
+        item { HistorySummaryLine(uiState) }
         if (filteredTransactions.isEmpty()) {
             item {
                 EmptyState(
@@ -242,44 +218,44 @@ fun HistoryScreen(
 }
 
 @Composable
-private fun HistoryHeader(
-    month: YearMonth,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
+private fun HistoryFilterBar(
+    selected: HistoryFilter,
+    onSelect: (HistoryFilter) -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("소비내역", style = MaterialTheme.typography.headlineSmall)
-            Text("캘린더에서 한 달의 흐름을 살펴보세요.", color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.bodyMedium)
-        }
-        Surface(color = LocalFinanceColors.current.surfaceRaised, shape = RoundedCornerShape(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onPrevious) { Icon(Icons.Rounded.ChevronLeft, contentDescription = "이전 달") }
-                Text(formatMonth(month), style = MaterialTheme.typography.labelLarge)
-                IconButton(onClick = onNext) { Icon(Icons.Rounded.ChevronRight, contentDescription = "다음 달") }
+    val colors = LocalFinanceColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.surfaceRaised, RoundedCornerShape(24.dp))
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        HistoryFilter.entries.forEach { option ->
+            Surface(
+                modifier = Modifier.weight(1f).height(36.dp),
+                onClick = { onSelect(option) },
+                color = if (option == selected) colors.accent else Color.Transparent,
+                contentColor = if (option == selected) Color(0xFF06332B) else colors.textSecondary,
+                shape = RoundedCornerShape(19.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(option.label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
     }
 }
 
 @Composable
-private fun HistorySummary(uiState: LedgerUiState) {
+private fun HistorySummaryLine(uiState: LedgerUiState) {
     val colors = LocalFinanceColors.current
-    FinanceCard {
-        Row(modifier = Modifier.padding(13.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            HistoryMetric("지출", formatWon(uiState.expenseTotal), colors.expense, Modifier.weight(1f))
-            HistoryMetric("수입", formatWon(uiState.incomeTotal), colors.income, Modifier.weight(1f))
-            HistoryMetric("기록", "${uiState.monthTransactions.size}건", colors.accent, Modifier.weight(0.8f))
-        }
-    }
-}
-
-@Composable
-private fun HistoryMetric(label: String, value: String, tint: Color, modifier: Modifier) {
-    val colors = LocalFinanceColors.current
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Text(label, color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-        Text(value, color = tint, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("${uiState.monthTransactions.size}건 | 지출 ", color = colors.textSecondary, style = MaterialTheme.typography.labelLarge)
+        Text(formatWon(uiState.expenseTotal), color = colors.expense, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        Text(" | 수입 ", color = colors.textSecondary, style = MaterialTheme.typography.labelLarge)
+        Text("+${formatWon(uiState.incomeTotal)}", color = colors.income, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.weight(1f))
+        Text("최신순", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
     }
 }
 
@@ -289,28 +265,38 @@ private fun CalendarCard(
     selectedDate: LocalDate,
     transactions: List<Transaction>,
     onSelectDate: (LocalDate) -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
-    val firstDayOffset = month.atDay(1).dayOfWeek.value - 1
-    val days = remember(month) {
-        buildList<LocalDate?> {
-            repeat(firstDayOffset) { add(null) }
-            for (day in 1..month.lengthOfMonth()) add(month.atDay(day))
-            repeat((7 - size % 7) % 7) { add(null) }
-        }
+    val startDate = selectedDate.with(DayOfWeek.SUNDAY).minusWeeks(1)
+    val days = remember(month, selectedDate) {
+        (0..13).map { startDate.plusDays(it.toLong()) }
     }
     val datesWithTransactions = transactions.groupingBy { it.occurredDate }.eachCount()
     FinanceCard {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.CalendarMonth, contentDescription = null, tint = colors.accent, modifier = Modifier.size(19.dp))
-                Spacer(Modifier.width(7.dp))
-                Text("월간 캘린더", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                IconButton(onClick = onPrevious, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Rounded.ChevronLeft, contentDescription = "이전 달", tint = colors.accent)
+                }
                 Spacer(Modifier.weight(1f))
-                Text("날짜를 눌러 기록 보기", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                Text(formatMonth(month), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = onNext, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Rounded.ChevronRight, contentDescription = "다음 달", tint = colors.accent)
+                }
             }
             Row {
-                DayOfWeek.entries.forEach { day ->
+                listOf(
+                    DayOfWeek.SUNDAY,
+                    DayOfWeek.MONDAY,
+                    DayOfWeek.TUESDAY,
+                    DayOfWeek.WEDNESDAY,
+                    DayOfWeek.THURSDAY,
+                    DayOfWeek.FRIDAY,
+                    DayOfWeek.SATURDAY,
+                ).forEach { day ->
                     Text(
                         text = day.getDisplayName(TextStyle.NARROW, Locale.KOREAN),
                         modifier = Modifier.weight(1f),
@@ -326,8 +312,8 @@ private fun CalendarCard(
                         CalendarDay(
                             date = date,
                             selected = date == selectedDate,
-                            count = date?.let { datesWithTransactions[it] ?: 0 } ?: 0,
-                            onClick = { date?.let(onSelectDate) },
+                            count = datesWithTransactions[date] ?: 0,
+                            onClick = { onSelectDate(date) },
                             modifier = Modifier.weight(1f),
                         )
                     }

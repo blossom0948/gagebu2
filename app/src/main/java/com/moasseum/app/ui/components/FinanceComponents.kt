@@ -105,7 +105,7 @@ fun FinanceCard(
 ) {
     val colors = LocalFinanceColors.current
     Card(
-        modifier = modifier,
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (highlighted) colors.accentSoft else colors.surfaceRaised,
