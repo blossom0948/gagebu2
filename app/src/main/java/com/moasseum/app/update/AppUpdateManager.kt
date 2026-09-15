@@ -99,10 +99,12 @@ object AppUpdateManager {
     private fun isVersionNewer(remote: String, current: String): Boolean {
         val remoteParts = versionParts(remote) ?: return remote != current
         val currentParts = versionParts(current) ?: return remote != current
-        return remoteParts.zip(currentParts)
-            .firstOrNull { (remotePart, currentPart) -> remotePart != currentPart }
-            ?.let { (remotePart, currentPart) -> remotePart > currentPart }
-            ?: remoteParts.size > currentParts.size
+        for (index in 0 until minOf(remoteParts.size, currentParts.size)) {
+            if (remoteParts[index] != currentParts[index]) {
+                return remoteParts[index] > currentParts[index]
+            }
+        }
+        return remoteParts.size > currentParts.size
     }
 
     private fun versionParts(version: String): List<Int>? {
