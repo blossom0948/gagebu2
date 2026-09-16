@@ -22,6 +22,16 @@ type ParseRequest = {
   timezone?: string;
 };
 
+type SpendingAnalysisRequest = {
+  schemaVersion?: number;
+  month?: string;
+  expenseTotal?: number;
+  incomeTotal?: number;
+  budgetAmount?: number | null;
+  previousExpenseTotal?: number;
+  categories?: Array<{ categoryKey?: string; total?: number; count?: number }>;
+};
+
 type GeminiResponse = {
   candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
 };
@@ -49,7 +59,8 @@ export default {
     if (url.pathname === "/health" && request.method === "GET") {
       return json(request, env, { ok: true, service: "moasseum-ai-worker", schemaVersion: 1 });
     }
-    if (url.pathname !== "/v1/parse-transaction" || request.method !== "POST") {
+    const isSpendingAnalysis = url.pathname === "/v1/analyze-spending";
+    if ((!isSpendingAnalysis && url.pathname !== "/v1/parse-transaction") || request.method !== "POST") {
       return json(request, env, { error: { code: "NOT_FOUND", message: "지원하지 않는 경로입니다." } }, 404);
     }
 
@@ -67,6 +78,8 @@ export default {
         return json(request, env, { error: { code: "UNAUTHORIZED", message: "로그인이 필요한 요청입니다." } }, 401);
       }
     }
+
+    if (isSpendingAnalysis) return analyzeSpending(request, env);
 
     let input: ParseRequest;
     try {
@@ -127,6 +140,114 @@ export default {
     }
   },
 } satisfies ExportedHandler<Env>;
+
+async function analyzeSpending(request: Request, env: Env): Promise<Response> {
+  let input: SpendingAnalysisRequest;
+  try {
+    const body = await request.json<unknown>();
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("not an object");
+    input = body as SpendingAnalysisRequest;
+  } catch {
+    return json(request, env, { error: { code: "INVALID_JSON", message: "요청 형식이 올바르지 않습니다." } }, 400);
+  }
+
+  const month = input.month?.trim() || "";
+  const validAmount = (value: unknown): value is number =>
+    typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000_000_000;
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || !validAmount(input.expenseTotal) ||
+      !validAmount(input.incomeTotal) || !validAmount(input.previousExpenseTotal) ||
+      (input.budgetAmount !== null && input.budgetAmount !== undefined && !validAmount(input.budgetAmount)) ||
+      !Array.isArray(input.categories) || input.categories.length > CATEGORY_KEYS.length ||
+      input.categories.some((category) =>
+        !category || typeof category !== "object" ||
+        !CATEGORY_KEYS.includes(category.categoryKey as CategoryKey) ||
+        !validAmount(category.total) ||
+        typeof category.count !== "number" || !Number.isInteger(category.count) || category.count < 0
+      )) {
+    return json(request, env, { error: { code: "INVALID_INPUT", message: "월별 집계 데이터를 확인해 주세요." } }, 400);
+  }
+
+  const categories = input.categories.map((category) => ({
+    categoryKey: category.categoryKey as CategoryKey,
+    total: category.total as number,
+    count: category.count as number,
+  }));
+  const data = {
+    month,
+    expenseTotal: input.expenseTotal,
+    incomeTotal: input.incomeTotal,
+    budgetAmount: input.budgetAmount ?? null,
+    previousExpenseTotal: input.previousExpenseTotal,
+    categories,
+  };
+  const prompt = [
+    "당신은 한국어 개인 가계부 분석 도우미입니다.",
+    "아래의 월간 집계만 근거로 비난 없이 짧고 실용적으로 분석하세요.",
+    "수치는 입력 데이터만 사용하고, 원인이나 미래를 추측하지 마세요. 투자·대출 조언은 하지 마세요.",
+    "가맹점, 메모, 이름, 거래별 날짜 등 개인 식별 정보는 제공되지 않았으며 만들어내지 마세요.",
+    "summary는 한 문장, observations와 suggestions는 각각 최대 3개로 작성하세요.",
+    `집계 데이터: ${JSON.stringify(data)}`,
+  ].join("\n");
+
+  const model = env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+  const upstreamResponse = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.25,
+          responseMimeType: "application/json",
+          responseSchema: analysisResponseSchema(),
+        },
+      }),
+    },
+  );
+  if (!upstreamResponse.ok) {
+    return json(request, env, { error: { code: "AI_UPSTREAM_ERROR", message: "AI 서버가 잠시 응답하지 않습니다." } }, 502);
+  }
+
+  const upstream = (await upstreamResponse.json()) as GeminiResponse;
+  const rawText = upstream.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!rawText) {
+    return json(request, env, { error: { code: "AI_EMPTY_RESPONSE", message: "AI가 분석 결과를 만들지 못했습니다." } }, 502);
+  }
+  try {
+    const result = JSON.parse(stripCodeFence(rawText)) as Record<string, unknown>;
+    const summary = typeof result.summary === "string" ? result.summary.trim().slice(0, 240) : "";
+    const observations = sanitizeMessages(result.observations);
+    const suggestions = sanitizeMessages(result.suggestions);
+    if (!summary) throw new Error("missing summary");
+    return json(request, env, { schemaVersion: 1, summary, observations, suggestions });
+  } catch (error) {
+    console.error("AI spending analysis validation failed", error instanceof Error ? error.message : "unknown error");
+    return json(request, env, { error: { code: "AI_SCHEMA_ERROR", message: "AI 분석 결과를 확인하지 못했습니다." } }, 502);
+  }
+}
+
+function analysisResponseSchema() {
+  return {
+    type: "OBJECT",
+    properties: {
+      schemaVersion: { type: "INTEGER" },
+      summary: { type: "STRING" },
+      observations: { type: "ARRAY", items: { type: "STRING" } },
+      suggestions: { type: "ARRAY", items: { type: "STRING" } },
+    },
+    required: ["schemaVersion", "summary", "observations", "suggestions"],
+  };
+}
+
+function sanitizeMessages(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim().replace(/\s+/g, " ").slice(0, 160))
+    .filter(Boolean)
+    .slice(0, 3);
+}
 
 function responseSchema() {
   return {

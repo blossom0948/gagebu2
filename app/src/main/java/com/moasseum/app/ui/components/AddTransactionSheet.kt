@@ -26,8 +26,10 @@ import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -51,6 +53,7 @@ import com.moasseum.app.domain.AiTransactionCandidate
 import com.moasseum.app.domain.formatDate
 import com.moasseum.app.domain.formatWon
 import com.moasseum.app.domain.parseAmount
+import com.moasseum.app.ui.components.categoryLabel
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import java.time.LocalDate
 
@@ -65,39 +68,41 @@ enum class AddMode {
 @Composable
 fun AddTransactionSheet(
     mode: AddMode,
+    paymentMethods: List<String>,
     onModeChange: (AddMode) -> Unit,
     onDismiss: () -> Unit,
-    onSave: (String, TransactionType, String, String, String) -> Boolean,
+    onSave: (String, TransactionType, String, String, String, String) -> Boolean,
     aiState: AiParseState = AiParseState.Idle,
     onParseAi: (String) -> Unit = {},
-    onConfirmAi: (String, TransactionType, String, String, String, java.time.LocalDate) -> Boolean = { _, _, _, _, _, _ -> false },
+    onConfirmAi: (String, TransactionType, String, String, String, String, java.time.LocalDate) -> Boolean = { _, _, _, _, _, _, _ -> false },
+    onStartVoiceInput: () -> Unit = {},
+    onPickReceipt: () -> Unit = {},
+    speechResult: String? = null,
+    onSpeechResultConsumed: () -> Unit = {},
 ) {
     when (mode) {
-        AddMode.MENU -> AddMenu(onModeChange = onModeChange)
-        AddMode.DIRECT -> DirectTransactionForm(onModeChange = onModeChange, onDismiss = onDismiss, onSave = onSave)
-        AddMode.AI_INPUT -> AiInputForm(
+        AddMode.MENU -> AddMenu(onModeChange = onModeChange, onStartVoiceInput = onStartVoiceInput)
+        AddMode.DIRECT -> DirectTransactionForm(paymentMethods = paymentMethods, onModeChange = onModeChange, onDismiss = onDismiss, onSave = onSave)
+        AddMode.AI_INPUT, AddMode.AI_NOTICE -> AiInputForm(
+            paymentMethods = paymentMethods,
             aiState = aiState,
             onModeChange = onModeChange,
             onParseAi = onParseAi,
             onConfirm = onConfirmAi,
+            onStartVoiceInput = onStartVoiceInput,
+            speechResult = speechResult,
+            onSpeechResultConsumed = onSpeechResultConsumed,
         )
-        AddMode.AI_NOTICE -> FeatureNotice(
-            icon = Icons.Rounded.AutoAwesome,
-            title = "AI 문장 입력은 준비 중이에요",
-            message = "서버 주소와 AI 키가 연결되기 전까지는 거래를 자동으로 해석하지 않아요. 지금은 직접 입력으로 안전하게 기록할 수 있습니다.",
-            onBack = { onModeChange(AddMode.MENU) },
-        )
-        AddMode.RECEIPT_NOTICE -> FeatureNotice(
-            icon = Icons.Rounded.CameraAlt,
-            title = "영수증 인식은 준비 중이에요",
-            message = "카메라 권한과 로컬 OCR 검토 화면은 다음 단계에서 연결됩니다. 원본 이미지가 서버로 전송되는 일은 아직 없어요.",
+        AddMode.RECEIPT_NOTICE -> ReceiptInputNotice(
+            aiState = aiState,
+            onPickReceipt = onPickReceipt,
             onBack = { onModeChange(AddMode.MENU) },
         )
     }
 }
 
 @Composable
-private fun AddMenu(onModeChange: (AddMode) -> Unit) {
+private fun AddMenu(onModeChange: (AddMode) -> Unit, onStartVoiceInput: () -> Unit) {
     Column(
         modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp),
@@ -121,7 +126,7 @@ private fun AddMenu(onModeChange: (AddMode) -> Unit) {
             icon = Icons.Rounded.KeyboardVoice,
             title = "음성으로 입력",
             message = "말한 내용을 거래 후보로 만들어요.",
-            onClick = { onModeChange(AddMode.AI_NOTICE) },
+            onClick = onStartVoiceInput,
         )
         AddActionRow(
             icon = Icons.Rounded.CameraAlt,
@@ -157,10 +162,14 @@ private fun AddModePill(
 
 @Composable
 private fun AiInputForm(
+    paymentMethods: List<String>,
     aiState: AiParseState,
     onModeChange: (AddMode) -> Unit,
     onParseAi: (String) -> Unit,
-    onConfirm: (String, TransactionType, String, String, String, java.time.LocalDate) -> Boolean,
+    onConfirm: (String, TransactionType, String, String, String, String, java.time.LocalDate) -> Boolean,
+    onStartVoiceInput: () -> Unit,
+    speechResult: String?,
+    onSpeechResultConsumed: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
     var input by rememberSaveable { mutableStateOf("") }
@@ -169,6 +178,7 @@ private fun AiInputForm(
     var memo by rememberSaveable { mutableStateOf("") }
     var categoryKey by rememberSaveable { mutableStateOf("OTHER") }
     var typeName by rememberSaveable { mutableStateOf(TransactionType.EXPENSE.name) }
+    var paymentMethod by rememberSaveable { mutableStateOf(paymentMethods.firstOrNull().orEmpty()) }
     var showConfirmError by rememberSaveable { mutableStateOf(false) }
     val candidate = (aiState as? AiParseState.Success)?.candidate
 
@@ -179,7 +189,16 @@ private fun AiInputForm(
             memo = candidate.memo
             categoryKey = candidate.categoryKey
             typeName = candidate.type.name
+            if (paymentMethod !in paymentMethods) paymentMethod = paymentMethods.firstOrNull().orEmpty()
             showConfirmError = false
+        }
+    }
+
+    LaunchedEffect(speechResult) {
+        if (!speechResult.isNullOrBlank()) {
+            input = speechResult
+            showConfirmError = false
+            onSpeechResultConsumed()
         }
     }
 
@@ -204,6 +223,11 @@ private fun AiInputForm(
             singleLine = true,
             placeholder = { Text("예: 어제 친구랑 치킨 24000원") },
             leadingIcon = { Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent) },
+            trailingIcon = {
+                IconButton(onClick = onStartVoiceInput) {
+                    Icon(Icons.Rounded.KeyboardVoice, contentDescription = "음성으로 입력", tint = colors.accent)
+                }
+            },
             shape = RoundedCornerShape(15.dp),
         )
         Button(
@@ -249,14 +273,17 @@ private fun AiInputForm(
                     memo = memo,
                     categoryKey = categoryKey,
                     type = TransactionType.valueOf(typeName),
+                    paymentMethods = paymentMethods,
+                    paymentMethod = paymentMethod,
                     onAmountChange = { amount = it.filter(Char::isDigit); showConfirmError = false },
                     onMerchantChange = { merchant = it; showConfirmError = false },
                     onMemoChange = { memo = it },
                     onCategoryChange = { categoryKey = it },
                     onTypeChange = { typeName = it.name },
+                    onPaymentMethodChange = { paymentMethod = it },
                     showError = showConfirmError,
                     onConfirm = {
-                        if (!onConfirm(amount, TransactionType.valueOf(typeName), merchant, categoryKey, memo, candidate.occurredDate)) {
+                        if (!onConfirm(amount, TransactionType.valueOf(typeName), merchant, categoryKey, memo, paymentMethod, candidate.occurredDate)) {
                             showConfirmError = true
                         }
                     },
@@ -274,11 +301,14 @@ private fun CandidateReview(
     memo: String,
     categoryKey: String,
     type: TransactionType,
+    paymentMethods: List<String>,
+    paymentMethod: String,
     onAmountChange: (String) -> Unit,
     onMerchantChange: (String) -> Unit,
     onMemoChange: (String) -> Unit,
     onCategoryChange: (String) -> Unit,
     onTypeChange: (TransactionType) -> Unit,
+    onPaymentMethodChange: (String) -> Unit,
     showError: Boolean,
     onConfirm: () -> Unit,
 ) {
@@ -328,9 +358,14 @@ private fun CandidateReview(
                 FilterChip(
                     selected = categoryKey == spec.key,
                     onClick = { onCategoryChange(spec.key) },
-                    label = { Text(spec.label) },
+                    label = { Text(categoryLabel(spec.key)) },
                     leadingIcon = { Icon(spec.icon, contentDescription = null, tint = spec.color, modifier = Modifier.size(15.dp)) },
                 )
+            }
+        }
+        Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            paymentMethods.forEach { method ->
+                FilterChip(selected = paymentMethod == method, onClick = { onPaymentMethodChange(method) }, label = { Text(method) })
             }
         }
         OutlinedTextField(
@@ -387,9 +422,10 @@ private fun AddActionRow(
 
 @Composable
 private fun DirectTransactionForm(
+    paymentMethods: List<String>,
     onModeChange: (AddMode) -> Unit,
     onDismiss: () -> Unit,
-    onSave: (String, TransactionType, String, String, String) -> Boolean,
+    onSave: (String, TransactionType, String, String, String, String) -> Boolean,
 ) {
     val colors = LocalFinanceColors.current
     var typeName by rememberSaveable { mutableStateOf(TransactionType.EXPENSE.name) }
@@ -397,6 +433,7 @@ private fun DirectTransactionForm(
     var merchant by rememberSaveable { mutableStateOf("") }
     var memo by rememberSaveable { mutableStateOf("") }
     var categoryKey by rememberSaveable { mutableStateOf("FOOD") }
+    var paymentMethod by rememberSaveable { mutableStateOf(paymentMethods.firstOrNull().orEmpty()) }
     var showError by rememberSaveable { mutableStateOf(false) }
     val type = TransactionType.valueOf(typeName)
     val today = LocalDate.now()
@@ -460,9 +497,17 @@ private fun DirectTransactionForm(
                     FilterChip(
                         selected = categoryKey == spec.key,
                         onClick = { categoryKey = spec.key },
-                        label = { Text(spec.label) },
+                        label = { Text(categoryLabel(spec.key)) },
                         leadingIcon = { Icon(spec.icon, contentDescription = null, tint = spec.color, modifier = Modifier.size(15.dp)) },
                     )
+                }
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("결제수단", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                paymentMethods.forEach { method ->
+                    FilterChip(selected = paymentMethod == method, onClick = { paymentMethod = method }, label = { Text(method) })
                 }
             }
         }
@@ -488,7 +533,7 @@ private fun DirectTransactionForm(
         }
         Button(
             onClick = {
-                if (!onSave(amount, type, merchant, categoryKey, memo)) showError = true
+                if (!onSave(amount, type, merchant, categoryKey, memo, paymentMethod)) showError = true
             },
             modifier = Modifier.fillMaxWidth().height(48.dp),
             colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = Color(0xFF06332B)),
@@ -501,32 +546,32 @@ private fun DirectTransactionForm(
 }
 
 @Composable
-private fun FeatureNotice(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    message: String,
+private fun ReceiptInputNotice(
+    aiState: AiParseState,
+    onPickReceipt: () -> Unit,
     onBack: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
     Column(
         modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(9.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Surface(color = colors.accentSoft, shape = RoundedCornerShape(16.dp)) {
-            Icon(icon, contentDescription = null, tint = colors.accent, modifier = Modifier.padding(14.dp).size(26.dp))
+            Icon(Icons.Rounded.CameraAlt, contentDescription = null, tint = colors.accent, modifier = Modifier.padding(14.dp).size(26.dp))
         }
-        Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text(message, color = colors.textSecondary, style = MaterialTheme.typography.bodyLarge)
-        Surface(color = colors.surfaceOverlay, shape = RoundedCornerShape(14.dp)) {
-            Text(
-                "현재도 직접 입력은 바로 사용할 수 있어요.",
-                color = colors.textPrimary,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(13.dp),
-            )
+        Text("영수증 사진으로 기록", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("한국어 OCR로 기기 안에서 글자를 읽어요. 사진 원본과 인식 내용은 서버로 전송하지 않습니다. 금액은 저장 전에 직접 확인할 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+        when (aiState) {
+            AiParseState.Loading -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                Text("사진을 기기 안에서 읽고 있어요…", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+            }
+            is AiParseState.Error -> Text(aiState.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+            else -> Unit
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            TextButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("다른 방법") }
+        OutlinedButton(onClick = onPickReceipt, enabled = aiState !is AiParseState.Loading, modifier = Modifier.fillMaxWidth()) {
+            Text("사진 선택")
         }
+        TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("뒤로") }
     }
 }

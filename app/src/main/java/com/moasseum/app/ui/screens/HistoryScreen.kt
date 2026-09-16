@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -49,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.moasseum.app.domain.LedgerUiState
 import com.moasseum.app.domain.Transaction
@@ -79,15 +81,20 @@ private enum class HistoryFilter(val label: String) {
 @Composable
 fun HistoryScreen(
     uiState: LedgerUiState,
+    paymentMethods: List<String>,
     selectedDate: LocalDate,
     onSelectDate: (LocalDate) -> Unit,
     onSelectMonth: (YearMonth) -> Unit,
     onDeleteTransaction: (Long) -> Unit,
+    onUpdateTransaction: (Long, String, TransactionType, String, String, String, String, LocalDate) -> Boolean,
+    onExportCsv: () -> Unit,
+    onImportCsv: () -> Unit,
 ) {
     var filterName by rememberSaveable { mutableStateOf(HistoryFilter.ALL.name) }
     var categoryFilterKey by rememberSaveable { mutableStateOf("ALL") }
     var search by rememberSaveable { mutableStateOf("") }
     var detailId by remember { mutableStateOf<Long?>(null) }
+    var editingTransaction by remember { mutableStateOf<Transaction?>(null) }
     val filter = HistoryFilter.valueOf(filterName)
     val filteredTransactions = uiState.monthTransactions
         .filter { transaction ->
@@ -121,10 +128,13 @@ fun HistoryScreen(
             )
         }
         item {
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                OutlinedButton(enabled = false, onClick = {}) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(modifier = Modifier.weight(1f), onClick = onExportCsv) {
                     Icon(Icons.Rounded.FileDownload, contentDescription = null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(6.dp))
+                    Text("CSV 내보내기", style = MaterialTheme.typography.labelLarge)
+                }
+                OutlinedButton(modifier = Modifier.weight(1f), onClick = onImportCsv) {
                     Text("CSV 가져오기", style = MaterialTheme.typography.labelLarge)
                 }
             }
@@ -158,7 +168,7 @@ fun HistoryScreen(
                         Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(spec.icon, contentDescription = null, tint = if (categoryFilterKey == spec.key) Color(0xFF06332B) else spec.color, modifier = Modifier.size(15.dp))
                             Spacer(Modifier.width(5.dp))
-                            Text(spec.label, style = MaterialTheme.typography.labelLarge)
+                            Text(categoryLabel(spec.key), style = MaterialTheme.typography.labelLarge)
                         }
                     }
                 }
@@ -212,6 +222,23 @@ fun HistoryScreen(
             onDelete = {
                 onDeleteTransaction(detailTransaction.id)
                 detailId = null
+            },
+            onEdit = {
+                editingTransaction = detailTransaction
+                detailId = null
+            },
+        )
+    }
+
+    editingTransaction?.let { transaction ->
+        TransactionEditDialog(
+            transaction = transaction,
+            paymentMethods = paymentMethods,
+            onDismiss = { editingTransaction = null },
+            onSave = { amount, type, merchant, categoryKey, memo, paymentMethod, date ->
+                val saved = onUpdateTransaction(transaction.id, amount, type, merchant, categoryKey, memo, paymentMethod, date)
+                if (saved) editingTransaction = null
+                saved
             },
         )
     }
@@ -402,6 +429,7 @@ private fun TransactionDetailDialog(
     transaction: Transaction,
     onDismiss: () -> Unit,
     onDelete: () -> Unit,
+    onEdit: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
     AlertDialog(
@@ -410,10 +438,13 @@ private fun TransactionDetailDialog(
             TextButton(onClick = onDismiss) { Text("닫기") }
         },
         dismissButton = {
-            TextButton(onClick = onDelete) {
-                Icon(Icons.Rounded.DeleteOutline, contentDescription = null, modifier = Modifier.size(17.dp))
-                Spacer(Modifier.width(5.dp))
-                Text("삭제", color = colors.expense)
+            Row {
+                TextButton(onClick = onEdit) { Text("수정") }
+                TextButton(onClick = onDelete) {
+                    Icon(Icons.Rounded.DeleteOutline, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("삭제", color = colors.expense)
+                }
             }
         },
         title = { Text(transaction.merchant, fontWeight = FontWeight.Bold) },
@@ -426,6 +457,82 @@ private fun TransactionDetailDialog(
                 if (transaction.memo.isNotBlank()) DetailLine("메모", transaction.memo)
             }
         },
+    )
+}
+
+@Composable
+private fun TransactionEditDialog(
+    transaction: Transaction,
+    paymentMethods: List<String>,
+    onDismiss: () -> Unit,
+    onSave: (String, TransactionType, String, String, String, String, LocalDate) -> Boolean,
+) {
+    val colors = LocalFinanceColors.current
+    var amount by rememberSaveable(transaction.id) { mutableStateOf(transaction.amount.toString()) }
+    var merchant by rememberSaveable(transaction.id) { mutableStateOf(transaction.merchant) }
+    var memo by rememberSaveable(transaction.id) { mutableStateOf(transaction.memo) }
+    var categoryKey by rememberSaveable(transaction.id) { mutableStateOf(transaction.categoryKey) }
+    var typeName by rememberSaveable(transaction.id) { mutableStateOf(transaction.type.name) }
+    var dateText by rememberSaveable(transaction.id) { mutableStateOf(transaction.occurredDate.toString()) }
+    var paymentMethod by rememberSaveable(transaction.id) { mutableStateOf(transaction.paymentMethod) }
+    var showError by rememberSaveable(transaction.id) { mutableStateOf(false) }
+    val type = TransactionType.valueOf(typeName)
+    val date = runCatching { LocalDate.parse(dateText) }.getOrNull()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("거래 수정", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(type == TransactionType.EXPENSE, { typeName = TransactionType.EXPENSE.name }, label = { Text("지출") })
+                    FilterChip(type == TransactionType.INCOME, { typeName = TransactionType.INCOME.name }, label = { Text("수입") })
+                }
+                OutlinedTextField(
+                    value = amount,
+                    onValueChange = { amount = it.filter(Char::isDigit); showError = false },
+                    label = { Text("금액") },
+                    suffix = { Text("원") },
+                    singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                OutlinedTextField(value = merchant, onValueChange = { merchant = it; showError = false }, label = { Text("가맹점") }, singleLine = true)
+                OutlinedTextField(
+                    value = dateText,
+                    onValueChange = { dateText = it; showError = false },
+                    label = { Text("날짜 (YYYY-MM-DD)") },
+                    singleLine = true,
+                    isError = showError && date == null,
+                )
+                Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    CategorySpecs.forEach { spec ->
+                        FilterChip(
+                            selected = categoryKey == spec.key,
+                            onClick = { categoryKey = spec.key },
+                            label = { Text(categoryLabel(spec.key)) },
+                        )
+                    }
+                }
+                Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    paymentMethods.forEach { method ->
+                        FilterChip(selected = paymentMethod == method, onClick = { paymentMethod = method }, label = { Text(method) })
+                    }
+                }
+                OutlinedTextField(value = memo, onValueChange = { memo = it }, label = { Text("메모") }, singleLine = true)
+                if (showError) Text("금액, 가맹점, 날짜를 확인해 주세요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val parsedDate = runCatching { LocalDate.parse(dateText) }.getOrNull()
+                if (parsedDate == null || amount.toLongOrNull()?.let { it > 0 } != true || merchant.isBlank()) {
+                    showError = true
+                } else {
+                    if (!onSave(amount, type, merchant, categoryKey, memo, paymentMethod, parsedDate)) showError = true
+                }
+            }) { Text("저장", color = colors.accent) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
     )
 }
 

@@ -8,8 +8,8 @@ import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [TransactionEntity::class, BudgetEntity::class, NotificationCandidateEntity::class],
-    version = 2,
+    entities = [TransactionEntity::class, BudgetEntity::class, NotificationCandidateEntity::class, RecurringTransactionEntity::class],
+    version = 3,
     exportSchema = false,
 )
 abstract class FinanceDatabase : RoomDatabase() {
@@ -21,7 +21,7 @@ abstract class FinanceDatabase : RoomDatabase() {
                 context,
                 FinanceDatabase::class.java,
                 "moasseum.db",
-            ).addMigrations(MIGRATION_1_2).build()
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
     }
 }
 
@@ -46,6 +46,32 @@ private val MIGRATION_1_2 = object : Migration(1, 2) {
         )
         database.execSQL(
             "CREATE UNIQUE INDEX IF NOT EXISTS index_notification_candidates_fingerprint ON notification_candidates(fingerprint)",
+        )
+    }
+}
+
+private val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS recurring_transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                type TEXT NOT NULL,
+                amount INTEGER NOT NULL,
+                merchant TEXT NOT NULL,
+                dayOfMonth INTEGER NOT NULL,
+                nextOccurrenceDate TEXT NOT NULL,
+                categoryKey TEXT NOT NULL,
+                memo TEXT NOT NULL,
+                paymentMethod TEXT NOT NULL,
+                isActive INTEGER NOT NULL,
+                createdAt INTEGER NOT NULL,
+                updatedAt INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS index_recurring_transactions_isActive_nextOccurrenceDate ON recurring_transactions(isActive, nextOccurrenceDate)",
         )
     }
 }

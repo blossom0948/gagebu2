@@ -310,6 +310,41 @@ APK 업데이트는 앱의 기존 Room 데이터를 삭제하지 않는다. 다�
 
 키가 로그나 공개 저장소에 노출되었다면 우선 키를 폐기하고 새 키로 교체한다. 단순히 파일에서 지우거나 저장소를 비공개로 바꾸는 것만으로는 노출된 키가 안전해지지 않는다.
 
+## 11. 이 저장소에서 기능을 추가한 뒤 배포하는 순서
+
+앞으로 기능을 만들 때 변경 위치에 따라 아래 순서를 적용한다.
+
+### Android 로컬 기능 또는 화면만 변경
+
+```bash
+./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+```
+
+Room Entity/테이블을 바꾸면 `FinanceDatabase` 버전과 이전 버전에서 올라오는 Migration을 함께 추가한다. 기존 사용자 데이터가 유지되는지 Migration 경로를 확인한 뒤 릴리스한다.
+
+### AI Worker/API 변경
+
+```bash
+cd cloudflare/ai-worker
+npm run typecheck
+npm run deploy
+```
+
+기존 `GEMINI_API_KEY`는 Cloudflare Worker Secret으로 남아 있어야 한다. 새 코드를 배포한다고 Secret을 다시 출력하거나 앱에 복사하지 않는다. Worker 응답 형식도 바꾸면 앱 파서와 테스트를 함께 바꾼다.
+
+### 앱 업데이트를 Galaxy에 전달
+
+1. `gradle.properties`의 `VERSION_CODE`를 이전보다 1 이상 올리고 `VERSION_NAME`을 바꾼다.
+2. 같은 개인용 서명 키를 사용해 `assembleRelease`를 빌드한다.
+3. 테스트가 통과한 뒤 코드를 `main`에 push하고 `app/build/outputs/apk/release/app-release.apk`를 [GitHub Releases](https://github.com/blossom0948/gagebu2/releases)에 새 버전으로 첨부한다.
+4. 휴대폰에서 `관리 → 앱 업데이트 → 업데이트 확인`을 눌러 APK 페이지를 열고, 내려받은 파일을 Android 설치 확인 화면에서 승인한다.
+
+기존 설치본을 유지한 채 업데이트하려면 앱 ID와 서명 키를 바꾸지 않는다. 이 저장소는 Play Console 없는 개인 배포이므로 설치 확인 단계는 자동으로 생략되지 않는다.
+
+### 공동 계정/서버 동기화
+
+Supabase 프로젝트와 RLS 정책을 실제로 만들고 사용자 간 데이터 격리 테스트를 하기 전에는 함께 쓰기 기능을 활성화하지 않는다. 현재 Worker의 `REQUIRE_AUTH=false`는 개인 테스트 전용이며 공개 서비스용 설정이 아니다.
+
 ---
 
 ## 공식 참고 문서

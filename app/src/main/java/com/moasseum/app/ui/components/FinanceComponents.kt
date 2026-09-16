@@ -43,6 +43,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -88,8 +89,14 @@ val CategorySpecs = listOf(
     CategorySpec("OTHER", "기타", Icons.Rounded.MoreHoriz, CategoryOther),
 )
 
+@Composable
 fun categoryLabel(key: String): String =
-    CategorySpecs.firstOrNull { it.key == key }?.label ?: "기타"
+    LocalCategoryLabels.current[key]
+        ?.takeIf(String::isNotBlank)
+        ?: CategorySpecs.firstOrNull { it.key == key }?.label
+        ?: "기타"
+
+val LocalCategoryLabels = compositionLocalOf<Map<String, String>> { emptyMap() }
 
 fun categoryColor(key: String): Color =
     CategorySpecs.firstOrNull { it.key == key }?.color ?: CategoryOther

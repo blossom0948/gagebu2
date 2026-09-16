@@ -19,13 +19,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.KeyboardVoice
 import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.moasseum.app.domain.LedgerUiState
+import com.moasseum.app.domain.SpendingAnalysisState
 import com.moasseum.app.domain.formatLongDate
 import com.moasseum.app.domain.formatMonth
 import com.moasseum.app.domain.formatWon
@@ -61,6 +67,9 @@ private enum class HomeTab(val label: String) {
 @Composable
 fun HomeScreen(
     uiState: LedgerUiState,
+    aiAnalysisState: SpendingAnalysisState,
+    onGenerateAiAnalysis: () -> Unit,
+    onExportCsv: () -> Unit,
     onAdd: (AddMode) -> Unit,
     onOpenManage: () -> Unit,
     onOpenHistory: () -> Unit,
@@ -90,8 +99,8 @@ fun HomeScreen(
             }
 
             HomeTab.INSIGHTS -> item { InsightsContent(uiState) }
-            HomeTab.REPORT -> item { ReportContent(uiState) }
-            HomeTab.AI -> item { AiAnalysisUnavailable() }
+            HomeTab.REPORT -> item { ReportContent(uiState, onExportCsv) }
+            HomeTab.AI -> item { AiAnalysisContent(uiState, aiAnalysisState, onGenerateAiAnalysis) }
         }
     }
 }
@@ -173,7 +182,7 @@ private fun QuickCaptureCard(onAdd: (AddMode) -> Unit) {
                 Text("예: 점심 8,000원", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
             }
             QuickCaptureAction(Icons.Rounded.KeyboardVoice, "AI 문장") { onAdd(AddMode.AI_INPUT) }
-            QuickCaptureAction(Icons.Rounded.CameraAlt, "카메라") { onAdd(AddMode.RECEIPT_NOTICE) }
+            QuickCaptureAction(Icons.Rounded.CameraAlt, "영수증") { onAdd(AddMode.RECEIPT_NOTICE) }
             QuickCaptureAction(Icons.Rounded.PhotoLibrary, "사진") { onAdd(AddMode.RECEIPT_NOTICE) }
         }
     }
@@ -514,7 +523,7 @@ private fun InsightRow(label: String, value: String) {
 }
 
 @Composable
-private fun ReportContent(uiState: LedgerUiState) {
+private fun ReportContent(uiState: LedgerUiState, onExportCsv: () -> Unit) {
     val colors = LocalFinanceColors.current
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         FinanceCard {
@@ -549,7 +558,12 @@ private fun ReportContent(uiState: LedgerUiState) {
         FinanceCard {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text("내보내기", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("CSV·JSON 내보내기는 데이터 보호 설정과 함께 다음 단계에서 제공됩니다.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                Text("거래 내역 CSV 파일을 기기에 저장할 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                OutlinedButton(onClick = onExportCsv, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Rounded.FileDownload, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(7.dp))
+                    Text("CSV 내보내기")
+                }
             }
         }
     }
@@ -567,17 +581,64 @@ private fun ReportMetric(label: String, value: String, tint: Color, modifier: Mo
 }
 
 @Composable
-private fun AiAnalysisUnavailable() {
+private fun AiAnalysisContent(
+    uiState: LedgerUiState,
+    state: SpendingAnalysisState,
+    onGenerate: () -> Unit,
+) {
     val colors = LocalFinanceColors.current
     FinanceCard(highlighted = true) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(26.dp))
-            Text("AI 분석은 준비 중이에요", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("${com.moasseum.app.domain.formatMonth(uiState.month)} AI 소비 분석", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(
-                "서버 주소와 AI 키가 연결되기 전까지는 로컬 거래 기능만 사용할 수 있어요. 현재 화면의 모든 합계는 기기 안의 Room 데이터로 계산됩니다.",
+                "분석을 누르면 월 합계와 예산, 카테고리별 합계만 AI 서버로 전송돼요. 가맹점 이름·메모·영수증 사진은 보내지 않습니다.",
                 color = colors.textSecondary,
                 style = MaterialTheme.typography.bodyMedium,
             )
+            when (state) {
+                SpendingAnalysisState.Idle -> {
+                    if (uiState.expenseCount == 0) Text("이 달 거래를 기록하면 분석할 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                    else AnalysisButton(onGenerate, enabled = true, label = "AI 분석 만들기")
+                }
+                SpendingAnalysisState.Loading -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Text("집계된 소비 데이터를 분석하고 있어요…", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                }
+                is SpendingAnalysisState.Error -> {
+                    Text(state.message, color = colors.expense, style = MaterialTheme.typography.bodyMedium)
+                    AnalysisButton(onGenerate, enabled = uiState.expenseCount > 0, label = "다시 시도")
+                }
+                is SpendingAnalysisState.Success -> {
+                    if (state.month != uiState.month) {
+                        Text("분석 기준 월이 바뀌었어요. 새로 분석해 주세요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                        AnalysisButton(onGenerate, enabled = uiState.expenseCount > 0, label = "이번 달 다시 분석")
+                    } else {
+                        Text(state.analysis.summary, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                        if (state.analysis.observations.isNotEmpty()) {
+                            Text("살펴볼 점", color = colors.accent, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                            state.analysis.observations.forEach { Text("• $it", color = colors.textPrimary, style = MaterialTheme.typography.bodyMedium) }
+                        }
+                        if (state.analysis.suggestions.isNotEmpty()) {
+                            Text("작은 제안", color = colors.accent, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                            state.analysis.suggestions.forEach { Text("• $it", color = colors.textPrimary, style = MaterialTheme.typography.bodyMedium) }
+                        }
+                        AnalysisButton(onGenerate, enabled = uiState.expenseCount > 0, label = "다시 분석")
+                    }
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun AnalysisButton(onClick: () -> Unit, enabled: Boolean, label: String) {
+    val colors = LocalFinanceColors.current
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth().height(44.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = Color(0xFF06332B)),
+        shape = RoundedCornerShape(14.dp),
+    ) { Text(label, fontWeight = FontWeight.Bold) }
 }

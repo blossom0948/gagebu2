@@ -3,6 +3,8 @@ package com.moasseum.app.data
 import com.moasseum.app.BuildConfig
 import com.moasseum.app.domain.AiCandidateSource
 import com.moasseum.app.domain.AiTransactionCandidate
+import com.moasseum.app.domain.LedgerUiState
+import com.moasseum.app.domain.SpendingAnalysis
 import com.moasseum.app.domain.TransactionType
 import org.json.JSONArray
 import org.json.JSONObject
@@ -28,6 +30,14 @@ class AiClient(
                 } else {
                     parseWithServer(text.trim(), today)
                 }
+            }
+        }
+
+    suspend fun analyzeSpending(state: LedgerUiState): Result<SpendingAnalysis> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                require(baseUrl.isNotBlank()) { "AI 분석 서버 주소가 설정되지 않았어요." }
+                analyzeWithServer(state)
             }
         }
 
@@ -73,6 +83,63 @@ class AiClient(
         }
     }
 
+    private fun analyzeWithServer(state: LedgerUiState): SpendingAnalysis {
+        val endpoint = if (baseUrl.endsWith("/v1/analyze-spending")) {
+            baseUrl
+        } else {
+            "${baseUrl.trimEnd('/')}/v1/analyze-spending"
+        }
+        val connection = (URL(endpoint).openConnection() as? HttpURLConnection)
+            ?: throw IOException("AI 서버 주소를 확인해 주세요.")
+        if (connection.url.protocol != "https") {
+            connection.disconnect()
+            throw IOException("AI 서버는 HTTPS 주소만 사용할 수 있어요.")
+        }
+        return try {
+            connection.requestMethod = "POST"
+            connection.connectTimeout = 12_000
+            connection.readTimeout = 25_000
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            bearerTokenProvider()?.takeIf(String::isNotBlank)?.let { token ->
+                connection.setRequestProperty("Authorization", "Bearer $token")
+            }
+            val categories = JSONArray().apply {
+                state.categoryTotals.take(7).forEach { total ->
+                    put(JSONObject().apply {
+                        put("categoryKey", total.key)
+                        put("total", total.total)
+                        put("count", total.count)
+                    })
+                }
+            }
+            val request = JSONObject().apply {
+                put("schemaVersion", 1)
+                put("month", state.month.toString())
+                put("expenseTotal", state.expenseTotal)
+                put("incomeTotal", state.incomeTotal)
+                put("budgetAmount", state.budgetAmount ?: JSONObject.NULL)
+                put("previousExpenseTotal", state.previousExpenseTotal)
+                put("categories", categories)
+            }
+            connection.outputStream.use { output -> output.write(request.toString().toByteArray(Charsets.UTF_8)) }
+            val responseCode = connection.responseCode
+            val stream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
+            val responseText = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (responseCode !in 200..299) throw IOException("AI 분석 응답 오류($responseCode)")
+            val root = JSONObject(responseText)
+            val summary = root.optString("summary").trim()
+            require(summary.isNotBlank()) { "AI가 분석 문장을 만들지 못했어요." }
+            SpendingAnalysis(
+                summary = summary,
+                observations = root.optJSONArray("observations").toStringList(),
+                suggestions = root.optJSONArray("suggestions").toStringList(),
+            )
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     private fun parseResponse(responseText: String, today: LocalDate): AiTransactionCandidate {
         val root = JSONObject(responseText)
         val json = root.optJSONObject("data") ?: root
@@ -111,6 +178,11 @@ class AiClient(
     companion object {
         val ALLOWED_CATEGORIES = listOf("FOOD", "TRANSPORT", "SHOPPING", "LIVING", "HEALTH", "LEISURE", "OTHER")
     }
+}
+
+private fun JSONArray?.toStringList(): List<String> {
+    if (this == null) return emptyList()
+    return (0 until length()).mapNotNull { index -> optString(index).takeIf(String::isNotBlank) }.take(3)
 }
 
 private object LocalNaturalLanguageParser {

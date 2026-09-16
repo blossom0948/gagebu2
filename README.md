@@ -20,7 +20,19 @@ macOS/Linux:
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
-현재 기본 기능은 네트워크 없이 동작하며 거래와 한 달 목표 지출은 Room 데이터베이스에 저장됩니다. AI 문장 입력은 API 주소가 없을 때 기기 안의 로컬 파서로도 동작하고, 서버 주소를 넣으면 확인 가능한 Gemini 거래 후보로 전환됩니다. OCR과 공동 가계부·서버 동기화는 별도 설정 전까지 안내 상태로 표시됩니다.
+현재 개인 가계부는 서버 연결 없이 기기에서 동작합니다. 거래 수정·삭제 취소, 월 목표 지출, 반복 거래, 카테고리 이름·결제수단 관리, CSV 가져오기/내보내기, 기기 데이터 삭제를 지원합니다. AI 문장 입력은 거래 후보를 검토한 뒤 저장하며, AI 분석은 사용자가 눌렀을 때 월 합계·예산·카테고리 합계만 전송합니다. 음성은 Android 음성 인식 앱을 호출하고, 한국어 영수증 OCR은 사진을 기기 안에서 처리합니다.
+
+함께 쓰기/계정·기기 간 동기화는 아직 연결되지 않았습니다. 공동 장부를 실제로 활성화하려면 Supabase 프로젝트, 인증, RLS 정책과 동기화 검증이 필요합니다. 결제 알림 감지도 Android의 알림 접근 설정에서 사용자가 한 번 허용해야 합니다.
+
+### 개발 확인
+
+```bash
+./gradlew :app:testDebugUnitTest :app:assembleDebug
+cd cloudflare/ai-worker
+npm run typecheck
+```
+
+앱 APK 경로는 `app/build/outputs/apk/debug/app-debug.apk`입니다. AI Worker 코드나 경로를 바꾸면 `cloudflare/ai-worker`에서 `npm run deploy`도 실행해야 합니다. AI 키는 Worker Secret으로만 관리하고 APK에 넣지 않습니다.
 
 ## 무료 개인 배포와 수동 업데이트
 
@@ -53,7 +65,7 @@ AI Worker 코드는 `cloudflare/ai-worker`에 있으며 현재 `https://moasseum
 
 앱에서 AI 후보를 바로 원장에 저장하지 않고 금액·날짜·카테고리·가맹점 확인 화면을 거칩니다. 결제 알림도 사용자가 Android 설정에서 알림 접근을 허용한 뒤 후보함에서 확인해야 거래로 저장됩니다.
 
-현재 Worker는 로그인 기능이 아직 앱에 연결되지 않아 개인 테스트용으로 `REQUIRE_AUTH=false`로 실행 중이며, 요청 길이·간단한 호출 제한을 적용합니다. 공개 배포 전에는 Supabase 인증을 연결하고 `REQUIRE_AUTH=true`로 전환해야 합니다.
+현재 Worker는 로그인 기능이 아직 앱에 연결되지 않아 개인 테스트용으로 `REQUIRE_AUTH=false`로 실행 중이며, 요청 길이·간단한 호출 제한을 적용합니다. `/v1/parse-transaction`은 사용자가 입력한 문장을 거래 후보로 만들고, `/v1/analyze-spending`은 집계 수치로 짧은 소비 분석을 반환합니다. 공개 배포 전에는 Supabase 인증을 연결하고 `REQUIRE_AUTH=true`로 전환해야 합니다.
 
 첫 실행에는 결제 알림 감지 안내 팝업이 표시되고, `설정 열기`를 누르면 Galaxy의 알림 접근 설정에서 모아씀 항목으로 바로 이동합니다. Android의 알림 접근은 일반 런타임 권한이 아니어서 앱이 시스템 토글을 대신 켤 수는 없으며, 사용자가 한 번 허용해야 합니다. 이후에는 관리 화면에서 상태를 확인하거나 다시 설정할 수 있습니다.
 

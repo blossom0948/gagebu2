@@ -54,11 +54,37 @@ data class Transaction(
         get() = Instant.ofEpochMilli(occurredAt).atZone(ZoneId.systemDefault()).toLocalDate()
 }
 
+data class RecurringRule(
+    val id: Long,
+    val type: TransactionType,
+    val amount: Long,
+    val merchant: String,
+    val dayOfMonth: Int,
+    val nextOccurrenceDate: LocalDate,
+    val categoryKey: String,
+    val memo: String,
+    val paymentMethod: String,
+    val isActive: Boolean,
+)
+
 data class CategoryTotal(
     val key: String,
     val total: Long,
     val count: Int,
 )
+
+data class SpendingAnalysis(
+    val summary: String,
+    val observations: List<String>,
+    val suggestions: List<String>,
+)
+
+sealed interface SpendingAnalysisState {
+    data object Idle : SpendingAnalysisState
+    data object Loading : SpendingAnalysisState
+    data class Success(val month: YearMonth, val analysis: SpendingAnalysis) : SpendingAnalysisState
+    data class Error(val message: String) : SpendingAnalysisState
+}
 
 data class LedgerUiState(
     val month: YearMonth,

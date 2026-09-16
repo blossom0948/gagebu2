@@ -1,11 +1,16 @@
 package com.moasseum.app
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
+import android.speech.RecognizerIntent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -20,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,6 +53,7 @@ import androidx.navigation.compose.rememberNavController
 import com.moasseum.app.ui.components.AddFloatingActionButton
 import com.moasseum.app.ui.components.AddMode
 import com.moasseum.app.ui.components.AddTransactionSheet
+import com.moasseum.app.ui.components.LocalCategoryLabels
 import com.moasseum.app.ui.components.BottomNavBar
 import com.moasseum.app.ui.components.ROUTE_HISTORY
 import com.moasseum.app.ui.components.ROUTE_HOME
@@ -58,11 +65,19 @@ import com.moasseum.app.ui.screens.ManageScreen
 import com.moasseum.app.ui.screens.TogetherScreen
 import com.moasseum.app.ui.theme.MoasseumTheme
 import com.moasseum.app.data.AiClient
+import com.moasseum.app.data.CsvBackup
+import com.moasseum.app.data.DEFAULT_CATEGORY_LABELS
+import com.moasseum.app.data.DEFAULT_PAYMENT_METHODS
+import com.moasseum.app.data.ReceiptOcr
 import com.moasseum.app.domain.AiParseState
+import com.moasseum.app.domain.SpendingAnalysisState
 import com.moasseum.app.notification.NotificationAccess
 import com.moasseum.app.update.AppUpdateManager
 import com.moasseum.app.update.UpdateCheckState
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.compose.material3.SnackbarResult
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,23 +90,34 @@ class MainActivity : ComponentActivity() {
             )
             val darkTheme by application.preferencesRepository.isDarkTheme.collectAsStateWithLifecycle(initialValue = true)
             val reduceMotion by application.preferencesRepository.reduceMotion.collectAsStateWithLifecycle(initialValue = false)
-            MoasseumTheme(darkTheme = darkTheme, reduceMotion = reduceMotion) {
-                UpdateSystemBars(darkTheme)
-                MoasseumApp(
-                    viewModel = viewModel,
-                    darkTheme = darkTheme,
-                    reduceMotion = reduceMotion,
-                    onDarkThemeChanged = { enabled ->
-                        lifecycleScope.launch { application.preferencesRepository.setDarkTheme(enabled) }
-                    },
-                    onReduceMotionChanged = { enabled ->
-                        lifecycleScope.launch { application.preferencesRepository.setReduceMotion(enabled) }
-                    },
-                    notificationPromptShown = application.preferencesRepository.notificationAccessPromptShown.collectAsStateWithLifecycle(initialValue = false).value,
-                    onMarkNotificationPromptShown = {
-                        lifecycleScope.launch { application.preferencesRepository.setNotificationAccessPromptShown() }
-                    },
-                )
+            val categoryLabels by application.preferencesRepository.categoryLabels.collectAsStateWithLifecycle(initialValue = DEFAULT_CATEGORY_LABELS)
+            val paymentMethods by application.preferencesRepository.paymentMethods.collectAsStateWithLifecycle(initialValue = DEFAULT_PAYMENT_METHODS)
+            CompositionLocalProvider(LocalCategoryLabels provides categoryLabels) {
+                MoasseumTheme(darkTheme = darkTheme, reduceMotion = reduceMotion) {
+                    UpdateSystemBars(darkTheme)
+                    MoasseumApp(
+                        viewModel = viewModel,
+                        paymentMethods = paymentMethods,
+                        onSavePaymentMethods = { methods ->
+                            lifecycleScope.launch { application.preferencesRepository.savePaymentMethods(methods) }
+                        },
+                        onSaveCategoryLabels = { labels ->
+                            lifecycleScope.launch { application.preferencesRepository.saveCategoryLabels(labels) }
+                        },
+                        darkTheme = darkTheme,
+                        reduceMotion = reduceMotion,
+                        onDarkThemeChanged = { enabled ->
+                            lifecycleScope.launch { application.preferencesRepository.setDarkTheme(enabled) }
+                        },
+                        onReduceMotionChanged = { enabled ->
+                            lifecycleScope.launch { application.preferencesRepository.setReduceMotion(enabled) }
+                        },
+                        notificationPromptShown = application.preferencesRepository.notificationAccessPromptShown.collectAsStateWithLifecycle(initialValue = false).value,
+                        onMarkNotificationPromptShown = {
+                            lifecycleScope.launch { application.preferencesRepository.setNotificationAccessPromptShown() }
+                        },
+                    )
+                }
             }
         }
     }
@@ -111,6 +137,9 @@ private fun UpdateSystemBars(darkTheme: Boolean) {
 @OptIn(ExperimentalMaterial3Api::class)
 private fun MoasseumApp(
     viewModel: LedgerViewModel,
+    paymentMethods: List<String>,
+    onSavePaymentMethods: (List<String>) -> Unit,
+    onSaveCategoryLabels: (Map<String, String>) -> Unit,
     darkTheme: Boolean,
     reduceMotion: Boolean,
     onDarkThemeChanged: (Boolean) -> Unit,
@@ -124,6 +153,7 @@ private fun MoasseumApp(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val selectedDate by viewModel.date.collectAsStateWithLifecycle()
     val pendingCandidates by viewModel.pendingNotificationCandidates.collectAsStateWithLifecycle()
+    val recurringRules by viewModel.recurringRules.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var notificationAccessEnabled by remember { mutableStateOf(NotificationAccess.isEnabled(context)) }
     var showNotificationAccessPrompt by remember { mutableStateOf(false) }
@@ -144,11 +174,122 @@ private fun MoasseumApp(
     val coroutineScope = rememberCoroutineScope()
     val aiClient = remember { AiClient() }
     var aiState by remember { mutableStateOf<AiParseState>(AiParseState.Idle) }
+    var aiAnalysisState by remember { mutableStateOf<SpendingAnalysisState>(SpendingAnalysisState.Idle) }
     var addOpen by rememberSaveable { mutableStateOf(false) }
     var addModeName by rememberSaveable { mutableStateOf(AddMode.MENU.name) }
     var unavailableMessage by rememberSaveable { mutableStateOf<String?>(null) }
     var updateState by remember { mutableStateOf<UpdateCheckState>(UpdateCheckState.Idle) }
+    var speechResult by remember { mutableStateOf<String?>(null) }
+    val speechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            speechResult = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+        }
+    }
+    val receiptPhotoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            aiState = AiParseState.Loading
+            addOpen = true
+            addModeName = AddMode.RECEIPT_NOTICE.name
+            coroutineScope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val text = ReceiptOcr.recognize(context, uri)
+                        ReceiptOcr.candidateFromText(text)
+                            ?: error("금액을 찾지 못했어요. 선명한 영수증 사진을 다시 선택해 주세요.")
+                    }
+                }
+                result.fold(
+                    onSuccess = { candidate ->
+                        aiState = AiParseState.Success(candidate)
+                        addModeName = AddMode.AI_INPUT.name
+                    },
+                    onFailure = { error -> aiState = AiParseState.Error(error.message ?: "영수증을 읽지 못했어요.") },
+                )
+            }
+        }
+    }
+    val exportCsvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        if (uri != null) {
+            val result = runCatching {
+                val output = context.contentResolver.openOutputStream(uri)
+                    ?: error("선택한 위치에 CSV 파일을 쓸 수 없어요.")
+                output.bufferedWriter(Charsets.UTF_8).use { it.write(CsvBackup.encode(uiState.transactions)) }
+            }
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar(
+                    if (result.isSuccess) "${uiState.transactions.size}건을 CSV로 내보냈어요."
+                    else result.exceptionOrNull()?.message ?: "CSV 내보내기에 실패했어요.",
+                )
+            }
+        }
+    }
+    val importCsvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            coroutineScope.launch {
+                val parsed = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val input = context.contentResolver.openInputStream(uri)
+                            ?: error("선택한 CSV 파일을 열 수 없어요.")
+                        val content = input.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                        require(content.length <= 5_000_000) { "CSV 파일은 5MB 이하만 가져올 수 있어요." }
+                        CsvBackup.decode(content)
+                    }
+                }
+                parsed.fold(
+                    onSuccess = { rows ->
+                        viewModel.importTransactions(rows) { result ->
+                            coroutineScope.launch {
+                                result.fold(
+                                    onSuccess = { count -> snackbarHostState.showSnackbar("${count}건을 가져왔어요. 중복 내역은 건너뛰었습니다.") },
+                                    onFailure = { error -> snackbarHostState.showSnackbar(error.message ?: "CSV 가져오기에 실패했어요.") },
+                                )
+                            }
+                        }
+                    },
+                    onFailure = { error -> snackbarHostState.showSnackbar(error.message ?: "CSV 파일을 읽지 못했어요.") },
+                )
+            }
+        }
+    }
     val addMode = AddMode.valueOf(addModeName)
+
+    fun startVoiceInput() {
+        addOpen = true
+        addModeName = AddMode.AI_INPUT.name
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR")
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "가계부에 기록할 내용을 말해 주세요")
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        }
+        runCatching { speechLauncher.launch(intent) }
+            .onFailure { error ->
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar(error.message ?: "이 기기에서 음성 입력을 시작하지 못했어요.")
+                }
+            }
+    }
+
+    fun pickReceiptPhoto() {
+        addOpen = true
+        addModeName = AddMode.RECEIPT_NOTICE.name
+        aiState = AiParseState.Idle
+        receiptPhotoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    }
+
+    fun generateSpendingAnalysis() {
+        if (uiState.expenseCount == 0) return
+        aiAnalysisState = SpendingAnalysisState.Loading
+        coroutineScope.launch {
+            val result = aiClient.analyzeSpending(uiState)
+            aiAnalysisState = result.fold(
+                onSuccess = { analysis -> SpendingAnalysisState.Success(uiState.month, analysis) },
+                onFailure = { error -> SpendingAnalysisState.Error(error.message ?: "AI 분석에 실패했어요. 잠시 후 다시 시도해 주세요.") },
+            )
+        }
+    }
 
     fun closeAdd() {
         addOpen = false
@@ -189,6 +330,9 @@ private fun MoasseumApp(
                 composable(ROUTE_HOME) {
                     HomeScreen(
                         uiState = uiState,
+                        aiAnalysisState = aiAnalysisState,
+                        onGenerateAiAnalysis = ::generateSpendingAnalysis,
+                        onExportCsv = { exportCsvLauncher.launch("moasseum-${java.time.LocalDate.now()}.csv") },
                         onAdd = { mode ->
                             addModeName = mode.name
                             addOpen = true
@@ -200,13 +344,25 @@ private fun MoasseumApp(
                 composable(ROUTE_HISTORY) {
                     HistoryScreen(
                         uiState = uiState,
+                        paymentMethods = paymentMethods,
                         selectedDate = selectedDate,
                         onSelectDate = viewModel::selectDate,
                         onSelectMonth = viewModel::selectMonth,
                         onDeleteTransaction = { id ->
-                            viewModel.deleteTransaction(id)
-                            coroutineScope.launch { snackbarHostState.showSnackbar("거래를 삭제했어요") }
+                            viewModel.deleteTransaction(id) {
+                                coroutineScope.launch {
+                                    val result = snackbarHostState.showSnackbar(
+                                        message = "거래를 삭제했어요",
+                                        actionLabel = "실행 취소",
+                                        withDismissAction = true,
+                                    )
+                                    if (result == SnackbarResult.ActionPerformed) viewModel.restoreTransaction(id)
+                                }
+                            }
                         },
+                        onUpdateTransaction = viewModel::updateTransaction,
+                        onExportCsv = { exportCsvLauncher.launch("moasseum-${java.time.LocalDate.now()}.csv") },
+                        onImportCsv = { importCsvLauncher.launch(arrayOf("text/*", "application/vnd.ms-excel")) },
                     )
                 }
                 composable(ROUTE_TOGETHER) {
@@ -219,12 +375,28 @@ private fun MoasseumApp(
                 composable(ROUTE_MANAGE) {
                     ManageScreen(
                         uiState = uiState,
+                        paymentMethods = paymentMethods,
+                        onSavePaymentMethods = onSavePaymentMethods,
+                        onSaveCategoryLabels = onSaveCategoryLabels,
+                        recurringRules = recurringRules,
+                        onAddRecurringRule = viewModel::addRecurringRule,
+                        onSetRecurringRuleActive = viewModel::setRecurringRuleActive,
+                        onDeleteRecurringRule = viewModel::deleteRecurringRule,
+                        onClearLocalData = {
+                            viewModel.clearAllLocalRecords { result ->
+                                coroutineScope.launch {
+                                    result.fold(
+                                        onSuccess = { snackbarHostState.showSnackbar("기기 거래 데이터, 알림 후보, 반복 규칙을 삭제했어요.") },
+                                        onFailure = { error -> snackbarHostState.showSnackbar(error.message ?: "데이터를 삭제하지 못했어요.") },
+                                    )
+                                }
+                            }
+                        },
                         darkTheme = darkTheme,
                         reduceMotion = reduceMotion,
                         onDarkThemeChanged = onDarkThemeChanged,
                         onReduceMotionChanged = onReduceMotionChanged,
                         onUpdateBudget = viewModel::updateBudget,
-                        onShowUnavailable = { feature -> unavailableMessage = "$feature 기능은 다음 단계에서 연결됩니다." },
                         notificationAccessEnabled = notificationAccessEnabled,
                         pendingCandidates = pendingCandidates,
                         updateState = updateState,
@@ -285,6 +457,7 @@ private fun MoasseumApp(
                 onModeChange = { addModeName = it.name },
                 onDismiss = { closeAdd() },
                 aiState = aiState,
+                paymentMethods = paymentMethods,
                 onParseAi = { text ->
                     aiState = AiParseState.Loading
                     coroutineScope.launch {
@@ -295,16 +468,20 @@ private fun MoasseumApp(
                         )
                     }
                 },
-                onConfirmAi = { amount, type, merchant, categoryKey, memo, occurredAt ->
-                    val saved = viewModel.addTransaction(amount, type, merchant, categoryKey, memo, occurredAt)
+                onConfirmAi = { amount, type, merchant, categoryKey, memo, paymentMethod, occurredAt ->
+                    val saved = viewModel.addTransaction(amount, type, merchant, categoryKey, memo, occurredAt, paymentMethod)
                     if (saved) {
                         closeAdd()
                         coroutineScope.launch { snackbarHostState.showSnackbar("AI 거래 후보를 저장했어요") }
                     }
                     saved
                 },
-                onSave = { amount, type, merchant, categoryKey, memo ->
-                    val saved = viewModel.addTransaction(amount, type, merchant, categoryKey, memo)
+                onStartVoiceInput = ::startVoiceInput,
+                onPickReceipt = ::pickReceiptPhoto,
+                speechResult = speechResult,
+                onSpeechResultConsumed = { speechResult = null },
+                onSave = { amount, type, merchant, categoryKey, memo, paymentMethod ->
+                    val saved = viewModel.addTransaction(amount, type, merchant, categoryKey, memo, paymentMethod = paymentMethod)
                     if (saved) {
                         closeAdd()
                         coroutineScope.launch { snackbarHostState.showSnackbar("거래가 저장됐어요") }
