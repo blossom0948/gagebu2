@@ -42,6 +42,8 @@ Play Console 없이 본인 Galaxy에서 사용할 때는 GitHub Releases에 서�
 
 처음 한 번은 Android가 모아씀에 `이 출처의 앱 설치 허용`을 요청할 수 있고, 설치 화면에서 업데이트를 사용자가 승인해야 합니다. Android 보안상 이 설정과 최종 설치 확인은 앱이 대신 누를 수 없습니다. 기존 앱 데이터는 업데이트해도 Room 저장소에 그대로 남습니다.
 
+Google Play Protect가 개인 APK를 추가로 차단하면 시스템 화면의 안내에서 출처를 확인한 뒤 설치를 선택해야 합니다. 앱이나 APK가 Play Protect 검사를 우회하도록 만들 수는 없습니다.
+
 서명 키는 로컬과 GitHub Actions secret으로만 관리하고 저장소에는 올리지 않습니다. 릴리스마다 `versionCode`를 올려야 앱이 새 버전으로 인식합니다.
 
 ## GitHub 배포
