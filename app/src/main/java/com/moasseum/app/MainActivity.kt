@@ -215,6 +215,9 @@ private fun MoasseumApp(
     var notificationSettingsInProgress by rememberSaveable { mutableStateOf(false) }
     var notificationCandidatePrompt by remember { mutableStateOf<NotificationCandidate?>(null) }
     var postNotificationPermissionRequestStarted by rememberSaveable { mutableStateOf(false) }
+    val postNotificationPermissionMissing = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+    val appNotificationsReady = appNotificationsEnabled && !postNotificationPermissionMissing
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, context) {
         val observer = LifecycleEventObserver { _, event ->
@@ -227,8 +230,8 @@ private fun MoasseumApp(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(notificationAccessEnabled, appNotificationsEnabled, notificationSetupDismissedThisSession) {
-        val needsNotificationSetup = !notificationAccessEnabled || !appNotificationsEnabled
+    LaunchedEffect(notificationAccessEnabled, appNotificationsReady, notificationSetupDismissedThisSession) {
+        val needsNotificationSetup = !notificationAccessEnabled || !appNotificationsReady
         showNotificationAccessPrompt = needsNotificationSetup && !notificationSetupDismissedThisSession
     }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -236,14 +239,13 @@ private fun MoasseumApp(
     }
     LaunchedEffect(
         notificationAccessEnabled,
+        postNotificationPermissionMissing,
         notificationPostPermissionPromptShown,
         notificationSetupDismissedThisSession,
         notificationSettingsInProgress,
         showNotificationAccessPrompt,
     ) {
-        val permissionMissing = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        if (notificationAccessEnabled && permissionMissing && !notificationPostPermissionPromptShown &&
+        if (notificationAccessEnabled && postNotificationPermissionMissing && !notificationPostPermissionPromptShown &&
             !postNotificationPermissionRequestStarted && notificationSetupDismissedThisSession &&
             !notificationSettingsInProgress && !showNotificationAccessPrompt
         ) {
@@ -677,7 +679,7 @@ private fun MoasseumApp(
     if (showNotificationAccessPrompt) {
         NotificationSetupDialog(
             notificationAccessEnabled = notificationAccessEnabled,
-            appNotificationsEnabled = appNotificationsEnabled,
+            appNotificationsEnabled = appNotificationsReady,
             aiNotificationClassificationEnabled = aiNotificationClassificationEnabled,
             onOpenNextSetting = {
                 showNotificationAccessPrompt = false
@@ -685,7 +687,7 @@ private fun MoasseumApp(
                 notificationSettingsInProgress = true
                 when {
                     !notificationAccessEnabled -> NotificationAccess.openSettings(context)
-                    !appNotificationsEnabled -> NotificationAccess.openAppNotificationSettings(context)
+                    !appNotificationsReady -> NotificationAccess.openAppNotificationSettings(context)
                 }
             },
             onDismiss = {
