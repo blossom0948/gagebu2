@@ -96,6 +96,16 @@ fun categoryLabel(key: String): String =
         ?: CategorySpecs.firstOrNull { it.key == key }?.label
         ?: "기타"
 
+@Composable
+fun allCategorySpecs(): List<CategorySpec> {
+    val labels = LocalCategoryLabels.current
+    val builtInKeys = CategorySpecs.mapTo(mutableSetOf(), CategorySpec::key)
+    val custom = labels.entries
+        .filter { (key, _) -> key !in builtInKeys }
+        .map { (key, label) -> CategorySpec(key, label, Icons.Rounded.Category, CategoryOther) }
+    return CategorySpecs + custom
+}
+
 val LocalCategoryLabels = compositionLocalOf<Map<String, String>> { emptyMap() }
 
 fun categoryColor(key: String): Color =

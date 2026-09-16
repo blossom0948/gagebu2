@@ -20,9 +20,11 @@ macOS/Linux:
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
-현재 개인 가계부는 서버 연결 없이 기기에서 동작합니다. 거래 수정·삭제 취소, 월 목표 지출, 반복 거래, 카테고리 이름·결제수단 관리, CSV 가져오기/내보내기, 기기 데이터 삭제를 지원합니다. AI 문장 입력은 거래 후보를 검토한 뒤 저장하며, AI 분석은 사용자가 눌렀을 때 월 합계·예산·카테고리 합계만 전송합니다. 음성은 Android 음성 인식 앱을 호출하고, 한국어 영수증 OCR은 사진을 기기 안에서 처리합니다.
+현재 개인 가계부는 서버 연결 없이 기기에서 동작합니다. 거래 수정·삭제 취소, 월 목표 지출, 반복 거래, 기본·사용자 카테고리 관리, 결제수단 관리, CSV 가져오기/내보내기, 기기 데이터 삭제를 지원합니다. AI 문장 입력은 거래 후보를 검토한 뒤 저장하며, AI 분석은 사용자가 눌렀을 때 월 합계·예산·카테고리 합계만 전송합니다. 음성은 Android 음성 인식 앱을 호출하고, 한국어 영수증 OCR은 사진을 기기 안에서 처리합니다.
 
-함께 쓰기/계정·기기 간 동기화는 아직 연결되지 않았습니다. 공동 장부를 실제로 활성화하려면 Supabase 프로젝트, 인증, RLS 정책과 동기화 검증이 필요합니다. 결제 알림 감지도 Android의 알림 접근 설정에서 사용자가 한 번 허용해야 합니다.
+알림 감지는 Android의 알림 접근과 모아씀의 알림 표시 권한이 필요합니다. 기본은 기기 내 엄격한 거래 문구 검사이며, `관리`에서 AI 오탐 줄이기를 켠 경우에만 금액/금융 단서가 있는 알림의 제목·내용을 Cloudflare Worker를 통해 Gemini에 보내 완료된 지출/수입인지 분류합니다. 이 선택 기능은 알림에 담긴 개인정보를 외부 AI 서버로 전송하고 Gemini 사용량을 쓸 수 있습니다. 인식 결과는 자동 저장하지 않고 앱에서 확인을 받습니다.
+
+함께 쓰기/계정·기기 간 동기화는 아직 연결되지 않았습니다. 공동 장부를 실제로 활성화하려면 Supabase 프로젝트, 인증, RLS 정책과 동기화 검증이 필요합니다. 알림 감지는 Android의 알림 접근 설정에서 사용자가 허용해야 하며, 앱이 대신 켤 수 없습니다.
 
 ### 개발 확인
 
@@ -34,11 +36,11 @@ npm run typecheck
 
 앱 APK 경로는 `app/build/outputs/apk/debug/app-debug.apk`입니다. AI Worker 코드나 경로를 바꾸면 `cloudflare/ai-worker`에서 `npm run deploy`도 실행해야 합니다. AI 키는 Worker Secret으로만 관리하고 APK에 넣지 않습니다.
 
-## 무료 개인 배포와 수동 업데이트
+## 무료 개인 배포와 앱 내 업데이트
 
-Play Console 없이 본인 Galaxy에서 사용할 때는 GitHub Releases에 서명된 APK를 올리는 방식으로 배포합니다. 앱의 `관리 → 앱 업데이트 → 업데이트 확인`을 누르면 [gagebu2 Releases](https://github.com/blossom0948/gagebu2/releases)의 최신 APK를 확인하고 다운로드 페이지를 엽니다. GitHub에서 APK를 내려받아 Android 설치 화면에서 한 번 승인하면 됩니다.
+Play Console 없이 본인 Galaxy에서 사용할 때는 GitHub Releases에 서명된 APK를 올리는 방식으로 배포합니다. 앱의 `관리 → 앱 업데이트 → 업데이트 확인`을 누르면 새 APK를 앱 안에서 직접 다운로드하고, 크기·해시·앱 ID·버전·서명을 확인한 뒤 Android 설치 화면을 엽니다. GitHub 다운로드 페이지나 브라우저로 나갈 필요는 없습니다.
 
-처음 한 번은 Android 설정에서 다운로드에 사용한 브라우저 또는 파일 앱의 `알 수 없는 앱 설치 허용`을 켜야 할 수 있습니다. 이 권한과 설치 확인은 Android 보안상 앱이 대신 누를 수 없습니다. 기존 앱 데이터는 업데이트해도 Room 저장소에 그대로 남습니다.
+처음 한 번은 Android가 모아씀에 `이 출처의 앱 설치 허용`을 요청할 수 있고, 설치 화면에서 업데이트를 사용자가 승인해야 합니다. Android 보안상 이 설정과 최종 설치 확인은 앱이 대신 누를 수 없습니다. 기존 앱 데이터는 업데이트해도 Room 저장소에 그대로 남습니다.
 
 서명 키는 로컬과 GitHub Actions secret으로만 관리하고 저장소에는 올리지 않습니다. 릴리스마다 `versionCode`를 올려야 앱이 새 버전으로 인식합니다.
 
@@ -55,7 +57,7 @@ Play Console 없이 본인 Galaxy에서 사용할 때는 GitHub Releases에 서�
 - `ANDROID_KEY_ALIAS`
 - `ANDROID_KEY_PASSWORD`
 
-GitHub Release는 무료 개인 배포와 수동 업데이트용입니다. Android 앱을 Play Store처럼 무음으로 교체하지는 않으며, 다운로드 뒤 Android 설치 확인이 필요합니다.
+GitHub Release는 무료 개인 배포용이며 앱이 APK를 직접 내려받습니다. Android 앱을 Play Store처럼 무음으로 교체하지는 않으며, 다운로드 뒤 Android 설치 확인이 필요합니다.
 
 AI Worker 코드는 `cloudflare/ai-worker`에 있으며 현재 `https://moasseum-ai-worker.blossom0948.workers.dev`에 배포되어 있습니다. 기본 Debug 빌드에는 이 주소가 들어가고, 다른 환경을 사용할 때만 아래처럼 주소를 덮어씌웁니다.
 
@@ -63,7 +65,7 @@ AI Worker 코드는 `cloudflare/ai-worker`에 있으며 현재 `https://moasseum
 ./gradlew :app:assembleDebug -PAI_API_BASE_URL=https://<worker-domain>
 ```
 
-앱에서 AI 후보를 바로 원장에 저장하지 않고 금액·날짜·카테고리·가맹점 확인 화면을 거칩니다. 결제 알림도 사용자가 Android 설정에서 알림 접근을 허용한 뒤 후보함에서 확인해야 거래로 저장됩니다.
+앱에서 AI 후보를 바로 원장에 저장하지 않고 금액·날짜·카테고리·가맹점 확인 화면을 거칩니다. 알림 접근을 허용하면 금융 알림 후보를 만들고, 앱이 백그라운드일 때는 모아씀 알림으로 `인식되었습니다. 추가할까요?`를 표시합니다. 후보 알림에서 열거나 앱이 앞에 있을 때 확인한 다음에만 거래로 저장됩니다. `관리`에서 AI 오탐 줄이기를 켜면 금액/금융 단서가 있는 알림의 제목과 내용이 Gemini 분류에 전송됩니다.
 
 현재 Worker는 로그인 기능이 아직 앱에 연결되지 않아 개인 테스트용으로 `REQUIRE_AUTH=false`로 실행 중이며, 요청 길이·간단한 호출 제한을 적용합니다. `/v1/parse-transaction`은 사용자가 입력한 문장을 거래 후보로 만들고, `/v1/analyze-spending`은 집계 수치로 짧은 소비 분석을 반환합니다. 공개 배포 전에는 Supabase 인증을 연결하고 `REQUIRE_AUTH=true`로 전환해야 합니다.
 

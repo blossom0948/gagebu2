@@ -23,7 +23,7 @@ Cloudflare Workers는 GitHub 저장소 변경으로 자동 빌드·배포할 수
 3. GitHub Actions로 APK 빌드·테스트를 자동화한다.
 4. 다른 사람에게 배포할 때는 서명된 APK 또는 Google Play App Bundle을 만든다.
 
-본인만 무료로 사용할 때는 4번 대신 **GitHub Release + 앱 안의 수동 업데이트**를 사용한다. GitHub Release는 APK를 공개적으로 내려받게 해 주지만, Android 설치 확인까지 자동으로 처리할 수는 없다.
+본인만 무료로 사용할 때는 4번 대신 **GitHub Release + 앱 안의 업데이트 다운로드**를 사용한다. 모아씀은 APK를 앱 안에서 받아 검증하고 Android 설치 화면을 열지만, 설치 허용과 최종 확인까지 자동으로 처리할 수는 없다.
 
 ---
 
@@ -110,6 +110,7 @@ Android 프로젝트의 서버 주소 설정(예: `AI_API_BASE_URL` 또는 프�
 - Supabase 테이블에는 RLS 정책을 적용하고, 다른 계정의 거래를 읽거나 수정할 수 없는지 테스트한다.
 - CORS 설정은 브라우저 접근 제어용이다. Android 네이티브 앱 API의 사용자 인증을 대신하지 않는다.
 - 첫 점검에는 실제 거래가 아니라 가짜 금액·가맹점으로 테스트한다. 민감한 거래 문구를 Cloudflare/GitHub 빌드 로그에 출력하지 않는다.
+- 알림 AI 분류는 사용자가 앱 설정에서 켠 경우에만 동작한다. 금액/금융 단서로 추린 알림의 제목과 내용이 Gemini에 전송되므로 개인정보와 모델 사용량을 고려하고, 기본값은 꺼 둔다.
 
 최소 점검:
 
@@ -218,7 +219,7 @@ Workflow artifact는 영구 배포물이 아니라 해당 실행에 붙는 빌�
 
 ---
 
-## 8. 무료 개인용 서명 릴리스와 수동 업데이트
+## 8. 무료 개인용 서명 릴리스와 앱 내 업데이트
 
 이 저장소의 `docs/android-release.yml`은 `main` push마다 서명 APK/AAB를 만들고 GitHub Release를 생성하는 workflow 템플릿이다. 현재 GitHub 토큰에 workflow 파일 등록 scope가 없으면 이 파일을 먼저 `.github/workflows/android-release.yml`로 옮길 수 없으므로, 권한을 추가한 뒤 이동한다.
 
@@ -243,7 +244,8 @@ ANDROID_KEY_PASSWORD
 3. `versionCode`에는 Actions 실행 번호가 들어가고, 서명 APK/AAB가 만들어진다.
 4. GitHub Release에 `app-release.apk`와 `app-release.aab`가 첨부된다.
 5. 폰에서 모아씀의 `관리 → 앱 업데이트`를 열고 `업데이트 확인`을 누른다.
-6. GitHub 다운로드 페이지에서 APK를 내려받은 뒤 Android 설치 화면에서 승인한다.
+6. 앱이 GitHub Release의 APK를 직접 내려받아 크기·SHA-256(제공된 경우)·앱 ID·버전·서명을 검증한 다음 Android 시스템 설치 화면을 연다.
+7. 처음이면 Android 설정에서 모아씀에 `이 출처의 앱 설치 허용`을 켜고, 시스템 설치 화면에서 업데이트를 승인한다.
 
 APK 업데이트는 앱의 기존 Room 데이터를 삭제하지 않는다. 다만 Android는 보안상 앱이 설치 확인을 무음으로 승인하지 못하므로, 이 방식은 Play Store의 완전 자동 업데이트와 다르다.
 
@@ -337,9 +339,9 @@ npm run deploy
 1. `gradle.properties`의 `VERSION_CODE`를 이전보다 1 이상 올리고 `VERSION_NAME`을 바꾼다.
 2. 같은 개인용 서명 키를 사용해 `assembleRelease`를 빌드한다.
 3. 테스트가 통과한 뒤 코드를 `main`에 push하고 `app/build/outputs/apk/release/app-release.apk`를 [GitHub Releases](https://github.com/blossom0948/gagebu2/releases)에 새 버전으로 첨부한다.
-4. 휴대폰에서 `관리 → 앱 업데이트 → 업데이트 확인`을 눌러 APK 페이지를 열고, 내려받은 파일을 Android 설치 확인 화면에서 승인한다.
+4. 휴대폰에서 `관리 → 앱 업데이트 → 업데이트 확인`을 누르면 앱이 APK를 직접 내려받고 검증한 뒤 Android 설치 화면을 연다. 필요한 경우 모아씀의 앱 설치 허용을 켜고, 시스템 설치 확인을 누른다.
 
-기존 설치본을 유지한 채 업데이트하려면 앱 ID와 서명 키를 바꾸지 않는다. 이 저장소는 Play Console 없는 개인 배포이므로 설치 확인 단계는 자동으로 생략되지 않는다.
+기존 설치본을 유지한 채 업데이트하려면 앱 ID와 서명 키를 바꾸지 않는다. 이 저장소는 Play Console 없는 개인 배포이므로 출처 허용과 설치 확인 단계는 자동으로 생략되지 않는다.
 
 ### 공동 계정/서버 동기화
 

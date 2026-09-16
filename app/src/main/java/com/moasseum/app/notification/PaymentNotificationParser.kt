@@ -1,36 +1,49 @@
 package com.moasseum.app.notification
 
 import com.moasseum.app.data.local.NotificationCandidateEntity
+import com.moasseum.app.domain.TransactionType
 import java.security.MessageDigest
 import java.util.Locale
 
 object PaymentNotificationParser {
-    private val numericAmount = Regex("""(?:₩\s*)?(\d{1,3}(?:,\d{3})+|\d{3,})\s*원?""")
-    private val KoreanAmount = Regex("""(?:₩\s*)?(\d+(?:\.\d+)?)\s*(만|천)\s*원?""")
+    private val numericAmount = Regex("""(\d{1,3}(?:,\d{3})+|\d{3,})""")
+    private val wonAmount = Regex("""(?:[₩￦]\s*)?(\d{1,3}(?:,\d{3})+|\d{3,})\s*(?:원|KRW)""", RegexOption.IGNORE_CASE)
+    private val symbolAmount = Regex("""[₩￦]\s*(\d{1,3}(?:,\d{3})+|\d{3,})""")
+    private val koreanAmount = Regex("""(\d+(?:\.\d+)?)\s*(만|천)\s*원?""")
+    private val markedKoreanAmount = Regex("""(\d+(?:\.\d+)?)\s*(만|천)\s*원""")
+    private val actionAmount = Regex("""(?:승인|결제|출금|입금|환급|송금|이체|사용)\s*(?:금액\s*)?[:：]?\s*(\d{1,3}(?:,\d{3})+)\s*원?(?![-/.]\d)""")
+    private val explicitActionAmount = Regex("""(?:승인|결제|출금|입금|환급|송금|이체|사용)\s*금액\s*[:：]?\s*(\d{3,})(?![\d,])\s*원?(?![-/.]\d)""")
+    private val amountActionTerms = listOf("승인", "결제", "출금", "입금", "송금", "환급", "급여", "월급", "이체", "사용내역", "이용내역", "받았", "충전")
+    private val excludedContexts = listOf(
+        "승인번호", "인증번호", "결제번호", "예약번호", "주문번호", "쿠폰", "할인", "혜택", "적립", "포인트",
+        "결제예정", "납부예정", "출금예정", "결제일", "납부일", "한도", "이벤트", "특가",
+    )
+    private val cancelledTerms = listOf("취소", "cancel", "거절", "실패", "reversed")
 
     fun parse(
         packageName: String,
         title: String,
         body: String,
         postedAt: Long,
+        aiConfirmedType: TransactionType? = null,
     ): NotificationCandidateEntity? {
         val normalized = "$title $body".replace(Regex("\\s+"), " ").trim()
         if (normalized.isBlank()) return null
 
-        val expenseSignal = listOf("승인", "결제", "출금", "사용", "이용", "payment", "purchase", "withdrawal")
+        if (cancelledTerms.any { normalized.contains(it, ignoreCase = true) }) return null
+        val expenseSignal = listOf("승인", "결제", "출금", "사용", "이용", "payment", "purchase", "withdrawal", "보냈", "송금완료", "이체완료")
             .any { normalized.contains(it, ignoreCase = true) }
-        val incomeSignal = listOf("입금", "급여", "월급", "환급", "받았", "deposit", "salary", "refund")
+        val incomeSignal = listOf("입금", "급여", "월급", "환급", "받았", "deposit", "salary", "refund", "송금받", "이체받")
             .any { normalized.contains(it, ignoreCase = true) }
-        val cancelled = listOf("취소", "cancel", "거절", "실패", "reversed")
-            .any { normalized.contains(it, ignoreCase = true) }
-        if ((!expenseSignal && !incomeSignal) || cancelled) return null
+        if (aiConfirmedType == null && (!expenseSignal && !incomeSignal)) return null
+        if (aiConfirmedType == null && excludedContexts.any { normalized.contains(it, ignoreCase = true) }) return null
 
-        val amount = findAmount(normalized) ?: return null
+        val amount = findMarkedAmount(normalized)
+        amount ?: return null
         if (amount <= 0L) return null
 
         val merchant = findMerchant(title, body)
-        if (merchant.isBlank()) return null
-        val type = if (incomeSignal && !expenseSignal) "INCOME" else "EXPENSE"
+        val type = aiConfirmedType?.name ?: if (incomeSignal && !expenseSignal) "INCOME" else "EXPENSE"
         val fingerprint = sha256("$packageName|$title|$body|${postedAt / 60_000L}")
 
         return NotificationCandidateEntity(
@@ -46,33 +59,65 @@ object PaymentNotificationParser {
         )
     }
 
+    fun shouldInspectWithAi(title: String, body: String): Boolean {
+        val normalized = "$title $body".replace(Regex("\\s+"), " ").trim()
+        if (normalized.isBlank() ||
+            cancelledTerms.any { normalized.contains(it, ignoreCase = true) } ||
+            excludedContexts.any { normalized.contains(it, ignoreCase = true) }
+        ) return false
+        val hasAmount = findAmount(normalized) != null
+        if (!hasAmount) return false
+        val hasCurrency = wonAmount.containsMatchIn(normalized) || symbolAmount.containsMatchIn(normalized) || koreanAmount.containsMatchIn(normalized)
+        val hasMoneyContext = amountActionTerms.any { normalized.contains(it, ignoreCase = true) }
+        return hasCurrency || hasMoneyContext
+    }
+
+    private fun findMarkedAmount(text: String): Long? {
+        markedKoreanAmount.find(text)?.let { amountValue(it.groupValues[1], it.groupValues[2])?.let { value -> return value } }
+        wonAmount.find(text)?.groupValues?.getOrNull(1)?.replace(",", "")?.toLongOrNull()?.let { return it }
+        symbolAmount.find(text)?.groupValues?.getOrNull(1)?.replace(",", "")?.toLongOrNull()?.let { return it }
+        explicitActionAmount.find(text)?.groupValues?.getOrNull(1)?.replace(",", "")?.toLongOrNull()?.let { return it }
+        return actionAmount.find(text)?.groupValues?.getOrNull(1)?.replace(",", "")?.toLongOrNull()
+    }
+
     private fun findAmount(text: String): Long? {
-        val korean = KoreanAmount.find(text)
-        if (korean != null) {
-            val base = korean.groupValues[1].toDoubleOrNull() ?: return null
-            return when (korean.groupValues[2]) {
-                "만" -> (base * 10_000).toLong()
-                "천" -> (base * 1_000).toLong()
-                else -> null
-            }
-        }
+        markedKoreanAmount.find(text)?.let { amountValue(it.groupValues[1], it.groupValues[2])?.let { value -> return value } }
+        wonAmount.find(text)?.groupValues?.getOrNull(1)?.replace(",", "")?.toLongOrNull()?.let { return it }
+        symbolAmount.find(text)?.groupValues?.getOrNull(1)?.replace(",", "")?.toLongOrNull()?.let { return it }
+        koreanAmount.find(text)?.let { amountValue(it.groupValues[1], it.groupValues[2])?.let { value -> return value } }
         return numericAmount.find(text)?.groupValues?.getOrNull(1)?.replace(",", "")?.toLongOrNull()
+    }
+
+    private fun amountValue(baseValue: String, unit: String): Long? {
+        val base = baseValue.toDoubleOrNull() ?: return null
+        return when (unit) {
+            "만" -> (base * 10_000).toLong()
+            "천" -> (base * 1_000).toLong()
+            else -> null
+        }
     }
 
     private fun findMerchant(title: String, body: String): String {
         val source = body.ifBlank { title }
         val cleaned = source
             .replace(numericAmount, " ")
-            .replace(KoreanAmount, " ")
+            .replace(koreanAmount, " ")
             .replace(Regex("[|•·:/\\n]"), " ")
         val noise = setOf(
             "승인", "결제", "출금", "사용", "이용", "입금", "완료", "원", "카드", "신용", "체크",
             "잔액", "누적", "일시불", "할부", "취소", "payment", "purchase", "approved", "입금완료",
+            "안내", "알림", "혜택", "쿠폰", "할인", "포인트", "예정", "예정일", "광고",
         )
         return cleaned
             .split(Regex("\\s+|,"))
             .map { it.trim() }
-            .filter { token -> token.length >= 2 && noise.none { word -> token.equals(word, ignoreCase = true) } }
+            .filter { token ->
+                token.length >= 2 &&
+                    noise.none { word -> token.equals(word, ignoreCase = true) } &&
+                    !token.matches(Regex("[0-9*＊•·xX○-]+")) &&
+                    !token.endsWith("님") &&
+                    !token.matches(Regex("[가-힣][*＊•·][가-힣]*님?"))
+            }
             .firstOrNull()
             ?: title.trim().takeIf { it.length >= 2 }?.let { it.replace(Regex("카드|결제"), "").trim() }
             ?: "알림 거래"

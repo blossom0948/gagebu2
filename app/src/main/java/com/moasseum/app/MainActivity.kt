@@ -1,7 +1,10 @@
 package com.moasseum.app
 
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import androidx.activity.ComponentActivity
@@ -11,6 +14,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.PickVisualMediaRequest
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -70,19 +74,27 @@ import com.moasseum.app.data.DEFAULT_CATEGORY_LABELS
 import com.moasseum.app.data.DEFAULT_PAYMENT_METHODS
 import com.moasseum.app.data.ReceiptOcr
 import com.moasseum.app.domain.AiParseState
+import com.moasseum.app.domain.NotificationCandidate
 import com.moasseum.app.domain.SpendingAnalysisState
 import com.moasseum.app.notification.NotificationAccess
+import com.moasseum.app.notification.EXTRA_NOTIFICATION_CANDIDATE_ID
+import com.moasseum.app.notification.PaymentNotificationNotifier
 import com.moasseum.app.update.AppUpdateManager
 import com.moasseum.app.update.UpdateCheckState
-import kotlinx.coroutines.launch
+import java.io.File
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.material3.SnackbarResult
 
 class MainActivity : ComponentActivity() {
+    private val incomingNotificationCandidateId = MutableStateFlow<Long?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        incomingNotificationCandidateId.value = intentCandidateId(intent)
         val application = application as FinanceApplication
         setContent {
             val viewModel: LedgerViewModel = viewModel(
@@ -92,17 +104,24 @@ class MainActivity : ComponentActivity() {
             val reduceMotion by application.preferencesRepository.reduceMotion.collectAsStateWithLifecycle(initialValue = false)
             val categoryLabels by application.preferencesRepository.categoryLabels.collectAsStateWithLifecycle(initialValue = DEFAULT_CATEGORY_LABELS)
             val paymentMethods by application.preferencesRepository.paymentMethods.collectAsStateWithLifecycle(initialValue = DEFAULT_PAYMENT_METHODS)
+            val postNotificationPermissionPromptShown by application.preferencesRepository.notificationPostPermissionPromptShown.collectAsStateWithLifecycle(initialValue = false)
+            val aiNotificationClassificationEnabled by application.preferencesRepository.aiNotificationClassificationEnabled.collectAsStateWithLifecycle(initialValue = false)
+            val candidateIdFromNotification by incomingNotificationCandidateId.collectAsStateWithLifecycle()
             CompositionLocalProvider(LocalCategoryLabels provides categoryLabels) {
                 MoasseumTheme(darkTheme = darkTheme, reduceMotion = reduceMotion) {
                     UpdateSystemBars(darkTheme)
                     MoasseumApp(
                         viewModel = viewModel,
+                        application = application,
                         paymentMethods = paymentMethods,
                         onSavePaymentMethods = { methods ->
                             lifecycleScope.launch { application.preferencesRepository.savePaymentMethods(methods) }
                         },
                         onSaveCategoryLabels = { labels ->
                             lifecycleScope.launch { application.preferencesRepository.saveCategoryLabels(labels) }
+                        },
+                        onSetAiNotificationClassificationEnabled = { enabled ->
+                            lifecycleScope.launch { application.preferencesRepository.setAiNotificationClassificationEnabled(enabled) }
                         },
                         darkTheme = darkTheme,
                         reduceMotion = reduceMotion,
@@ -116,11 +135,29 @@ class MainActivity : ComponentActivity() {
                         onMarkNotificationPromptShown = {
                             lifecycleScope.launch { application.preferencesRepository.setNotificationAccessPromptShown() }
                         },
+                        notificationPostPermissionPromptShown = postNotificationPermissionPromptShown,
+                        onMarkNotificationPostPermissionPromptShown = {
+                            lifecycleScope.launch { application.preferencesRepository.setNotificationPostPermissionPromptShown() }
+                        },
+                        aiNotificationClassificationEnabled = aiNotificationClassificationEnabled,
+                        incomingNotificationCandidateId = candidateIdFromNotification,
+                        onIncomingNotificationCandidateConsumed = { id ->
+                            if (incomingNotificationCandidateId.value == id) incomingNotificationCandidateId.value = null
+                        },
                     )
                 }
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        incomingNotificationCandidateId.value = intentCandidateId(intent)
+    }
+
+    private fun intentCandidateId(intent: Intent?): Long? =
+        intent?.getLongExtra(EXTRA_NOTIFICATION_CANDIDATE_ID, 0L)?.takeIf { it > 0L }
 }
 
 @Composable
@@ -137,15 +174,22 @@ private fun UpdateSystemBars(darkTheme: Boolean) {
 @OptIn(ExperimentalMaterial3Api::class)
 private fun MoasseumApp(
     viewModel: LedgerViewModel,
+    application: FinanceApplication,
     paymentMethods: List<String>,
     onSavePaymentMethods: (List<String>) -> Unit,
     onSaveCategoryLabels: (Map<String, String>) -> Unit,
+    onSetAiNotificationClassificationEnabled: (Boolean) -> Unit,
     darkTheme: Boolean,
     reduceMotion: Boolean,
     onDarkThemeChanged: (Boolean) -> Unit,
     onReduceMotionChanged: (Boolean) -> Unit,
     notificationPromptShown: Boolean,
     onMarkNotificationPromptShown: () -> Unit,
+    notificationPostPermissionPromptShown: Boolean,
+    onMarkNotificationPostPermissionPromptShown: () -> Unit,
+    aiNotificationClassificationEnabled: Boolean,
+    incomingNotificationCandidateId: Long?,
+    onIncomingNotificationCandidateConsumed: (Long) -> Unit,
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -156,12 +200,16 @@ private fun MoasseumApp(
     val recurringRules by viewModel.recurringRules.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var notificationAccessEnabled by remember { mutableStateOf(NotificationAccess.isEnabled(context)) }
+    var appNotificationsEnabled by remember { mutableStateOf(NotificationAccess.areAppNotificationsEnabled(context)) }
     var showNotificationAccessPrompt by remember { mutableStateOf(false) }
+    var notificationCandidatePrompt by remember { mutableStateOf<NotificationCandidate?>(null) }
+    var postNotificationPermissionRequestStarted by rememberSaveable { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, context) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 notificationAccessEnabled = NotificationAccess.isEnabled(context)
+                appNotificationsEnabled = NotificationAccess.areAppNotificationsEnabled(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -169,6 +217,27 @@ private fun MoasseumApp(
     }
     LaunchedEffect(notificationPromptShown, notificationAccessEnabled) {
         showNotificationAccessPrompt = !notificationPromptShown && !notificationAccessEnabled
+    }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        appNotificationsEnabled = NotificationAccess.areAppNotificationsEnabled(context)
+    }
+    LaunchedEffect(notificationAccessEnabled, notificationPostPermissionPromptShown) {
+        val permissionMissing = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        if (notificationAccessEnabled && permissionMissing && !notificationPostPermissionPromptShown && !postNotificationPermissionRequestStarted) {
+            postNotificationPermissionRequestStarted = true
+            onMarkNotificationPostPermissionPromptShown()
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+    LaunchedEffect(application.notificationCandidateEvents) {
+        application.notificationCandidateEvents.collect { candidate -> notificationCandidatePrompt = candidate }
+    }
+    LaunchedEffect(incomingNotificationCandidateId, pendingCandidates) {
+        val id = incomingNotificationCandidateId ?: return@LaunchedEffect
+        val candidate = pendingCandidates.firstOrNull { it.id == id } ?: return@LaunchedEffect
+        notificationCandidatePrompt = candidate
+        onIncomingNotificationCandidateConsumed(id)
     }
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -179,6 +248,8 @@ private fun MoasseumApp(
     var addModeName by rememberSaveable { mutableStateOf(AddMode.MENU.name) }
     var unavailableMessage by rememberSaveable { mutableStateOf<String?>(null) }
     var updateState by remember { mutableStateOf<UpdateCheckState>(UpdateCheckState.Idle) }
+    var downloadedUpdatePath by rememberSaveable { mutableStateOf<String?>(null) }
+    var waitingForInstallPermission by rememberSaveable { mutableStateOf(false) }
     var speechResult by remember { mutableStateOf<String?>(null) }
     val speechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -297,6 +368,58 @@ private fun MoasseumApp(
         aiState = AiParseState.Idle
     }
 
+    fun continueWithDownloadedUpdate() {
+        val apkFile = downloadedUpdatePath?.let(::File)
+        if (apkFile == null) {
+            updateState = UpdateCheckState.Error("다운로드된 업데이트 파일이 없어요. 업데이트를 다시 확인해 주세요.")
+            return
+        }
+        if (!AppUpdateManager.canInstallFromThisApp(context)) {
+            waitingForInstallPermission = true
+            updateState = UpdateCheckState.WaitingForInstallPermission
+            runCatching { AppUpdateManager.openInstallPermissionSettings(context) }
+                .onFailure { error -> updateState = UpdateCheckState.Error(error.message ?: "설치 권한 설정을 열지 못했어요.") }
+            return
+        }
+        waitingForInstallPermission = false
+        updateState = UpdateCheckState.OpeningInstaller
+        AppUpdateManager.launchInstaller(context, apkFile).fold(
+            onSuccess = { updateState = UpdateCheckState.InstallerOpened },
+            onFailure = { error -> updateState = UpdateCheckState.Error(error.message ?: "Android 설치 화면을 열지 못했어요.") },
+        )
+    }
+
+    fun downloadAndInstallUpdate(release: com.moasseum.app.update.AppRelease) {
+        updateState = UpdateCheckState.Downloading(0)
+        coroutineScope.launch {
+            val result = AppUpdateManager.downloadApk(context, release) { progress ->
+                coroutineScope.launch { updateState = UpdateCheckState.Downloading(progress) }
+            }
+            result.fold(
+                onSuccess = { file ->
+                    downloadedUpdatePath = file.absolutePath
+                    continueWithDownloadedUpdate()
+                },
+                onFailure = { error -> updateState = UpdateCheckState.Error(error.message ?: "업데이트 APK를 다운로드하지 못했어요.") },
+            )
+        }
+    }
+
+    DisposableEffect(lifecycleOwner, waitingForInstallPermission, downloadedUpdatePath) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && waitingForInstallPermission) {
+                waitingForInstallPermission = false
+                if (AppUpdateManager.canInstallFromThisApp(context)) {
+                    continueWithDownloadedUpdate()
+                } else {
+                    updateState = UpdateCheckState.WaitingForInstallPermission
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     BackHandler(enabled = addOpen) { closeAdd() }
 
     Scaffold(
@@ -378,6 +501,16 @@ private fun MoasseumApp(
                         paymentMethods = paymentMethods,
                         onSavePaymentMethods = onSavePaymentMethods,
                         onSaveCategoryLabels = onSaveCategoryLabels,
+                        onDeleteCustomCategory = { key, labels ->
+                            coroutineScope.launch {
+                                runCatching {
+                                    application.financeRepository.reassignDeletedCustomCategory(key)
+                                    application.preferencesRepository.saveCategoryLabels(labels)
+                                }.onFailure { error ->
+                                    snackbarHostState.showSnackbar(error.message ?: "카테고리를 삭제하지 못했어요.")
+                                }
+                            }
+                        },
                         recurringRules = recurringRules,
                         onAddRecurringRule = viewModel::addRecurringRule,
                         onSetRecurringRuleActive = viewModel::setRecurringRuleActive,
@@ -398,6 +531,9 @@ private fun MoasseumApp(
                         onReduceMotionChanged = onReduceMotionChanged,
                         onUpdateBudget = viewModel::updateBudget,
                         notificationAccessEnabled = notificationAccessEnabled,
+                        appNotificationsEnabled = appNotificationsEnabled,
+                        aiNotificationClassificationEnabled = aiNotificationClassificationEnabled,
+                        onSetAiNotificationClassificationEnabled = onSetAiNotificationClassificationEnabled,
                         pendingCandidates = pendingCandidates,
                         updateState = updateState,
                         onCheckForUpdate = {
@@ -415,27 +551,22 @@ private fun MoasseumApp(
                                     }
                             }
                         },
-                        onInstallUpdate = { release ->
-                            updateState = UpdateCheckState.OpeningDownloadPage
-                            AppUpdateManager.openReleasePage(context, release)
-                                .onSuccess {
-                                    updateState = UpdateCheckState.DownloadPageOpened
-                                }
-                                .onFailure { error ->
-                                    updateState = UpdateCheckState.Error(
-                                        error.message ?: "다운로드 페이지를 열지 못했어요.",
-                                    )
-                                }
-                        },
+                        onInstallUpdate = ::downloadAndInstallUpdate,
+                        onContinueInstall = ::continueWithDownloadedUpdate,
                         onOpenNotificationSettings = {
                             NotificationAccess.openSettings(context)
                         },
+                        onOpenAppNotificationSettings = {
+                            NotificationAccess.openAppNotificationSettings(context)
+                        },
                         onAcceptNotificationCandidate = { id ->
                             viewModel.acceptNotificationCandidate(id)
+                            PaymentNotificationNotifier.cancel(context, id)
                             coroutineScope.launch { snackbarHostState.showSnackbar("알림을 거래로 저장했어요") }
                         },
                         onDismissNotificationCandidate = { id ->
                             viewModel.dismissNotificationCandidate(id)
+                            PaymentNotificationNotifier.cancel(context, id)
                             coroutineScope.launch { snackbarHostState.showSnackbar("알림 후보를 무시했어요") }
                         },
                     )
@@ -499,6 +630,28 @@ private fun MoasseumApp(
         }
     }
 
+    notificationCandidatePrompt?.let { candidate ->
+        val direction = if (candidate.type == com.moasseum.app.domain.TransactionType.INCOME) "입금" else "지출"
+        AlertDialog(
+            onDismissRequest = { notificationCandidatePrompt = null },
+            title = { Text("알림에서 거래를 인식했어요") },
+            text = {
+                Text("인식되었습니다. 추가할까요?\n$direction · ${candidate.merchant} · ${com.moasseum.app.domain.formatWon(candidate.amount)}")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    notificationCandidatePrompt = null
+                    viewModel.acceptNotificationCandidate(candidate.id)
+                    PaymentNotificationNotifier.cancel(context, candidate.id)
+                    coroutineScope.launch { snackbarHostState.showSnackbar("인식한 거래를 추가했어요") }
+                }) { Text("추가") }
+            },
+            dismissButton = {
+                TextButton(onClick = { notificationCandidatePrompt = null }) { Text("나중에") }
+            },
+        )
+    }
+
     if (showNotificationAccessPrompt) {
         AlertDialog(
             onDismissRequest = {
@@ -507,7 +660,7 @@ private fun MoasseumApp(
             },
             title = { Text("결제 알림을 자동으로 읽을까요?") },
             text = {
-                Text("카드·은행 결제 알림을 기기 안에서 읽어 거래 후보로 모아드려요. 자동 저장하지 않고 확인한 뒤에만 가계부에 넣습니다.")
+                Text("카드·은행 결제 알림을 기기 안에서 읽어 후보로 모아요. 접근을 허용한 뒤에는 인식 결과를 알리기 위한 ‘모아씀 알림’ 권한도 한 번 확인해 주세요. 거래는 확인한 뒤에만 저장합니다.")
             },
             confirmButton = {
                 TextButton(onClick = {

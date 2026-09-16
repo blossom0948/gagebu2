@@ -17,6 +17,11 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+data class NotificationAiClassification(
+    val isFinancialTransaction: Boolean,
+    val transactionType: TransactionType?,
+)
+
 class AiClient(
     private val baseUrl: String = BuildConfig.AI_API_BASE_URL,
     private val bearerTokenProvider: () -> String? = { null },
@@ -38,6 +43,14 @@ class AiClient(
             runCatching {
                 require(baseUrl.isNotBlank()) { "AI 분석 서버 주소가 설정되지 않았어요." }
                 analyzeWithServer(state)
+            }
+        }
+
+    suspend fun classifyNotification(title: String, text: String): Result<NotificationAiClassification> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                require(baseUrl.isNotBlank()) { "AI 알림 판별 서버 주소가 설정되지 않았어요." }
+                classifyNotificationWithServer(title, text)
             }
         }
 
@@ -134,6 +147,50 @@ class AiClient(
                 summary = summary,
                 observations = root.optJSONArray("observations").toStringList(),
                 suggestions = root.optJSONArray("suggestions").toStringList(),
+            )
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun classifyNotificationWithServer(title: String, text: String): NotificationAiClassification {
+        require(title.isNotBlank() && title.length <= 200) { "알림 제목을 확인해 주세요." }
+        require(text.isNotBlank() && text.length <= 2_000) { "알림 내용을 확인해 주세요." }
+        val endpoint = "${baseUrl.trimEnd('/')}/v1/classify-notification"
+        val connection = (URL(endpoint).openConnection() as? HttpURLConnection)
+            ?: throw IOException("AI 서버 주소를 확인해 주세요.")
+        if (connection.url.protocol != "https") {
+            connection.disconnect()
+            throw IOException("AI 서버는 HTTPS 주소만 사용할 수 있어요.")
+        }
+        return try {
+            connection.requestMethod = "POST"
+            connection.connectTimeout = 8_000
+            connection.readTimeout = 12_000
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            bearerTokenProvider()?.takeIf(String::isNotBlank)?.let { token ->
+                connection.setRequestProperty("Authorization", "Bearer $token")
+            }
+            val request = JSONObject().apply {
+                put("title", title.take(200))
+                put("text", text.take(2_000))
+            }
+            connection.outputStream.use { output -> output.write(request.toString().toByteArray(Charsets.UTF_8)) }
+            val responseCode = connection.responseCode
+            val stream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
+            val responseText = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (responseCode !in 200..299) throw IOException("AI 알림 판별 응답 오류($responseCode)")
+            val root = JSONObject(responseText)
+            val isFinancialTransaction = root.optBoolean("isFinancialTransaction", false)
+            val transactionType = when (root.optString("type")) {
+                TransactionType.EXPENSE.name -> TransactionType.EXPENSE
+                TransactionType.INCOME.name -> TransactionType.INCOME
+                else -> null
+            }
+            NotificationAiClassification(
+                isFinancialTransaction = isFinancialTransaction && transactionType != null,
+                transactionType = transactionType,
             )
         } finally {
             connection.disconnect()

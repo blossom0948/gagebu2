@@ -177,4 +177,20 @@ interface FinanceDao {
 
     @Query("UPDATE notification_candidates SET status = :status WHERE id = :id")
     suspend fun updateNotificationCandidateStatus(id: Long, status: String)
+
+    @Query("UPDATE transactions SET categoryKey = :replacementKey, updatedAt = :updatedAt WHERE categoryKey = :deletedKey")
+    suspend fun reassignTransactionCategory(deletedKey: String, replacementKey: String, updatedAt: Long)
+
+    @Query("UPDATE recurring_transactions SET categoryKey = :replacementKey, updatedAt = :updatedAt WHERE categoryKey = :deletedKey")
+    suspend fun reassignRecurringCategory(deletedKey: String, replacementKey: String, updatedAt: Long)
+
+    @Query("UPDATE notification_candidates SET categoryKey = :replacementKey WHERE categoryKey = :deletedKey")
+    suspend fun reassignNotificationCandidateCategory(deletedKey: String, replacementKey: String)
+
+    @Transaction
+    suspend fun deleteCustomCategory(deletedKey: String, replacementKey: String, updatedAt: Long) {
+        reassignTransactionCategory(deletedKey, replacementKey, updatedAt)
+        reassignRecurringCategory(deletedKey, replacementKey, updatedAt)
+        reassignNotificationCandidateCategory(deletedKey, replacementKey)
+    }
 }

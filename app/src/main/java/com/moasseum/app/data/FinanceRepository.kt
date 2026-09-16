@@ -153,9 +153,8 @@ class FinanceRepository(
         return inserted
     }
 
-    suspend fun saveNotificationCandidate(candidate: NotificationCandidateEntity) {
-        dao.insertNotificationCandidate(candidate)
-    }
+    suspend fun saveNotificationCandidate(candidate: NotificationCandidateEntity): Long? =
+        dao.insertNotificationCandidate(candidate).takeIf { it > 0L }
 
     suspend fun acceptNotificationCandidate(id: Long) {
         val candidate = dao.getNotificationCandidate(id) ?: return
@@ -181,6 +180,11 @@ class FinanceRepository(
     suspend fun clearAllLocalRecords() {
         dao.clearAllLocalRecords()
         ensureBudget(YearMonth.now().toString())
+    }
+
+    suspend fun reassignDeletedCustomCategory(categoryKey: String) {
+        require(categoryKey.matches(Regex("CUSTOM_[A-F0-9]{12}"))) { "기본 카테고리는 삭제할 수 없어요." }
+        dao.deleteCustomCategory(categoryKey, "OTHER", System.currentTimeMillis())
     }
 
     suspend fun addRecurringRule(

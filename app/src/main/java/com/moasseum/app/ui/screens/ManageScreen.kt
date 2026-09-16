@@ -60,10 +60,13 @@ import com.moasseum.app.domain.formatWon
 import com.moasseum.app.ui.components.FinanceCard
 import com.moasseum.app.ui.components.CategorySpecs
 import com.moasseum.app.ui.components.LocalCategoryLabels
+import com.moasseum.app.ui.components.allCategorySpecs
 import com.moasseum.app.ui.components.categoryLabel
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import com.moasseum.app.update.AppRelease
 import com.moasseum.app.update.UpdateCheckState
+import java.util.Locale
+import java.util.UUID
 
 @Composable
 fun ManageScreen(
@@ -71,6 +74,7 @@ fun ManageScreen(
     paymentMethods: List<String>,
     onSavePaymentMethods: (List<String>) -> Unit,
     onSaveCategoryLabels: (Map<String, String>) -> Unit,
+    onDeleteCustomCategory: (String, Map<String, String>) -> Unit,
     onClearLocalData: () -> Unit,
     recurringRules: List<RecurringRule>,
     onAddRecurringRule: (String, TransactionType, String, String, String, String, String) -> Boolean,
@@ -84,17 +88,23 @@ fun ManageScreen(
     notificationAccessEnabled: Boolean,
     pendingCandidates: List<NotificationCandidate>,
     onOpenNotificationSettings: () -> Unit,
+    onOpenAppNotificationSettings: () -> Unit,
     onAcceptNotificationCandidate: (Long) -> Unit,
     onDismissNotificationCandidate: (Long) -> Unit,
+    appNotificationsEnabled: Boolean,
+    aiNotificationClassificationEnabled: Boolean,
+    onSetAiNotificationClassificationEnabled: (Boolean) -> Unit,
     updateState: UpdateCheckState,
     onCheckForUpdate: () -> Unit,
     onInstallUpdate: (AppRelease) -> Unit,
+    onContinueInstall: () -> Unit,
 ) {
     var showBudgetDialog by rememberSaveable { mutableStateOf(false) }
     var showCategoryDialog by rememberSaveable { mutableStateOf(false) }
     var showPaymentMethodsDialog by rememberSaveable { mutableStateOf(false) }
     var showPrivacyDialog by rememberSaveable { mutableStateOf(false) }
     var showDeleteConfirmation by rememberSaveable { mutableStateOf(false) }
+    var showAiNotificationConsent by rememberSaveable { mutableStateOf(false) }
     var showRecurringDialog by rememberSaveable { mutableStateOf(false) }
     var showCreateRecurringDialog by rememberSaveable { mutableStateOf(false) }
     val colors = LocalFinanceColors.current
@@ -126,7 +136,7 @@ fun ManageScreen(
         item { ManageSectionTitle("가계부 구성") }
         item {
             FinanceCard {
-                ManageRow(Icons.Rounded.Category, "카테고리", "이름과 색상 기준을 관리 · 기본 7개", onClick = { showCategoryDialog = true })
+                ManageRow(Icons.Rounded.Category, "카테고리", "기본 7개 이름 변경 · 내 카테고리 추가", onClick = { showCategoryDialog = true })
                 HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                 ManageRow(Icons.Rounded.AccountBalance, "결제수단", "${paymentMethods.joinToString(" · ")}", onClick = { showPaymentMethodsDialog = true })
                 HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
@@ -155,8 +165,26 @@ fun ManageScreen(
                 ManageRow(
                     Icons.Rounded.NotificationsActive,
                     "결제 알림 감지",
-                    if (notificationAccessEnabled) "허용됨 · 후보 ${pendingCandidates.size}건" else "권한을 허용하면 결제 후보를 읽어요",
+                    if (notificationAccessEnabled) "읽기 허용됨 · 후보 ${pendingCandidates.size}건" else "Samsung 설정에서 알림 접근을 허용해요",
                     onClick = onOpenNotificationSettings,
+                )
+                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                ManageRow(
+                    Icons.Rounded.NotificationsActive,
+                    "인식 알림 표시",
+                    if (appNotificationsEnabled) "허용됨 · 감지 결과를 바로 알려드려요" else "앱 알림 권한을 켜야 감지 즉시 알려드려요",
+                    onClick = onOpenAppNotificationSettings,
+                )
+                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                SettingSwitchRow(
+                    icon = Icons.Rounded.Security,
+                    title = "AI 알림 오탐 줄이기",
+                    message = if (aiNotificationClassificationEnabled) "금융 단서가 있는 알림을 AI가 판별해요." else "선택 알림의 금융 거래 여부를 AI가 판별해요.",
+                    checked = aiNotificationClassificationEnabled,
+                    onCheckedChange = { enabled ->
+                        if (enabled) showAiNotificationConsent = true
+                        else onSetAiNotificationClassificationEnabled(false)
+                    },
                 )
                 HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                 ManageRow(Icons.Rounded.Security, "개인정보와 데이터", "기기 저장 · AI 전송 안내 · 데이터 삭제", onClick = { showPrivacyDialog = true })
@@ -176,6 +204,7 @@ fun ManageScreen(
                 updateState = updateState,
                 onCheckForUpdate = onCheckForUpdate,
                 onInstallUpdate = onInstallUpdate,
+                onContinueInstall = onContinueInstall,
             )
         }
         item {
@@ -206,6 +235,7 @@ fun ManageScreen(
                 onSaveCategoryLabels(labels)
                 showCategoryDialog = false
             },
+            onRemove = onDeleteCustomCategory,
         )
     }
     if (showPaymentMethodsDialog) {
@@ -248,6 +278,24 @@ fun ManageScreen(
             dismissButton = { TextButton(onClick = { showDeleteConfirmation = false }) { Text("취소") } },
         )
     }
+    if (showAiNotificationConsent) {
+        AlertDialog(
+            onDismissRequest = { showAiNotificationConsent = false },
+            title = { Text("AI 알림 판별을 켤까요?") },
+            text = {
+                Text("먼저 기기 안에서 금액과 금융 단서가 함께 있는 알림만 골라요. 선택된 알림의 제목과 내용은 Cloudflare AI Worker를 거쳐 Gemini로 전송되어 실제 입금·지출인지 판별됩니다. 이 기능은 AI 사용량을 쓸 수 있고, 원문 알림은 앱 거래로 자동 저장하지 않아요.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showAiNotificationConsent = false
+                    onSetAiNotificationClassificationEnabled(true)
+                }) { Text("동의하고 켜기") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAiNotificationConsent = false }) { Text("취소") }
+            },
+        )
+    }
     if (showRecurringDialog) {
         RecurringRulesDialog(
             rules = recurringRules,
@@ -280,16 +328,21 @@ fun ManageScreen(
 private fun CategoryNamesDialog(
     onDismiss: () -> Unit,
     onSave: (Map<String, String>) -> Unit,
+    onRemove: (String, Map<String, String>) -> Unit,
 ) {
     val currentLabels = LocalCategoryLabels.current
-    val initialNames = CategorySpecs.associate { spec -> spec.key to (currentLabels[spec.key] ?: spec.label) }
+    val colors = LocalFinanceColors.current
+    val initialNames = currentLabels
     var names by remember(initialNames) { mutableStateOf(initialNames) }
+    var newCategoryName by rememberSaveable { mutableStateOf("") }
+    var categoryToRemove by remember { mutableStateOf<String?>(null) }
+    var errorMessage by rememberSaveable { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("카테고리 이름") },
+        title = { Text("카테고리 관리") },
         text = {
             Column(
-                modifier = Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
+                modifier = Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 CategorySpecs.forEach { spec ->
@@ -302,13 +355,75 @@ private fun CategoryNamesDialog(
                         singleLine = true,
                     )
                 }
+                if (names.keys.any { it.startsWith("CUSTOM_") }) {
+                    Text("내 카테고리", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
+                    names.filterKeys { it.startsWith("CUSTOM_") }.forEach { (key, label) ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = label,
+                                onValueChange = { value -> names = names + (key to value.take(16)) },
+                                modifier = Modifier.weight(1f),
+                                label = { Text("카테고리 이름") },
+                                leadingIcon = { Icon(Icons.Rounded.Category, contentDescription = null, tint = colors.accent) },
+                                singleLine = true,
+                            )
+                            IconButton(onClick = { categoryToRemove = key }) {
+                                Icon(Icons.Rounded.DeleteOutline, contentDescription = "${label} 삭제", tint = colors.expense)
+                            }
+                        }
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = newCategoryName,
+                        onValueChange = { newCategoryName = it.take(16); errorMessage = null },
+                        modifier = Modifier.weight(1f),
+                        label = { Text("새 카테고리") },
+                        singleLine = true,
+                    )
+                    TextButton(onClick = {
+                        val label = newCategoryName.trim()
+                        when {
+                            label.isBlank() -> errorMessage = "이름을 입력해 주세요."
+                            names.values.any { it.trim().lowercase(Locale.ROOT) == label.lowercase(Locale.ROOT) } -> errorMessage = "이미 있는 이름이에요."
+                            names.keys.count { it.startsWith("CUSTOM_") } >= 20 -> errorMessage = "내 카테고리는 최대 20개까지 만들 수 있어요."
+                            else -> {
+                                val key = "CUSTOM_${UUID.randomUUID().toString().replace("-", "").take(12).uppercase(Locale.ROOT)}"
+                                names = names + (key to label)
+                                newCategoryName = ""
+                                errorMessage = null
+                            }
+                        }
+                    }) { Text("추가", color = colors.accent) }
+                }
+                errorMessage?.let { Text(it, color = colors.expense, style = MaterialTheme.typography.labelMedium) }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(names) }, enabled = names.values.all(String::isNotBlank)) { Text("저장") }
+            TextButton(
+                onClick = { onSave(names) },
+                enabled = names.values.all(String::isNotBlank) && names.values.map { it.lowercase(Locale.ROOT) }.distinct().size == names.size,
+            ) { Text("저장") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
     )
+    categoryToRemove?.let { key ->
+        val label = names[key].orEmpty()
+        AlertDialog(
+            onDismissRequest = { categoryToRemove = null },
+            title = { Text("‘$label’ 카테고리를 삭제할까요?") },
+            text = { Text("기존 거래, 반복 규칙, 알림 후보는 ‘기타’로 옮겨져요.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val updated = names - key
+                    names = updated
+                    categoryToRemove = null
+                    onRemove(key, updated)
+                }) { Text("삭제", color = colors.expense) }
+            },
+            dismissButton = { TextButton(onClick = { categoryToRemove = null }) { Text("취소") } },
+        )
+    }
 }
 
 @Composable
@@ -432,7 +547,7 @@ private fun RecurringRuleDialog(
                 OutlinedTextField(value = merchant, onValueChange = { merchant = it; showError = false }, label = { Text("가맹점 또는 이름") }, singleLine = true)
                 OutlinedTextField(value = day, onValueChange = { day = it.filter(Char::isDigit).take(2); showError = false }, label = { Text("매월 며칠 (1~31)") }, suffix = { Text("일") }, singleLine = true)
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    CategorySpecs.forEach { spec ->
+                    allCategorySpecs().forEach { spec ->
                         FilterChip(categoryKey == spec.key, { categoryKey = spec.key }, label = { Text(categoryLabel(spec.key)) })
                     }
                 }
@@ -459,6 +574,7 @@ private fun AppUpdateCard(
     updateState: UpdateCheckState,
     onCheckForUpdate: () -> Unit,
     onInstallUpdate: (AppRelease) -> Unit,
+    onContinueInstall: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
     FinanceCard {
@@ -470,12 +586,14 @@ private fun AppUpdateCard(
                     Text("앱 업데이트", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(
                         when (updateState) {
-                            UpdateCheckState.Idle -> "GitHub에서 새 버전을 직접 확인해요."
+                            UpdateCheckState.Idle -> "새 버전을 확인하고 앱 안에서 내려받아요."
                             UpdateCheckState.Checking -> "새 버전을 확인하고 있어요…"
                             UpdateCheckState.UpToDate -> "현재 최신 버전이에요."
                             is UpdateCheckState.Available -> "${updateState.release.tagName} 업데이트가 있어요."
-                            UpdateCheckState.OpeningDownloadPage -> "GitHub 다운로드 페이지를 여는 중…"
-                            UpdateCheckState.DownloadPageOpened -> "GitHub에서 APK를 내려받아 설치해 주세요."
+                            is UpdateCheckState.Downloading -> "앱 안에서 APK 다운로드 중 · ${updateState.progressPercent}%"
+                            UpdateCheckState.WaitingForInstallPermission -> "이 앱의 ‘알 수 없는 앱 설치’를 허용하고 돌아오면 이어집니다."
+                            UpdateCheckState.OpeningInstaller -> "Android 설치 확인 화면을 여는 중…"
+                            UpdateCheckState.InstallerOpened -> "Android 설치 화면에서 업데이트를 승인해 주세요."
                             is UpdateCheckState.Error -> updateState.message
                         },
                         color = colors.textSecondary,
@@ -485,12 +603,23 @@ private fun AppUpdateCard(
             }
             when (updateState) {
                 UpdateCheckState.Checking,
-                UpdateCheckState.OpeningDownloadPage,
+                is UpdateCheckState.Downloading,
+                UpdateCheckState.OpeningInstaller,
                 -> Unit
                 is UpdateCheckState.Available -> {
                     val release = updateState.release
                     TextButton(onClick = { onInstallUpdate(release) }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                        Text("다운로드 페이지 열기", color = colors.accent)
+                        Text("앱에서 다운로드·설치", color = colors.accent)
+                    }
+                }
+                UpdateCheckState.WaitingForInstallPermission -> {
+                    TextButton(onClick = onContinueInstall, modifier = Modifier.padding(horizontal = 8.dp)) {
+                        Text("설정에서 허용", color = colors.accent)
+                    }
+                }
+                UpdateCheckState.InstallerOpened -> {
+                    TextButton(onClick = onContinueInstall, modifier = Modifier.padding(horizontal = 8.dp)) {
+                        Text("설치 화면 다시 열기", color = colors.accent)
                     }
                 }
                 else -> {

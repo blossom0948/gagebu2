@@ -36,4 +36,23 @@ object NotificationAccess {
             context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }
     }
+
+    fun areAppNotificationsEnabled(context: Context): Boolean =
+        PaymentNotificationNotifier.areAppNotificationsEnabled(context)
+
+    fun openAppNotificationSettings(context: Context) {
+        val appSettings = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            context.startActivity(appSettings)
+        } catch (_: ActivityNotFoundException) {
+            val details = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = android.net.Uri.parse("package:${context.packageName}")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(details)
+        }
+    }
 }

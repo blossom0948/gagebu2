@@ -354,7 +354,7 @@ private fun CandidateReview(
             Text("신뢰도 ${((candidate.amountConfidence + candidate.dateConfidence + candidate.categoryConfidence) / 3 * 100).toInt()}%", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         }
         Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            CategorySpecs.forEach { spec ->
+            allCategorySpecs().forEach { spec ->
                 FilterChip(
                     selected = categoryKey == spec.key,
                     onClick = { onCategoryChange(spec.key) },
@@ -493,7 +493,7 @@ private fun DirectTransactionForm(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(7.dp),
             ) {
-                CategorySpecs.forEach { spec ->
+                allCategorySpecs().forEach { spec ->
                     FilterChip(
                         selected = categoryKey == spec.key,
                         onClick = { categoryKey = spec.key },

@@ -59,7 +59,7 @@ import com.moasseum.app.domain.formatDate
 import com.moasseum.app.domain.formatMonth
 import com.moasseum.app.domain.formatWon
 import com.moasseum.app.ui.components.AmountText
-import com.moasseum.app.ui.components.CategorySpecs
+import com.moasseum.app.ui.components.allCategorySpecs
 import com.moasseum.app.ui.components.EmptyState
 import com.moasseum.app.ui.components.FinanceCard
 import com.moasseum.app.ui.components.TransactionRow
@@ -158,7 +158,7 @@ fun HistoryScreen(
                 ) {
                     Text("전체", modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp), style = MaterialTheme.typography.labelMedium)
                 }
-                CategorySpecs.forEach { spec ->
+                allCategorySpecs().forEach { spec ->
                     Surface(
                         onClick = { categoryFilterKey = spec.key },
                         color = if (categoryFilterKey == spec.key) LocalFinanceColors.current.accent else LocalFinanceColors.current.surfaceRaised,
@@ -505,7 +505,7 @@ private fun TransactionEditDialog(
                     isError = showError && date == null,
                 )
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    CategorySpecs.forEach { spec ->
+                    allCategorySpecs().forEach { spec ->
                         FilterChip(
                             selected = categoryKey == spec.key,
                             onClick = { categoryKey = spec.key },
