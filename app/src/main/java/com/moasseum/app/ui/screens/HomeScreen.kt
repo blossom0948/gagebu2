@@ -31,6 +31,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.moasseum.app.domain.LedgerUiState
 import com.moasseum.app.domain.SpendingAnalysisState
+import com.moasseum.app.domain.SpendingQuestionState
 import com.moasseum.app.domain.formatLongDate
 import com.moasseum.app.domain.formatMonth
 import com.moasseum.app.domain.formatWon
@@ -69,10 +71,15 @@ fun HomeScreen(
     uiState: LedgerUiState,
     aiAnalysisState: SpendingAnalysisState,
     onGenerateAiAnalysis: () -> Unit,
+    aiQuestionState: SpendingQuestionState,
+    onAskAiQuestion: (String) -> Unit,
+    categoryBudgets: Map<String, Long>,
     onExportCsv: () -> Unit,
     onAdd: (AddMode) -> Unit,
     onOpenManage: () -> Unit,
     onOpenHistory: () -> Unit,
+    onOpenHelp: () -> Unit,
+    onOpenNotifications: () -> Unit,
 ) {
     var selectedTabName by rememberSaveable { mutableStateOf(HomeTab.SUMMARY.name) }
     val selectedTab = HomeTab.valueOf(selectedTabName)
@@ -82,7 +89,13 @@ fun HomeScreen(
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item { HomeHeader(onOpenManage = onOpenManage) }
+        item {
+            HomeHeader(
+                onOpenManage = onOpenManage,
+                onOpenHelp = onOpenHelp,
+                onOpenNotifications = onOpenNotifications,
+            )
+        }
         item { QuickCaptureCard(onAdd = onAdd) }
         item {
             HomeTabs(
@@ -95,18 +108,30 @@ fun HomeScreen(
                 item { MonthlySummaryCard(uiState, onOpenManage) }
                 item { TodayAndWeekCard(uiState) }
                 item { DailyInsightCard(uiState) }
-                item { CategorySpendingCard(uiState, onOpenHistory = onOpenHistory) }
+                item { CategorySpendingCard(uiState, categoryBudgets, onOpenHistory = onOpenHistory) }
             }
 
             HomeTab.INSIGHTS -> item { InsightsContent(uiState) }
             HomeTab.REPORT -> item { ReportContent(uiState, onExportCsv) }
-            HomeTab.AI -> item { AiAnalysisContent(uiState, aiAnalysisState, onGenerateAiAnalysis) }
+            HomeTab.AI -> item {
+                AiAnalysisContent(
+                    uiState = uiState,
+                    state = aiAnalysisState,
+                    onGenerate = onGenerateAiAnalysis,
+                    questionState = aiQuestionState,
+                    onAskQuestion = onAskAiQuestion,
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun HomeHeader(onOpenManage: () -> Unit) {
+private fun HomeHeader(
+    onOpenManage: () -> Unit,
+    onOpenHelp: () -> Unit,
+    onOpenNotifications: () -> Unit,
+) {
     val colors = LocalFinanceColors.current
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -138,9 +163,9 @@ private fun HomeHeader(onOpenManage: () -> Unit) {
                 style = MaterialTheme.typography.labelMedium,
             )
         }
-        HeaderIconButton(Icons.Rounded.HelpOutline, "도움말")
+        HeaderIconButton(Icons.Rounded.HelpOutline, "도움말", onClick = onOpenHelp)
         Spacer(Modifier.width(4.dp))
-        HeaderIconButton(Icons.Rounded.NotificationsNone, "알림")
+        HeaderIconButton(Icons.Rounded.NotificationsNone, "알림", onClick = onOpenNotifications)
         Spacer(Modifier.width(4.dp))
         HeaderIconButton(Icons.Rounded.Settings, "관리 설정", onOpenManage)
     }
@@ -389,7 +414,7 @@ private fun DailyInsightCard(uiState: LedgerUiState) {
 }
 
 @Composable
-private fun CategorySpendingCard(uiState: LedgerUiState, onOpenHistory: () -> Unit) {
+private fun CategorySpendingCard(uiState: LedgerUiState, categoryBudgets: Map<String, Long>, onOpenHistory: () -> Unit) {
     val colors = LocalFinanceColors.current
     Column(modifier = Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -410,6 +435,15 @@ private fun CategorySpendingCard(uiState: LedgerUiState, onOpenHistory: () -> Un
             val maxValue = uiState.categoryTotals.maxOf { it.total }.coerceAtLeast(1L)
             uiState.categoryTotals.take(2).forEach { total ->
                 CategoryBar(total.key, total.total, maxValue, uiState.expenseTotal)
+                categoryBudgets[total.key]?.let { budget ->
+                    val used = (total.total * 100L / budget.coerceAtLeast(1L)).coerceAtMost(999L)
+                    Text(
+                        "${categoryLabel(total.key)} 예산 ${formatWon(budget)} 중 ${used}% 사용",
+                        color = if (used > 90L) colors.expense else colors.textSecondary,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(start = 24.dp),
+                    )
+                }
             }
         }
     }
@@ -585,48 +619,112 @@ private fun AiAnalysisContent(
     uiState: LedgerUiState,
     state: SpendingAnalysisState,
     onGenerate: () -> Unit,
+    questionState: SpendingQuestionState,
+    onAskQuestion: (String) -> Unit,
 ) {
     val colors = LocalFinanceColors.current
-    FinanceCard(highlighted = true) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(26.dp))
-            Text("${com.moasseum.app.domain.formatMonth(uiState.month)} AI 소비 분석", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text(
-                "분석을 누르면 월 합계와 예산, 카테고리별 합계만 AI 서버로 전송돼요. 가맹점 이름·메모·영수증 사진은 보내지 않습니다.",
-                color = colors.textSecondary,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            when (state) {
-                SpendingAnalysisState.Idle -> {
-                    if (uiState.expenseCount == 0) Text("이 달 거래를 기록하면 분석할 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
-                    else AnalysisButton(onGenerate, enabled = true, label = "AI 분석 만들기")
-                }
-                SpendingAnalysisState.Loading -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    Text("집계된 소비 데이터를 분석하고 있어요…", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
-                }
-                is SpendingAnalysisState.Error -> {
-                    Text(state.message, color = colors.expense, style = MaterialTheme.typography.bodyMedium)
-                    AnalysisButton(onGenerate, enabled = uiState.expenseCount > 0, label = "다시 시도")
-                }
-                is SpendingAnalysisState.Success -> {
-                    if (state.month != uiState.month) {
-                        Text("분석 기준 월이 바뀌었어요. 새로 분석해 주세요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
-                        AnalysisButton(onGenerate, enabled = uiState.expenseCount > 0, label = "이번 달 다시 분석")
-                    } else {
-                        Text(state.analysis.summary, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                        if (state.analysis.observations.isNotEmpty()) {
-                            Text("살펴볼 점", color = colors.accent, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                            state.analysis.observations.forEach { Text("• $it", color = colors.textPrimary, style = MaterialTheme.typography.bodyMedium) }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        FinanceCard(highlighted = true) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(26.dp))
+                Text("${com.moasseum.app.domain.formatMonth(uiState.month)} AI 소비 분석", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(
+                    "분석을 누르면 월 합계와 예산, 카테고리별 합계만 AI 서버로 전송돼요. 가맹점 이름·메모·영수증 사진은 보내지 않습니다.",
+                    color = colors.textSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                when (state) {
+                    SpendingAnalysisState.Idle -> {
+                        if (uiState.expenseCount == 0) Text("이 달 거래를 기록하면 분석할 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                        else AnalysisButton(onGenerate, enabled = true, label = "AI 분석 만들기")
+                    }
+                    SpendingAnalysisState.Loading -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        Text("집계된 소비 데이터를 분석하고 있어요…", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    is SpendingAnalysisState.Error -> {
+                        Text(state.message, color = colors.expense, style = MaterialTheme.typography.bodyMedium)
+                        AnalysisButton(onGenerate, enabled = uiState.expenseCount > 0, label = "다시 시도")
+                    }
+                    is SpendingAnalysisState.Success -> {
+                        if (state.month != uiState.month) {
+                            Text("분석 기준 월이 바뀌었어요. 새로 분석해 주세요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                            AnalysisButton(onGenerate, enabled = uiState.expenseCount > 0, label = "이번 달 다시 분석")
+                        } else {
+                            Text(state.analysis.summary, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                            if (state.analysis.observations.isNotEmpty()) {
+                                Text("살펴볼 점", color = colors.accent, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                                state.analysis.observations.forEach { Text("• $it", color = colors.textPrimary, style = MaterialTheme.typography.bodyMedium) }
+                            }
+                            if (state.analysis.suggestions.isNotEmpty()) {
+                                Text("작은 제안", color = colors.accent, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                                state.analysis.suggestions.forEach { Text("• $it", color = colors.textPrimary, style = MaterialTheme.typography.bodyMedium) }
+                            }
+                            AnalysisButton(onGenerate, enabled = uiState.expenseCount > 0, label = "다시 분석")
                         }
-                        if (state.analysis.suggestions.isNotEmpty()) {
-                            Text("작은 제안", color = colors.accent, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                            state.analysis.suggestions.forEach { Text("• $it", color = colors.textPrimary, style = MaterialTheme.typography.bodyMedium) }
-                        }
-                        AnalysisButton(onGenerate, enabled = uiState.expenseCount > 0, label = "다시 분석")
                     }
                 }
             }
+        }
+        SpendingQuestionCard(
+            uiState = uiState,
+            state = questionState,
+            onAsk = onAskQuestion,
+        )
+    }
+}
+
+@Composable
+private fun SpendingQuestionCard(
+    uiState: LedgerUiState,
+    state: SpendingQuestionState,
+    onAsk: (String) -> Unit,
+) {
+    val colors = LocalFinanceColors.current
+    var question by rememberSaveable { mutableStateOf("") }
+    FinanceCard {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
+                Text("내 소비에 물어보기", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
+            Text(
+                "${com.moasseum.app.domain.formatMonth(uiState.month)}의 합계와 카테고리 통계만 근거로 답해요.",
+                color = colors.textSecondary,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            OutlinedTextField(
+                value = question,
+                onValueChange = { question = it.take(200) },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("예: 이번 달 예산이 얼마나 남았어?") },
+                supportingText = { Text("예: 가장 많이 쓴 카테고리? 지난달보다 얼마나 달라?") },
+                maxLines = 3,
+            )
+            if (uiState.monthTransactions.isEmpty()) {
+                Text("거래를 기록하면 소비에 대해 질문할 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+            }
+            when (state) {
+                SpendingQuestionState.Idle -> Unit
+                SpendingQuestionState.Loading -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Text("집계된 데이터를 바탕으로 답을 만들고 있어요…", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                }
+                is SpendingQuestionState.Error -> Text(state.message, color = colors.expense, style = MaterialTheme.typography.bodyMedium)
+                is SpendingQuestionState.Success -> {
+                    if (state.month != uiState.month) {
+                        Text("기준 월이 바뀌었어요. 현재 월로 다시 질문해 주세요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                    } else {
+                        Text("Q. ${state.question}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                        Text(state.answer, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+            AnalysisButton(
+                onClick = { onAsk(question.trim()) },
+                enabled = question.trim().isNotBlank() && uiState.monthTransactions.isNotEmpty() && state !is SpendingQuestionState.Loading,
+                label = "질문하기",
+            )
         }
     }
 }

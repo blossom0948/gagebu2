@@ -3,8 +3,10 @@ package com.moasseum.app.data
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.moasseum.app.domain.PaymentCard
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.util.Locale
@@ -40,6 +42,18 @@ class UserPreferencesRepository(
     val aiNotificationClassificationEnabled: Flow<Boolean> =
         context.settingsDataStore.data.map { preferences -> preferences[AI_NOTIFICATION_CLASSIFICATION_ENABLED] ?: false }
 
+    val notificationServiceConnectedAt: Flow<Long?> =
+        context.settingsDataStore.data.map { preferences -> preferences[NOTIFICATION_SERVICE_CONNECTED_AT]?.takeIf { it > 0L } }
+
+    val notificationLastSeenAt: Flow<Long?> =
+        context.settingsDataStore.data.map { preferences -> preferences[NOTIFICATION_LAST_SEEN_AT]?.takeIf { it > 0L } }
+
+    val notificationLastCandidateAt: Flow<Long?> =
+        context.settingsDataStore.data.map { preferences -> preferences[NOTIFICATION_LAST_CANDIDATE_AT]?.takeIf { it > 0L } }
+
+    val notificationServiceDisconnectedAt: Flow<Long?> =
+        context.settingsDataStore.data.map { preferences -> preferences[NOTIFICATION_SERVICE_DISCONNECTED_AT]?.takeIf { it > 0L } }
+
     val paymentMethods: Flow<List<String>> = context.settingsDataStore.data.map { preferences ->
         preferences[PAYMENT_METHODS]
             ?.split('\n')
@@ -49,6 +63,35 @@ class UserPreferencesRepository(
             ?.take(12)
             ?.takeIf(List<String>::isNotEmpty)
             ?: DEFAULT_PAYMENT_METHODS
+    }
+
+    val paymentCards: Flow<List<PaymentCard>> = context.settingsDataStore.data.map { preferences ->
+        preferences[PAYMENT_CARDS]
+            .orEmpty()
+            .lineSequence()
+            .mapNotNull { line ->
+                val fields = line.split('|')
+                val id = fields.getOrNull(0)?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+                val name = fields.getOrNull(1)?.trim()?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+                val dueDay = fields.getOrNull(2)?.toIntOrNull()?.takeIf { it in 1..31 } ?: return@mapNotNull null
+                PaymentCard(id = id, name = name, dueDay = dueDay)
+            }
+            .distinctBy(PaymentCard::id)
+            .take(MAX_PAYMENT_CARDS)
+            .toList()
+    }
+
+    val categoryBudgets: Flow<Map<String, Long>> = context.settingsDataStore.data.map { preferences ->
+        preferences[CATEGORY_BUDGETS]
+            .orEmpty()
+            .lineSequence()
+            .mapNotNull { line ->
+                val key = line.substringBefore('=', "")
+                val amount = line.substringAfter('=', "").toLongOrNull()
+                if (isSupportedCategoryKey(key) && amount != null && amount > 0L) key to amount else null
+            }
+            .take(MAX_CATEGORY_BUDGETS)
+            .toMap()
     }
 
     val categoryLabels: Flow<Map<String, String>> = context.settingsDataStore.data.map { preferences ->
@@ -83,10 +126,54 @@ class UserPreferencesRepository(
         context.settingsDataStore.edit { preferences -> preferences[AI_NOTIFICATION_CLASSIFICATION_ENABLED] = enabled }
     }
 
+    suspend fun markNotificationServiceConnected(at: Long = System.currentTimeMillis()) {
+        context.settingsDataStore.edit { preferences ->
+            preferences[NOTIFICATION_SERVICE_CONNECTED_AT] = at
+            preferences.remove(NOTIFICATION_SERVICE_DISCONNECTED_AT)
+        }
+    }
+
+    suspend fun markNotificationServiceDisconnected(at: Long = System.currentTimeMillis()) {
+        context.settingsDataStore.edit { preferences -> preferences[NOTIFICATION_SERVICE_DISCONNECTED_AT] = at }
+    }
+
+    suspend fun markNotificationSeen(at: Long = System.currentTimeMillis()) {
+        context.settingsDataStore.edit { preferences -> preferences[NOTIFICATION_LAST_SEEN_AT] = at }
+    }
+
+    suspend fun markNotificationCandidateCreated(at: Long = System.currentTimeMillis()) {
+        context.settingsDataStore.edit { preferences -> preferences[NOTIFICATION_LAST_CANDIDATE_AT] = at }
+    }
+
     suspend fun savePaymentMethods(methods: List<String>) {
         val normalized = methods.map(String::trim).filter(String::isNotBlank).distinct().take(12)
         require(normalized.isNotEmpty()) { "결제수단은 한 개 이상 남겨야 해요." }
         context.settingsDataStore.edit { preferences -> preferences[PAYMENT_METHODS] = normalized.joinToString("\n") }
+    }
+
+    suspend fun savePaymentCards(cards: List<PaymentCard>) {
+        val normalized = cards
+            .mapNotNull { card ->
+                val name = card.name.replace('|', '｜').trim().take(24).takeIf(String::isNotBlank) ?: return@mapNotNull null
+                val dueDay = card.dueDay.coerceIn(1, 31)
+                PaymentCard(id = card.id.take(48), name = name, dueDay = dueDay)
+            }
+            .distinctBy(PaymentCard::id)
+            .take(MAX_PAYMENT_CARDS)
+        context.settingsDataStore.edit { preferences ->
+            preferences[PAYMENT_CARDS] = normalized.joinToString("\n") { card -> "${card.id}|${card.name}|${card.dueDay}" }
+        }
+    }
+
+    suspend fun saveCategoryBudgets(budgets: Map<String, Long>) {
+        val normalized = budgets.asSequence()
+            .filter { (key, amount) -> isSupportedCategoryKey(key) && amount in 1..1_000_000_000_000L }
+            .map { (key, amount) -> key to amount }
+            .take(MAX_CATEGORY_BUDGETS)
+            .toMap()
+        context.settingsDataStore.edit { preferences ->
+            preferences[CATEGORY_BUDGETS] = normalized.entries.joinToString("\n") { (key, amount) -> "$key=$amount" }
+        }
     }
 
     suspend fun saveCategoryLabels(labels: Map<String, String>) {
@@ -116,9 +203,17 @@ class UserPreferencesRepository(
         val NOTIFICATION_ACCESS_PROMPT_SHOWN = booleanPreferencesKey("notification_access_prompt_shown")
         val NOTIFICATION_POST_PERMISSION_PROMPT_SHOWN = booleanPreferencesKey("notification_post_permission_prompt_shown")
         val AI_NOTIFICATION_CLASSIFICATION_ENABLED = booleanPreferencesKey("ai_notification_classification_enabled")
+        val NOTIFICATION_SERVICE_CONNECTED_AT = longPreferencesKey("notification_service_connected_at")
+        val NOTIFICATION_LAST_SEEN_AT = longPreferencesKey("notification_last_seen_at")
+        val NOTIFICATION_LAST_CANDIDATE_AT = longPreferencesKey("notification_last_candidate_at")
+        val NOTIFICATION_SERVICE_DISCONNECTED_AT = longPreferencesKey("notification_service_disconnected_at")
         val PAYMENT_METHODS = stringPreferencesKey("payment_methods")
+        val PAYMENT_CARDS = stringPreferencesKey("payment_cards")
+        val CATEGORY_BUDGETS = stringPreferencesKey("category_budgets")
         val CATEGORY_LABELS = stringPreferencesKey("category_labels")
         val CUSTOM_CATEGORY_KEY = Regex("CUSTOM_[A-F0-9]{12}")
         const val MAX_CUSTOM_CATEGORIES = 20
+        const val MAX_PAYMENT_CARDS = 12
+        const val MAX_CATEGORY_BUDGETS = 27
     }
 }

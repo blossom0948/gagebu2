@@ -88,6 +88,7 @@ fun HistoryScreen(
     onDeleteTransaction: (Long) -> Unit,
     onUpdateTransaction: (Long, String, TransactionType, String, String, String, String, LocalDate) -> Boolean,
     onExportCsv: () -> Unit,
+    onExportJson: () -> Unit,
     onImportCsv: () -> Unit,
 ) {
     var filterName by rememberSaveable { mutableStateOf(HistoryFilter.ALL.name) }
@@ -137,6 +138,13 @@ fun HistoryScreen(
                 OutlinedButton(modifier = Modifier.weight(1f), onClick = onImportCsv) {
                     Text("CSV 가져오기", style = MaterialTheme.typography.labelLarge)
                 }
+            }
+        }
+        item {
+            OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = onExportJson) {
+                Icon(Icons.Rounded.FileDownload, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("JSON 전체 백업", style = MaterialTheme.typography.labelLarge)
             }
         }
         item {

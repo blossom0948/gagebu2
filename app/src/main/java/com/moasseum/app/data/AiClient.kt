@@ -46,6 +46,15 @@ class AiClient(
             }
         }
 
+    suspend fun askSpending(question: String, state: LedgerUiState): Result<String> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                require(question.trim().isNotBlank()) { "질문을 입력해 주세요." }
+                require(question.trim().length <= 200) { "질문은 200자 이내로 입력해 주세요." }
+                if (baseUrl.isBlank()) LocalSpendingAnswer.answer(question.trim(), state) else askSpendingWithServer(question.trim(), state)
+            }
+        }
+
     suspend fun classifyNotification(title: String, text: String): Result<NotificationAiClassification> =
         withContext(Dispatchers.IO) {
             runCatching {
@@ -197,6 +206,55 @@ class AiClient(
         }
     }
 
+    private fun askSpendingWithServer(question: String, state: LedgerUiState): String {
+        val endpoint = "${baseUrl.trimEnd('/')}/v1/ask-spending"
+        val connection = (URL(endpoint).openConnection() as? HttpURLConnection)
+            ?: throw IOException("AI 서버 주소를 확인해 주세요.")
+        if (connection.url.protocol != "https") {
+            connection.disconnect()
+            throw IOException("AI 서버는 HTTPS 주소만 사용할 수 있어요.")
+        }
+        return try {
+            connection.requestMethod = "POST"
+            connection.connectTimeout = 12_000
+            connection.readTimeout = 20_000
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            bearerTokenProvider()?.takeIf(String::isNotBlank)?.let { token ->
+                connection.setRequestProperty("Authorization", "Bearer $token")
+            }
+            val categories = JSONArray().apply {
+                state.categoryTotals.take(7).forEach { total ->
+                    put(JSONObject().apply {
+                        put("categoryKey", total.key)
+                        put("total", total.total)
+                        put("count", total.count)
+                    })
+                }
+            }
+            val request = JSONObject().apply {
+                put("schemaVersion", 1)
+                put("question", question.take(200))
+                put("month", state.month.toString())
+                put("expenseTotal", state.expenseTotal)
+                put("incomeTotal", state.incomeTotal)
+                put("budgetAmount", state.budgetAmount ?: JSONObject.NULL)
+                put("previousExpenseTotal", state.previousExpenseTotal)
+                put("categories", categories)
+            }
+            connection.outputStream.use { output -> output.write(request.toString().toByteArray(Charsets.UTF_8)) }
+            val responseCode = connection.responseCode
+            val stream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
+            val responseText = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (responseCode !in 200..299) throw IOException("AI 질문 응답 오류($responseCode)")
+            val answer = JSONObject(responseText).optString("answer").trim()
+            require(answer.isNotBlank()) { "AI가 답변을 만들지 못했어요." }
+            answer.take(600)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     private fun parseResponse(responseText: String, today: LocalDate): AiTransactionCandidate {
         val root = JSONObject(responseText)
         val json = root.optJSONObject("data") ?: root
@@ -234,6 +292,33 @@ class AiClient(
 
     companion object {
         val ALLOWED_CATEGORIES = listOf("FOOD", "TRANSPORT", "SHOPPING", "LIVING", "HEALTH", "LEISURE", "OTHER")
+    }
+}
+
+private object LocalSpendingAnswer {
+    private val categoryLabels = mapOf(
+        "FOOD" to "식비",
+        "TRANSPORT" to "교통",
+        "SHOPPING" to "쇼핑",
+        "LIVING" to "생활",
+        "HEALTH" to "건강",
+        "LEISURE" to "여가",
+        "OTHER" to "기타",
+    )
+
+    fun answer(question: String, state: LedgerUiState): String {
+        val lower = question.lowercase(Locale.KOREAN)
+        return when {
+            lower.contains("예산") -> state.budgetAmount?.let { budget ->
+                "${state.month} 예산은 ${com.moasseum.app.domain.formatWon(budget)}이고, 현재 ${com.moasseum.app.domain.formatWon(state.expenseTotal)}를 썼어요."
+            } ?: "아직 월 예산을 설정하지 않았어요. 관리 화면에서 목표 지출을 정해 보세요."
+            lower.contains("가장") || lower.contains("많이") || lower.contains("카테고리") ->
+                state.categoryTotals.firstOrNull()?.let { total ->
+                    "이번 달에는 ${categoryLabels[total.key] ?: total.key} 지출이 ${com.moasseum.app.domain.formatWon(total.total)}로 가장 커요."
+                }
+                    ?: "아직 분석할 거래가 없어요."
+            else -> "이번 달 지출은 ${com.moasseum.app.domain.formatWon(state.expenseTotal)}, 수입은 ${com.moasseum.app.domain.formatWon(state.incomeTotal)}예요."
+        }
     }
 }
 

@@ -81,6 +81,7 @@ class PaymentNotificationParserTest {
         )
 
         assertEquals(5_900L, candidate?.amount)
+        assertTrue(PaymentNotificationParser.shouldInspectWithAi("국민카드", "승인 5,900 스타벅스"))
     }
 
     @Test

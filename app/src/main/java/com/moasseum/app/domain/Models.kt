@@ -67,6 +67,12 @@ data class RecurringRule(
     val isActive: Boolean,
 )
 
+data class PaymentCard(
+    val id: String,
+    val name: String,
+    val dueDay: Int,
+)
+
 data class CategoryTotal(
     val key: String,
     val total: Long,
@@ -84,6 +90,13 @@ sealed interface SpendingAnalysisState {
     data object Loading : SpendingAnalysisState
     data class Success(val month: YearMonth, val analysis: SpendingAnalysis) : SpendingAnalysisState
     data class Error(val message: String) : SpendingAnalysisState
+}
+
+sealed interface SpendingQuestionState {
+    data object Idle : SpendingQuestionState
+    data object Loading : SpendingQuestionState
+    data class Success(val month: YearMonth, val question: String, val answer: String) : SpendingQuestionState
+    data class Error(val message: String) : SpendingQuestionState
 }
 
 data class LedgerUiState(

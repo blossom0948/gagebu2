@@ -35,9 +35,15 @@ object PaymentNotificationParser {
         if (normalized.isBlank()) return null
 
         if (cancelledTerms.any { normalized.contains(it, ignoreCase = true) }) return null
-        val expenseSignal = listOf("승인", "결제", "출금", "사용", "이용", "payment", "purchase", "withdrawal", "보냈", "송금완료", "이체완료")
+        val expenseSignal = listOf(
+            "승인", "결제", "출금", "사용", "이용", "매입", "구매", "payment", "purchase", "withdrawal",
+            "보냈", "송금완료", "이체완료", "출금완료",
+        )
             .any { normalized.contains(it, ignoreCase = true) }
-        val incomeSignal = listOf("입금", "급여", "월급", "환급", "받았", "deposit", "salary", "refund", "송금받", "이체받")
+        val incomeSignal = listOf(
+            "입금", "급여", "월급", "환급", "받았", "받음", "매출", "deposit", "salary", "refund", "송금받", "이체받",
+            "입금완료",
+        )
             .any { normalized.contains(it, ignoreCase = true) }
         if (aiConfirmedType == null && (!expenseSignal && !incomeSignal)) return null
         if (aiConfirmedType == null && hardExcludedContexts.any { normalized.contains(it, ignoreCase = true) }) return null
@@ -76,7 +82,13 @@ object PaymentNotificationParser {
         val hasCurrency = wonAmount.containsMatchIn(normalized) || symbolAmount.containsMatchIn(normalized) || koreanAmount.containsMatchIn(normalized)
         val hasMoneyContext = amountActionTerms.any { normalized.contains(it, ignoreCase = true) }
         val hasTransactionSignal = strongTransactionTerms.any { normalized.contains(it, ignoreCase = true) }
-        return hasCurrency && (hasTransactionSignal || hasMoneyContext)
+        val hasActionAmount = actionAmount.containsMatchIn(normalized) || explicitActionAmount.containsMatchIn(normalized)
+        return (hasCurrency || hasActionAmount) && (hasTransactionSignal || hasMoneyContext)
+    }
+
+    fun hasStrongTransactionSignal(title: String, body: String): Boolean {
+        val normalized = "$title $body".replace(Regex("\\s+"), " ").trim()
+        return strongTransactionTerms.any { normalized.contains(it, ignoreCase = true) }
     }
 
     private fun findMarkedAmount(text: String): Long? {

@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.service.notification.NotificationListenerService
 import android.provider.Settings
 
 object NotificationAccess {
@@ -39,6 +40,15 @@ object NotificationAccess {
 
     fun areAppNotificationsEnabled(context: Context): Boolean =
         PaymentNotificationNotifier.areAppNotificationsEnabled(context)
+
+    fun requestRebind(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !isEnabled(context)) return
+        runCatching {
+            NotificationListenerService.requestRebind(
+                ComponentName(context, PaymentNotificationListenerService::class.java),
+            )
+        }
+    }
 
     fun openAppNotificationSettings(context: Context) {
         val appSettings = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {

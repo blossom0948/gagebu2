@@ -87,10 +87,12 @@ import com.moasseum.app.data.AiClient
 import com.moasseum.app.data.CsvBackup
 import com.moasseum.app.data.DEFAULT_CATEGORY_LABELS
 import com.moasseum.app.data.DEFAULT_PAYMENT_METHODS
+import com.moasseum.app.data.JsonBackup
 import com.moasseum.app.data.ReceiptOcr
 import com.moasseum.app.domain.AiParseState
 import com.moasseum.app.domain.NotificationCandidate
 import com.moasseum.app.domain.SpendingAnalysisState
+import com.moasseum.app.domain.SpendingQuestionState
 import com.moasseum.app.notification.NotificationAccess
 import com.moasseum.app.notification.EXTRA_NOTIFICATION_CANDIDATE_ID
 import com.moasseum.app.notification.PaymentNotificationNotifier
@@ -119,8 +121,14 @@ class MainActivity : ComponentActivity() {
             val reduceMotion by application.preferencesRepository.reduceMotion.collectAsStateWithLifecycle(initialValue = false)
             val categoryLabels by application.preferencesRepository.categoryLabels.collectAsStateWithLifecycle(initialValue = DEFAULT_CATEGORY_LABELS)
             val paymentMethods by application.preferencesRepository.paymentMethods.collectAsStateWithLifecycle(initialValue = DEFAULT_PAYMENT_METHODS)
+            val paymentCards by application.preferencesRepository.paymentCards.collectAsStateWithLifecycle(initialValue = emptyList())
+            val categoryBudgets by application.preferencesRepository.categoryBudgets.collectAsStateWithLifecycle(initialValue = emptyMap())
             val postNotificationPermissionPromptShown by application.preferencesRepository.notificationPostPermissionPromptShown.collectAsStateWithLifecycle(initialValue = false)
             val aiNotificationClassificationEnabled by application.preferencesRepository.aiNotificationClassificationEnabled.collectAsStateWithLifecycle(initialValue = false)
+            val notificationServiceConnectedAt by application.preferencesRepository.notificationServiceConnectedAt.collectAsStateWithLifecycle(initialValue = null)
+            val notificationServiceDisconnectedAt by application.preferencesRepository.notificationServiceDisconnectedAt.collectAsStateWithLifecycle(initialValue = null)
+            val notificationLastSeenAt by application.preferencesRepository.notificationLastSeenAt.collectAsStateWithLifecycle(initialValue = null)
+            val notificationLastCandidateAt by application.preferencesRepository.notificationLastCandidateAt.collectAsStateWithLifecycle(initialValue = null)
             val candidateIdFromNotification by incomingNotificationCandidateId.collectAsStateWithLifecycle()
             CompositionLocalProvider(LocalCategoryLabels provides categoryLabels) {
                 MoasseumTheme(darkTheme = darkTheme, reduceMotion = reduceMotion) {
@@ -132,12 +140,29 @@ class MainActivity : ComponentActivity() {
                         onSavePaymentMethods = { methods ->
                             lifecycleScope.launch { application.preferencesRepository.savePaymentMethods(methods) }
                         },
+                        paymentCards = paymentCards,
+                        onSavePaymentCards = { cards ->
+                            lifecycleScope.launch {
+                                application.preferencesRepository.savePaymentCards(cards)
+                                application.preferencesRepository.savePaymentMethods(
+                                    (paymentMethods + cards.map { it.name }).distinct(),
+                                )
+                            }
+                        },
+                        categoryBudgets = categoryBudgets,
+                        onSaveCategoryBudgets = { budgets ->
+                            lifecycleScope.launch { application.preferencesRepository.saveCategoryBudgets(budgets) }
+                        },
                         onSaveCategoryLabels = { labels ->
                             lifecycleScope.launch { application.preferencesRepository.saveCategoryLabels(labels) }
                         },
                         onSetAiNotificationClassificationEnabled = { enabled ->
                             lifecycleScope.launch { application.preferencesRepository.setAiNotificationClassificationEnabled(enabled) }
                         },
+                        notificationServiceConnectedAt = notificationServiceConnectedAt,
+                        notificationServiceDisconnectedAt = notificationServiceDisconnectedAt,
+                        notificationLastSeenAt = notificationLastSeenAt,
+                        notificationLastCandidateAt = notificationLastCandidateAt,
                         darkTheme = darkTheme,
                         reduceMotion = reduceMotion,
                         onDarkThemeChanged = { enabled ->
@@ -188,6 +213,10 @@ private fun MoasseumApp(
     application: FinanceApplication,
     paymentMethods: List<String>,
     onSavePaymentMethods: (List<String>) -> Unit,
+    paymentCards: List<com.moasseum.app.domain.PaymentCard>,
+    onSavePaymentCards: (List<com.moasseum.app.domain.PaymentCard>) -> Unit,
+    categoryBudgets: Map<String, Long>,
+    onSaveCategoryBudgets: (Map<String, Long>) -> Unit,
     onSaveCategoryLabels: (Map<String, String>) -> Unit,
     onSetAiNotificationClassificationEnabled: (Boolean) -> Unit,
     darkTheme: Boolean,
@@ -197,6 +226,10 @@ private fun MoasseumApp(
     notificationPostPermissionPromptShown: Boolean,
     onMarkNotificationPostPermissionPromptShown: () -> Unit,
     aiNotificationClassificationEnabled: Boolean,
+    notificationServiceConnectedAt: Long?,
+    notificationServiceDisconnectedAt: Long?,
+    notificationLastSeenAt: Long?,
+    notificationLastCandidateAt: Long?,
     incomingNotificationCandidateId: Long?,
     onIncomingNotificationCandidateConsumed: (Long) -> Unit,
 ) {
@@ -224,6 +257,7 @@ private fun MoasseumApp(
             if (event == Lifecycle.Event.ON_RESUME) {
                 notificationAccessEnabled = NotificationAccess.isEnabled(context)
                 appNotificationsEnabled = NotificationAccess.areAppNotificationsEnabled(context)
+                NotificationAccess.requestRebind(context)
                 notificationSettingsInProgress = false
             }
         }
@@ -268,9 +302,11 @@ private fun MoasseumApp(
     val aiClient = remember { AiClient() }
     var aiState by remember { mutableStateOf<AiParseState>(AiParseState.Idle) }
     var aiAnalysisState by remember { mutableStateOf<SpendingAnalysisState>(SpendingAnalysisState.Idle) }
+    var aiQuestionState by remember { mutableStateOf<SpendingQuestionState>(SpendingQuestionState.Idle) }
     var addOpen by rememberSaveable { mutableStateOf(false) }
     var addModeName by rememberSaveable { mutableStateOf(AddMode.MENU.name) }
     var unavailableMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    var showHelpDialog by rememberSaveable { mutableStateOf(false) }
     var updateState by remember { mutableStateOf<UpdateCheckState>(UpdateCheckState.Idle) }
     var downloadedUpdatePath by rememberSaveable { mutableStateOf<String?>(null) }
     var waitingForInstallPermission by rememberSaveable { mutableStateOf(false) }
@@ -316,6 +352,21 @@ private fun MoasseumApp(
                 snackbarHostState.showSnackbar(
                     if (result.isSuccess) "${uiState.transactions.size}건을 CSV로 내보냈어요."
                     else result.exceptionOrNull()?.message ?: "CSV 내보내기에 실패했어요.",
+                )
+            }
+        }
+    }
+    val exportJsonLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) {
+            val result = runCatching {
+                val output = context.contentResolver.openOutputStream(uri)
+                    ?: error("선택한 위치에 JSON 파일을 쓸 수 없어요.")
+                output.bufferedWriter(Charsets.UTF_8).use { it.write(JsonBackup.encode(uiState.transactions)) }
+            }
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar(
+                    if (result.isSuccess) "${uiState.transactions.size}건을 JSON으로 백업했어요."
+                    else result.exceptionOrNull()?.message ?: "JSON 백업에 실패했어요.",
                 )
             }
         }
@@ -384,6 +435,23 @@ private fun MoasseumApp(
                 onFailure = { error -> SpendingAnalysisState.Error(error.message ?: "AI 분석에 실패했어요. 잠시 후 다시 시도해 주세요.") },
             )
         }
+    }
+
+    fun askSpendingQuestion(question: String) {
+        if (question.isBlank() || uiState.monthTransactions.isEmpty()) return
+        aiQuestionState = SpendingQuestionState.Loading
+        coroutineScope.launch {
+            val result = aiClient.askSpending(question.trim(), uiState)
+            aiQuestionState = result.fold(
+                onSuccess = { answer -> SpendingQuestionState.Success(uiState.month, question.trim(), answer) },
+                onFailure = { error -> SpendingQuestionState.Error(error.message ?: "AI 답변을 만들지 못했어요. 잠시 후 다시 시도해 주세요.") },
+            )
+        }
+    }
+
+    LaunchedEffect(uiState.month) {
+        aiAnalysisState = SpendingAnalysisState.Idle
+        aiQuestionState = SpendingQuestionState.Idle
     }
 
     fun closeAdd() {
@@ -479,6 +547,9 @@ private fun MoasseumApp(
                         uiState = uiState,
                         aiAnalysisState = aiAnalysisState,
                         onGenerateAiAnalysis = ::generateSpendingAnalysis,
+                        aiQuestionState = aiQuestionState,
+                        onAskAiQuestion = ::askSpendingQuestion,
+                        categoryBudgets = categoryBudgets,
                         onExportCsv = { exportCsvLauncher.launch("moasseum-${java.time.LocalDate.now()}.csv") },
                         onAdd = { mode ->
                             addModeName = mode.name
@@ -486,6 +557,8 @@ private fun MoasseumApp(
                         },
                         onOpenManage = { navigateTo(navController, ROUTE_MANAGE) },
                         onOpenHistory = { navigateTo(navController, ROUTE_HISTORY) },
+                        onOpenHelp = { showHelpDialog = true },
+                        onOpenNotifications = { navigateTo(navController, ROUTE_MANAGE) },
                     )
                 }
                 composable(ROUTE_HISTORY) {
@@ -509,6 +582,7 @@ private fun MoasseumApp(
                         },
                         onUpdateTransaction = viewModel::updateTransaction,
                         onExportCsv = { exportCsvLauncher.launch("moasseum-${java.time.LocalDate.now()}.csv") },
+                        onExportJson = { exportJsonLauncher.launch("moasseum-${java.time.LocalDate.now()}.json") },
                         onImportCsv = { importCsvLauncher.launch(arrayOf("text/*", "application/vnd.ms-excel")) },
                     )
                 }
@@ -523,6 +597,10 @@ private fun MoasseumApp(
                     ManageScreen(
                         uiState = uiState,
                         paymentMethods = paymentMethods,
+                        paymentCards = paymentCards,
+                        onSavePaymentCards = onSavePaymentCards,
+                        categoryBudgets = categoryBudgets,
+                        onSaveCategoryBudgets = onSaveCategoryBudgets,
                         onSavePaymentMethods = onSavePaymentMethods,
                         onSaveCategoryLabels = onSaveCategoryLabels,
                         onDeleteCustomCategory = { key, labels ->
@@ -559,6 +637,10 @@ private fun MoasseumApp(
                         aiNotificationClassificationEnabled = aiNotificationClassificationEnabled,
                         onSetAiNotificationClassificationEnabled = onSetAiNotificationClassificationEnabled,
                         pendingCandidates = pendingCandidates,
+                        notificationServiceConnectedAt = notificationServiceConnectedAt,
+                        notificationServiceDisconnectedAt = notificationServiceDisconnectedAt,
+                        notificationLastSeenAt = notificationLastSeenAt,
+                        notificationLastCandidateAt = notificationLastCandidateAt,
                         updateState = updateState,
                         onCheckForUpdate = {
                             updateState = UpdateCheckState.Checking
@@ -578,6 +660,7 @@ private fun MoasseumApp(
                         onInstallUpdate = ::downloadAndInstallUpdate,
                         onContinueInstall = ::continueWithDownloadedUpdate,
                         onOpenNotificationSettings = {
+                            NotificationAccess.requestRebind(context)
                             NotificationAccess.openSettings(context)
                         },
                         onOpenAppNotificationSettings = {
@@ -652,6 +735,17 @@ private fun MoasseumApp(
             snackbarHostState.showSnackbar(message)
             unavailableMessage = null
         }
+    }
+
+    if (showHelpDialog) {
+        AlertDialog(
+            onDismissRequest = { showHelpDialog = false },
+            title = { Text("모아씀 사용 안내") },
+            text = {
+                Text("중앙 + 버튼에서 직접 입력·AI 문장·음성·영수증으로 거래를 기록할 수 있어요.\n\n카드·은행 알림을 자동으로 읽으려면 관리 → 결제 알림 감지에서 알림 접근을 허용하세요. 감지된 거래는 바로 저장하지 않고 ‘추가할까요?’ 확인 뒤에만 가계부에 들어갑니다. 관리 화면에서 연결됨·마지막 수신·후보 생성 상태를 확인할 수 있어요.\n\n예산과 카테고리는 관리에서 설정하고, 소비내역에서는 달력·검색·필터·CSV·JSON 백업을 사용할 수 있어요. AI 분석 화면에서는 월간 소비 질문도 할 수 있습니다.")
+            },
+            confirmButton = { TextButton(onClick = { showHelpDialog = false }) { Text("확인") } },
+        )
     }
 
     notificationCandidatePrompt?.let { candidate ->
