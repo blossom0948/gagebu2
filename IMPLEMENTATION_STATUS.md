@@ -37,6 +37,7 @@
 - `./gradlew -PVERSION_CODE=7 -PVERSION_NAME=0.1.7 :app:assembleRelease` — 성공 (`lintVitalRelease` 포함)
 - 0.1.7 APK는 기존 0.1.6과 같은 서명 키로 빌드해 앱 데이터 유지 업데이트 가능
 - APK 버전 확인: `com.moasseum.app`, `versionCode=7`, `versionName=0.1.7`
+- GitHub Release `v0.1.7` 및 `app-release.apk` 업로드 완료: https://github.com/blossom0948/gagebu2/releases/tag/v0.1.7
 - `npm run typecheck` (`cloudflare/ai-worker`) — 성공
 - Wrangler dry-run — 성공
 - Cloudflare Worker 배포 — 완료
