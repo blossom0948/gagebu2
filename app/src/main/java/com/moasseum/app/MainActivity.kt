@@ -15,9 +15,16 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.core.content.ContextCompat
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.FabPosition
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
@@ -25,9 +32,15 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.Security
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -39,9 +52,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -131,10 +146,6 @@ class MainActivity : ComponentActivity() {
                         onReduceMotionChanged = { enabled ->
                             lifecycleScope.launch { application.preferencesRepository.setReduceMotion(enabled) }
                         },
-                        notificationPromptShown = application.preferencesRepository.notificationAccessPromptShown.collectAsStateWithLifecycle(initialValue = false).value,
-                        onMarkNotificationPromptShown = {
-                            lifecycleScope.launch { application.preferencesRepository.setNotificationAccessPromptShown() }
-                        },
                         notificationPostPermissionPromptShown = postNotificationPermissionPromptShown,
                         onMarkNotificationPostPermissionPromptShown = {
                             lifecycleScope.launch { application.preferencesRepository.setNotificationPostPermissionPromptShown() }
@@ -183,8 +194,6 @@ private fun MoasseumApp(
     reduceMotion: Boolean,
     onDarkThemeChanged: (Boolean) -> Unit,
     onReduceMotionChanged: (Boolean) -> Unit,
-    notificationPromptShown: Boolean,
-    onMarkNotificationPromptShown: () -> Unit,
     notificationPostPermissionPromptShown: Boolean,
     onMarkNotificationPostPermissionPromptShown: () -> Unit,
     aiNotificationClassificationEnabled: Boolean,
@@ -202,6 +211,8 @@ private fun MoasseumApp(
     var notificationAccessEnabled by remember { mutableStateOf(NotificationAccess.isEnabled(context)) }
     var appNotificationsEnabled by remember { mutableStateOf(NotificationAccess.areAppNotificationsEnabled(context)) }
     var showNotificationAccessPrompt by remember { mutableStateOf(false) }
+    var notificationSetupDismissedThisSession by rememberSaveable { mutableStateOf(false) }
+    var notificationSettingsInProgress by rememberSaveable { mutableStateOf(false) }
     var notificationCandidatePrompt by remember { mutableStateOf<NotificationCandidate?>(null) }
     var postNotificationPermissionRequestStarted by rememberSaveable { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -210,21 +221,32 @@ private fun MoasseumApp(
             if (event == Lifecycle.Event.ON_RESUME) {
                 notificationAccessEnabled = NotificationAccess.isEnabled(context)
                 appNotificationsEnabled = NotificationAccess.areAppNotificationsEnabled(context)
+                notificationSettingsInProgress = false
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(notificationPromptShown, notificationAccessEnabled) {
-        showNotificationAccessPrompt = !notificationPromptShown && !notificationAccessEnabled
+    LaunchedEffect(notificationAccessEnabled, appNotificationsEnabled, notificationSetupDismissedThisSession) {
+        val needsNotificationSetup = !notificationAccessEnabled || !appNotificationsEnabled
+        showNotificationAccessPrompt = needsNotificationSetup && !notificationSetupDismissedThisSession
     }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         appNotificationsEnabled = NotificationAccess.areAppNotificationsEnabled(context)
     }
-    LaunchedEffect(notificationAccessEnabled, notificationPostPermissionPromptShown) {
+    LaunchedEffect(
+        notificationAccessEnabled,
+        notificationPostPermissionPromptShown,
+        notificationSetupDismissedThisSession,
+        notificationSettingsInProgress,
+        showNotificationAccessPrompt,
+    ) {
         val permissionMissing = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        if (notificationAccessEnabled && permissionMissing && !notificationPostPermissionPromptShown && !postNotificationPermissionRequestStarted) {
+        if (notificationAccessEnabled && permissionMissing && !notificationPostPermissionPromptShown &&
+            !postNotificationPermissionRequestStarted && notificationSetupDismissedThisSession &&
+            !notificationSettingsInProgress && !showNotificationAccessPrompt
+        ) {
             postNotificationPermissionRequestStarted = true
             onMarkNotificationPostPermissionPromptShown()
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -653,32 +675,137 @@ private fun MoasseumApp(
     }
 
     if (showNotificationAccessPrompt) {
-        AlertDialog(
-            onDismissRequest = {
+        NotificationSetupDialog(
+            notificationAccessEnabled = notificationAccessEnabled,
+            appNotificationsEnabled = appNotificationsEnabled,
+            aiNotificationClassificationEnabled = aiNotificationClassificationEnabled,
+            onOpenNextSetting = {
                 showNotificationAccessPrompt = false
-                onMarkNotificationPromptShown()
-            },
-            title = { Text("결제 알림을 자동으로 읽을까요?") },
-            text = {
-                Text("카드·은행 결제 알림을 기기 안에서 읽어 후보로 모아요. 접근을 허용한 뒤에는 인식 결과를 알리기 위한 ‘모아씀 알림’ 권한도 한 번 확인해 주세요. 거래는 확인한 뒤에만 저장합니다.")
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showNotificationAccessPrompt = false
-                    onMarkNotificationPromptShown()
-                    NotificationAccess.openSettings(context)
-                }) {
-                    Text("설정 열기")
+                notificationSetupDismissedThisSession = true
+                notificationSettingsInProgress = true
+                when {
+                    !notificationAccessEnabled -> NotificationAccess.openSettings(context)
+                    !appNotificationsEnabled -> NotificationAccess.openAppNotificationSettings(context)
                 }
             },
-            dismissButton = {
-                TextButton(onClick = {
-                    showNotificationAccessPrompt = false
-                    onMarkNotificationPromptShown()
-                }) {
-                    Text("나중에")
-                }
+            onDismiss = {
+                showNotificationAccessPrompt = false
+                notificationSetupDismissedThisSession = true
             },
+        )
+    }
+}
+
+@Composable
+private fun NotificationSetupDialog(
+    notificationAccessEnabled: Boolean,
+    appNotificationsEnabled: Boolean,
+    aiNotificationClassificationEnabled: Boolean,
+    onOpenNextSetting: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val nextSettingLabel = when {
+        !notificationAccessEnabled -> "알림 읽기 설정 열기"
+        !appNotificationsEnabled -> "알림 표시 설정 열기"
+        else -> "확인"
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Surface(tonalElevation = 3.dp) {
+                Icon(
+                    Icons.Rounded.NotificationsActive,
+                    contentDescription = null,
+                    modifier = Modifier.padding(10.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        },
+        title = { Text("알림 자동 기록 준비") },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("카드·은행 알림을 읽어 지출·입금을 후보로 알려드려요. 아래 두 권한을 켜면 바로 사용할 수 있어요.")
+                NotificationSetupStep(
+                    icon = Icons.Rounded.NotificationsActive,
+                    title = "알림 읽기",
+                    message = if (notificationAccessEnabled) "카드·은행 알림 접근 허용됨" else "Galaxy 설정에서 모아씀을 켜야 해요",
+                    enabled = notificationAccessEnabled,
+                )
+                NotificationSetupStep(
+                    icon = Icons.Rounded.NotificationsActive,
+                    title = "인식 결과 알림",
+                    message = if (appNotificationsEnabled) "인식되면 바로 알려드려요" else "모아씀 알림 권한이 필요해요",
+                    enabled = appNotificationsEnabled,
+                )
+                Surface(tonalElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Icon(
+                            Icons.Rounded.Security,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp),
+                        )
+                        Spacer(Modifier.width(9.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("AI 알림 오탐 줄이기", fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                            Text(
+                                if (aiNotificationClassificationEnabled) {
+                                    "켜짐 · 금융 거래인지 한 번 더 판별해요."
+                                } else {
+                                    "꺼짐 · 관리 → 앱 설정에서 동의 후 켜면 광고·숫자 알림을 더 잘 걸러요."
+                                },
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
+                Text("거래는 자동 저장하지 않고, ‘추가할까요?’ 확인 후에만 기록해요.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onOpenNextSetting) { Text(nextSettingLabel) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("나중에") }
+        },
+    )
+}
+
+@Composable
+private fun NotificationSetupStep(
+    icon: ImageVector,
+    title: String,
+    message: String,
+    enabled: Boolean,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(tonalElevation = 2.dp) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.padding(8.dp).size(20.dp),
+                tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+            )
+        }
+        Spacer(Modifier.width(9.dp))
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+            Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        }
+        Text(
+            if (enabled) "완료" else "필요",
+            color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.labelSmall,
         )
     }
 }

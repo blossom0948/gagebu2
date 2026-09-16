@@ -36,9 +36,9 @@
 
 - `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` — 성공
 - `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` — 성공
-- `./gradlew :app:assembleRelease` (VERSION_CODE=8, VERSION_NAME=0.1.8) — 성공 (`lintVitalRelease` 포함)
+- `./gradlew :app:assembleRelease` (VERSION_CODE=9, VERSION_NAME=0.1.9) — 성공 (`lintVitalRelease` 포함)
 - APK 메타데이터 확인: `com.moasseum.app`, `versionCode=8`, `versionName=0.1.8`; 서명 인증서가 로컬 릴리스 키와 일치
-- GitHub Release `v0.1.8` 및 `app-release.apk` 업로드 완료: https://github.com/blossom0948/gagebu2/releases/tag/v0.1.8
+- GitHub Release `v0.1.9` 및 `app-release.apk` 업로드 완료: https://github.com/blossom0948/gagebu2/releases/tag/v0.1.9
 - `npm run typecheck` (`cloudflare/ai-worker`) — 성공; Worker 배포 버전 `6fd2ed7c-8900-4039-a516-6f01a3cf1592`
 - Worker `/health` 확인 — 성공; 잘못된 알림 분류 요청은 400 반환(모델 호출 없이)
 - 실제 Gemini 생성 호출은 사용량을 발생시킬 수 있어 이 작업에서 실행하지 않음

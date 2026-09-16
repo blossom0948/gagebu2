@@ -14,11 +14,15 @@ object PaymentNotificationParser {
     private val actionAmount = Regex("""(?:승인|결제|출금|입금|환급|송금|이체|사용)\s*(?:금액\s*)?[:：]?\s*(\d{1,3}(?:,\d{3})+)\s*원?(?![-/.]\d)""")
     private val explicitActionAmount = Regex("""(?:승인|결제|출금|입금|환급|송금|이체|사용)\s*금액\s*[:：]?\s*(\d{3,})(?![\d,])\s*원?(?![-/.]\d)""")
     private val amountActionTerms = listOf("승인", "결제", "출금", "입금", "송금", "환급", "급여", "월급", "이체", "사용내역", "이용내역", "받았", "충전")
-    private val excludedContexts = listOf(
-        "승인번호", "인증번호", "결제번호", "예약번호", "주문번호", "쿠폰", "할인", "혜택", "적립", "포인트",
-        "결제예정", "납부예정", "출금예정", "결제일", "납부일", "한도", "이벤트", "특가",
+    private val hardExcludedContexts = listOf(
+        "승인번호", "인증번호", "결제번호", "예약번호", "주문번호", "결제예정", "납부예정", "출금예정",
     )
+    private val softExcludedContexts = listOf("쿠폰", "할인", "혜택", "적립", "포인트", "이벤트", "특가")
     private val cancelledTerms = listOf("취소", "cancel", "거절", "실패", "reversed")
+    private val strongTransactionTerms = listOf(
+        "승인", "결제완료", "결제 완료", "출금", "입금", "환급", "급여", "월급", "송금완료", "이체완료",
+        "payment", "purchase", "withdrawal", "deposit", "salary", "refund",
+    )
 
     fun parse(
         packageName: String,
@@ -36,7 +40,9 @@ object PaymentNotificationParser {
         val incomeSignal = listOf("입금", "급여", "월급", "환급", "받았", "deposit", "salary", "refund", "송금받", "이체받")
             .any { normalized.contains(it, ignoreCase = true) }
         if (aiConfirmedType == null && (!expenseSignal && !incomeSignal)) return null
-        if (aiConfirmedType == null && excludedContexts.any { normalized.contains(it, ignoreCase = true) }) return null
+        if (aiConfirmedType == null && hardExcludedContexts.any { normalized.contains(it, ignoreCase = true) }) return null
+        val hasStrongTransactionSignal = strongTransactionTerms.any { normalized.contains(it, ignoreCase = true) }
+        if (aiConfirmedType == null && softExcludedContexts.any { normalized.contains(it, ignoreCase = true) } && !hasStrongTransactionSignal) return null
 
         val amount = findMarkedAmount(normalized)
         amount ?: return null
@@ -63,13 +69,14 @@ object PaymentNotificationParser {
         val normalized = "$title $body".replace(Regex("\\s+"), " ").trim()
         if (normalized.isBlank() ||
             cancelledTerms.any { normalized.contains(it, ignoreCase = true) } ||
-            excludedContexts.any { normalized.contains(it, ignoreCase = true) }
+            hardExcludedContexts.any { normalized.contains(it, ignoreCase = true) }
         ) return false
         val hasAmount = findAmount(normalized) != null
         if (!hasAmount) return false
         val hasCurrency = wonAmount.containsMatchIn(normalized) || symbolAmount.containsMatchIn(normalized) || koreanAmount.containsMatchIn(normalized)
         val hasMoneyContext = amountActionTerms.any { normalized.contains(it, ignoreCase = true) }
-        return hasCurrency || hasMoneyContext
+        val hasTransactionSignal = strongTransactionTerms.any { normalized.contains(it, ignoreCase = true) }
+        return hasCurrency && (hasTransactionSignal || hasMoneyContext)
     }
 
     private fun findMarkedAmount(text: String): Long? {

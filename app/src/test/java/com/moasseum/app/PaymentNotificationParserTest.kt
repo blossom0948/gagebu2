@@ -84,6 +84,30 @@ class PaymentNotificationParserTest {
     }
 
     @Test
+    fun validApprovalSurvivesIncidentalCardSummaryWords() {
+        val candidate = PaymentNotificationParser.parse(
+            packageName = "com.card",
+            title = "카드 알림",
+            body = "5,900원 승인 결제일 25일 혜택 안내",
+            postedAt = 1_000L,
+        )
+
+        assertEquals(5_900L, candidate?.amount)
+    }
+
+    @Test
+    fun pointsUsageIsNotACompletedPayment() {
+        assertNull(
+            PaymentNotificationParser.parse(
+                packageName = "com.shop",
+                title = "포인트 안내",
+                body = "5,000원 포인트 사용",
+                postedAt = 1_000L,
+            ),
+        )
+    }
+
+    @Test
     fun cancelledTransactionsAreAlwaysIgnored() {
         assertNull(
             PaymentNotificationParser.parse(
