@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -105,9 +106,21 @@ class PaymentNotificationListenerService : NotificationListenerService() {
         (application as? FinanceApplication)?.let { financeApplication ->
             serviceScope.launch { financeApplication.preferencesRepository.markNotificationServiceDisconnected() }
         }
-        NotificationListenerService.requestRebind(
-            ComponentName(this, PaymentNotificationListenerService::class.java),
-        )
+        // Android may disconnect a listener temporarily during a system settings
+        // change or a One UI process restart. requestRebind is the only listener
+        // API allowed in this callback, so retry a few times while this instance
+        // is still alive. The activity also performs the same bounded retry when
+        // it resumes after the user returns from Settings.
+        serviceScope.launch {
+            repeat(REBIND_ATTEMPTS) { attempt ->
+                runCatching {
+                    NotificationListenerService.requestRebind(
+                        ComponentName(this@PaymentNotificationListenerService, PaymentNotificationListenerService::class.java),
+                    )
+                }
+                if (attempt < REBIND_ATTEMPTS - 1) delay(REBIND_RETRY_DELAY_MS)
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -187,6 +200,8 @@ class PaymentNotificationListenerService : NotificationListenerService() {
     private companion object {
         const val TAG = "MoasseumNotification"
         const val AI_CLASSIFICATION_TIMEOUT_MS = 4_500L
+        const val REBIND_ATTEMPTS = 4
+        const val REBIND_RETRY_DELAY_MS = 750L
         val STANDARD_EXTRA_KEYS = setOf(
             Notification.EXTRA_TITLE,
             Notification.EXTRA_TITLE_BIG,

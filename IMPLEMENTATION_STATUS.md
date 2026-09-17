@@ -20,6 +20,7 @@
 - 사용자가 실행한 월간 소비 Q&A: 집계 수치만 Worker로 전송하고 답변을 후보 거래로 저장하지 않음
 - Android 알림 접근 설정과 앱 알림 권한 안내, 금융 알림 후보를 앱 팝업/시스템 알림으로 확인 후 저장
 - 제조사별 알림 텍스트 필드·메시지형 알림 추출, 서비스 연결/마지막 수신/후보 생성 진단과 재연결
+- Galaxy 알림 접근 설정의 제조사별 진입 차이를 고려한 fallback, 정확한 리스너 컴포넌트 확인과 bounded 자동 재바인딩
 - 알림 AI 분류는 선택 동의 기능: 기기에서 금액/금융 단서로 미리 거른 제목·내용만 Gemini에 보내며, 숫자만 있는 알림·광고·쿠폰·예정·취소는 제외하도록 분류
 - 다크 모드·모션 줄이기, 앱 내 APK 직접 다운로드·파일 검증·Android 설치 화면 연결
 - 관리 화면에서 거래·예산·알림 후보·반복 규칙을 확인 후 삭제 가능(설정은 보존)
@@ -41,14 +42,16 @@
 - `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` — 성공
 - `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` — 성공
 - `./gradlew :app:assembleRelease` (VERSION_CODE=11, VERSION_NAME=0.1.11) — 성공 (`lintVitalRelease` 포함)
+- `./gradlew :app:assembleRelease` (VERSION_CODE=12, VERSION_NAME=0.1.12) — 성공 (`lintVitalRelease` 포함)
 - APK 메타데이터 확인: `com.moasseum.app`, `versionCode=11`, `versionName=0.1.11`; 서명 인증서가 기존 릴리스 키와 일치
+- APK 메타데이터 확인: `com.moasseum.app`, `versionCode=12`, `versionName=0.1.12`; 서비스 선언과 기존 릴리스 서명 인증서가 일치
 - GitHub Release `v0.1.11` 및 `app-release.apk` 업로드 완료: https://github.com/blossom0948/gagebu2/releases/tag/v0.1.11
 - `npm run typecheck` (`cloudflare/ai-worker`) — 성공; Worker 배포 버전 `170aa326-e7e8-400b-8d0b-5c77f066af6e`
 - Worker `/health` 확인 — 성공; 잘못된 알림 분류·소비 Q&A 요청은 400 반환(모델 호출 없이)
 - 실제 Gemini 생성 호출은 사용량을 발생시킬 수 있어 이 작업에서 실행하지 않음
 - 연결 Android 기기 — `adb devices`에서 확인되지 않아 이 작업 중 설치/알림 실기기 검증은 미실행
 - Debug APK — `app/build/outputs/apk/debug/app-debug.apk`
-- 서명된 Release APK — `app/build/outputs/apk/release/app-release.apk` (56,741,358 bytes; SHA-256 `203239dc37b9fb069b7fef10d9e529521058a284f54103a48e62d95ff32cb3df`; 오프라인 한국어 OCR 모델 포함)
+- 서명된 Release APK — `app/build/outputs/apk/release/app-release.apk` (56,741,406 bytes; SHA-256 `2de5b0553e7c4586d6d618c5e63d436b6561fb7e9dea2d3e55fd8b5e3a62b5d6`; 오프라인 한국어 OCR 모델 포함)
 
 ## 다음 작업/배포 안내
 

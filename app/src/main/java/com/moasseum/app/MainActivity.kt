@@ -257,12 +257,16 @@ private fun MoasseumApp(
             if (event == Lifecycle.Event.ON_RESUME) {
                 notificationAccessEnabled = NotificationAccess.isEnabled(context)
                 appNotificationsEnabled = NotificationAccess.areAppNotificationsEnabled(context)
-                NotificationAccess.requestRebind(context)
                 notificationSettingsInProgress = false
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(notificationAccessEnabled, notificationSettingsInProgress) {
+        if (notificationAccessEnabled && !notificationSettingsInProgress) {
+            NotificationAccess.requestRebindWithRetry(context)
+        }
     }
     LaunchedEffect(notificationAccessEnabled, appNotificationsReady, notificationSetupDismissedThisSession) {
         val needsNotificationSetup = !notificationAccessEnabled || !appNotificationsReady
@@ -660,7 +664,6 @@ private fun MoasseumApp(
                         onInstallUpdate = ::downloadAndInstallUpdate,
                         onContinueInstall = ::continueWithDownloadedUpdate,
                         onOpenNotificationSettings = {
-                            NotificationAccess.requestRebind(context)
                             NotificationAccess.openSettings(context)
                         },
                         onOpenAppNotificationSettings = {
