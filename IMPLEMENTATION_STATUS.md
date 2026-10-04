@@ -49,6 +49,7 @@
 - APK 메타데이터 확인: `com.moasseum.app`, `versionCode=12`, `versionName=0.1.12`; 서비스 선언과 기존 릴리스 서명 인증서가 일치
 - GitHub Release `v0.1.11` 및 `app-release.apk` 업로드 완료: https://github.com/blossom0948/gagebu2/releases/tag/v0.1.11
 - GitHub Release `v0.1.12` 및 `app-release.apk` 업로드 완료: https://github.com/blossom0948/gagebu2/releases/tag/v0.1.12
+- GitHub Release `v0.1.13` 및 `app-release.apk` 업로드 완료: https://github.com/blossom0948/gagebu2/releases/tag/v0.1.13
 - `npm run typecheck` (`cloudflare/ai-worker`) — 성공; Worker 배포 버전 `170aa326-e7e8-400b-8d0b-5c77f066af6e`
 - Worker `/health` 확인 — 성공; 잘못된 알림 분류·소비 Q&A 요청은 400 반환(모델 호출 없이)
 - Worker `/v1/parse-transaction`, `/v1/analyze-spending`, `/v1/ask-spending`, `/v1/classify-notification` 실호출 — 모두 HTTP 200 확인 (2026-10-04)
