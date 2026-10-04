@@ -43,16 +43,19 @@
 - `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` — 성공
 - `./gradlew :app:assembleRelease` (VERSION_CODE=11, VERSION_NAME=0.1.11) — 성공 (`lintVitalRelease` 포함)
 - `./gradlew :app:assembleRelease` (VERSION_CODE=12, VERSION_NAME=0.1.12) — 성공 (`lintVitalRelease` 포함)
+- `./gradlew :app:assembleRelease` (VERSION_CODE=13, VERSION_NAME=0.1.13) — 성공 (`lintVitalRelease` 포함)
+- `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` (2026-10-04 장애 복구·오탐 방어 테스트 포함) — 성공
 - APK 메타데이터 확인: `com.moasseum.app`, `versionCode=11`, `versionName=0.1.11`; 서명 인증서가 기존 릴리스 키와 일치
 - APK 메타데이터 확인: `com.moasseum.app`, `versionCode=12`, `versionName=0.1.12`; 서비스 선언과 기존 릴리스 서명 인증서가 일치
 - GitHub Release `v0.1.11` 및 `app-release.apk` 업로드 완료: https://github.com/blossom0948/gagebu2/releases/tag/v0.1.11
 - GitHub Release `v0.1.12` 및 `app-release.apk` 업로드 완료: https://github.com/blossom0948/gagebu2/releases/tag/v0.1.12
 - `npm run typecheck` (`cloudflare/ai-worker`) — 성공; Worker 배포 버전 `170aa326-e7e8-400b-8d0b-5c77f066af6e`
 - Worker `/health` 확인 — 성공; 잘못된 알림 분류·소비 Q&A 요청은 400 반환(모델 호출 없이)
-- 실제 Gemini 생성 호출은 사용량을 발생시킬 수 있어 이 작업에서 실행하지 않음
-- 연결 Android 기기 — `adb devices`에서 확인되지 않아 이 작업 중 설치/알림 실기기 검증은 미실행
+- Worker `/v1/parse-transaction`, `/v1/analyze-spending`, `/v1/ask-spending`, `/v1/classify-notification` 실호출 — 모두 HTTP 200 확인 (2026-10-04)
+- 연결 Android 기기 — `R3CT80B80MN` / Galaxy Z Fold4 / Android 16(API 36)에서 최종 릴리스 설치·기능·알림·재연결·백그라운드 알림 검증 완료
+- 상세 실기기 오류 기록과 수정 결과 — [QA_TEST_REPORT_2026-10-04.md](QA_TEST_REPORT_2026-10-04.md)
 - Debug APK — `app/build/outputs/apk/debug/app-debug.apk`
-- 서명된 Release APK — `app/build/outputs/apk/release/app-release.apk` (56,741,406 bytes; SHA-256 `2de5b0553e7c4586d6d618c5e63d436b6561fb7e9dea2d3e55fd8b5e3a62b5d6`; 오프라인 한국어 OCR 모델 포함)
+- 서명된 Release APK — `app/build/outputs/apk/release/app-release.apk` (56,741,406 bytes; SHA-256 `0a2695dac26025e1aa15502d63dc5525cb6767fe7b434ac11ee1d87aa3820666`; 오프라인 한국어 OCR 모델 포함)
 
 ## 다음 작업/배포 안내
 

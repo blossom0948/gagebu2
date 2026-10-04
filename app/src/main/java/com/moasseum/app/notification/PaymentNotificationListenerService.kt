@@ -11,6 +11,7 @@ import com.moasseum.app.FinanceApplication
 import com.moasseum.app.data.AiClient
 import com.moasseum.app.domain.toDomain
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -95,6 +96,7 @@ class PaymentNotificationListenerService : NotificationListenerService() {
                     PaymentNotificationNotifier.showCandidate(this@PaymentNotificationListenerService, detected)
                 }
             }.onFailure { error ->
+                if (error is CancellationException) throw error
                 Log.w(TAG, "notification processing failed: ${error::class.java.simpleName}")
             }
         }

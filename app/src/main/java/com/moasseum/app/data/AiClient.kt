@@ -30,11 +30,18 @@ class AiClient(
         withContext(Dispatchers.IO) {
             runCatching {
                 require(text.isNotBlank()) { "기록할 문장을 입력해 주세요." }
-                if (baseUrl.isBlank()) {
-                    LocalNaturalLanguageParser.parse(text.trim(), today)
-                } else {
-                    parseWithServer(text.trim(), today)
-                }
+                val trimmedText = text.trim()
+                if (baseUrl.isBlank()) return@runCatching LocalNaturalLanguageParser.parse(trimmedText, today)
+
+                // The server is an enhancement, not a prerequisite for recording a transaction.
+                // Free-tier AI can briefly return 5xx or be unavailable, so keep the core input
+                // flow usable with the on-device parser and preserve the server error only when
+                // the local parser cannot understand the sentence either.
+                runCatching { parseWithServer(trimmedText, today) }
+                    .getOrElse { serverError ->
+                        runCatching { LocalNaturalLanguageParser.parse(trimmedText, today) }
+                            .getOrElse { throw serverError }
+                    }
             }
         }
 

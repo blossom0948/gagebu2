@@ -25,4 +25,16 @@ class AiClientTest {
         assertEquals(AiCandidateSource.LOCAL, candidate.source)
         assertTrue(candidate.needsConfirmation.isEmpty())
     }
+
+    @Test
+    fun `server outage falls back to on-device parser`() = runBlocking {
+        val result = AiClient(baseUrl = "https://127.0.0.1:1").parseTransaction(
+            text = "점심 8000원",
+            today = LocalDate.of(2026, 10, 4),
+        )
+
+        val candidate = result.getOrThrow()
+        assertEquals(8_000L, candidate.amount)
+        assertEquals(AiCandidateSource.LOCAL, candidate.source)
+    }
 }

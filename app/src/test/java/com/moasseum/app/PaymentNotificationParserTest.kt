@@ -16,6 +16,14 @@ class PaymentNotificationParserTest {
     }
 
     @Test
+    fun messagingNotificationWithIncidentalNumbersIsNotFinancial() {
+        val body = "이모티콘을 보냈습니다. 1234 타이밍 맞게 불꽃놀이 1698이요ㅎㅎ 간절한 1700에."
+
+        assertFalse(PaymentNotificationParser.shouldInspectWithAi("쫑알메이113", body))
+        assertNull(PaymentNotificationParser.parse("com.kakao.talk", "쫑알메이113", body, 1_000L))
+    }
+
+    @Test
     fun cardApprovalWithWonAmountIsParsed() {
         val candidate = PaymentNotificationParser.parse(
             packageName = "com.example.bank",
