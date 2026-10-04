@@ -39,7 +39,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
+import com.moasseum.app.ui.components.FinanceTextField as OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -62,6 +62,9 @@ import androidx.compose.ui.unit.dp
 import com.moasseum.app.domain.LedgerUiState
 import com.moasseum.app.domain.Transaction
 import com.moasseum.app.domain.TransactionType
+import com.moasseum.app.domain.HistoryQuery
+import com.moasseum.app.domain.HistorySort
+import com.moasseum.app.domain.filterHistoryTransactions
 import com.moasseum.app.domain.formatDate
 import com.moasseum.app.domain.formatMonth
 import com.moasseum.app.domain.formatWon
@@ -105,6 +108,10 @@ fun HistoryScreen(
     var editingTransaction by remember { mutableStateOf<Transaction?>(null) }
     var backupMenuOpen by remember { mutableStateOf(false) }
     var dateFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    var paymentFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    var sortName by rememberSaveable { mutableStateOf(HistorySort.NEWEST.name) }
+    var paymentMenuOpen by remember { mutableStateOf(false) }
+    var sortMenuOpen by remember { mutableStateOf(false) }
     // Preserve a day selected across a month boundary, but do not restore a stale
     // day filter if the process restarts with a different selected month.
     LaunchedEffect(uiState.month) {
@@ -112,20 +119,17 @@ fun HistoryScreen(
         if (dateFilter != null && filterMonth != uiState.month) dateFilter = null
     }
     val filter = HistoryFilter.valueOf(filterName)
-    val filteredTransactions = uiState.monthTransactions
-        .filter { transaction ->
-            when (filter) {
-                HistoryFilter.ALL -> true
-                HistoryFilter.EXPENSE -> transaction.type == TransactionType.EXPENSE
-                HistoryFilter.INCOME -> transaction.type == TransactionType.INCOME
-            }
-        }
-        .filter { transaction ->
-            search.isBlank() || transaction.merchant.contains(search.trim(), ignoreCase = true) || transaction.memo.contains(search.trim(), ignoreCase = true)
-        }
-        .filter { transaction -> categoryFilterKey == "ALL" || transaction.categoryKey == categoryFilterKey }
-        .filter { transaction -> dateFilter == null || transaction.occurredDate.toString() == dateFilter }
-        .sortedWith(compareByDescending<Transaction> { it.occurredAt }.thenByDescending { it.id })
+    val sort = HistorySort.valueOf(sortName)
+    val filteredTransactions = filterHistoryTransactions(uiState.monthTransactions, HistoryQuery(
+        type = when (filter) {
+            HistoryFilter.ALL -> null
+            HistoryFilter.EXPENSE -> TransactionType.EXPENSE
+            HistoryFilter.INCOME -> TransactionType.INCOME
+        },
+        categoryKey = categoryFilterKey.takeUnless { it == "ALL" },
+        date = dateFilter?.let(LocalDate::parse), paymentMethod = paymentFilter, search = search, sort = sort,
+    ))
+    val availableMethods = (paymentMethods + uiState.transactions.map { it.paymentMethod }).distinct().sorted()
     val detailTransaction = detailId?.let { id -> uiState.transactions.firstOrNull { it.id == id } }
 
     LazyColumn(
@@ -170,7 +174,7 @@ fun HistoryScreen(
                 Surface(
                     onClick = { categoryFilterKey = "ALL" },
                     color = if (categoryFilterKey == "ALL") LocalFinanceColors.current.accent else LocalFinanceColors.current.surfaceRaised,
-                    contentColor = if (categoryFilterKey == "ALL") Color(0xFF06332B) else LocalFinanceColors.current.textSecondary,
+                    contentColor = if (categoryFilterKey == "ALL") MaterialTheme.colorScheme.onPrimary else LocalFinanceColors.current.textSecondary,
                     shape = RoundedCornerShape(11.dp),
                 ) {
                     Text("전체", modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp), style = MaterialTheme.typography.labelMedium)
@@ -179,11 +183,11 @@ fun HistoryScreen(
                     Surface(
                         onClick = { categoryFilterKey = spec.key },
                         color = if (categoryFilterKey == spec.key) LocalFinanceColors.current.accent else LocalFinanceColors.current.surfaceRaised,
-                        contentColor = if (categoryFilterKey == spec.key) Color(0xFF06332B) else LocalFinanceColors.current.textSecondary,
+                        contentColor = if (categoryFilterKey == spec.key) MaterialTheme.colorScheme.onPrimary else LocalFinanceColors.current.textSecondary,
                         shape = RoundedCornerShape(11.dp),
                     ) {
                         Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(spec.icon, contentDescription = null, tint = if (categoryFilterKey == spec.key) Color(0xFF06332B) else spec.color, modifier = Modifier.size(15.dp))
+                            Icon(spec.icon, contentDescription = null, tint = if (categoryFilterKey == spec.key) MaterialTheme.colorScheme.onPrimary else spec.color, modifier = Modifier.size(15.dp))
                             Spacer(Modifier.width(5.dp))
                             Text(categoryLabel(spec.key), style = MaterialTheme.typography.labelLarge)
                         }
@@ -205,11 +209,38 @@ fun HistoryScreen(
                         }
                     }
                 },
-                placeholder = { Text("가맹점이나 메모 검색") },
+                placeholder = { Text("가맹점·메모·결제수단 검색") },
                 shape = RoundedCornerShape(14.dp),
             )
         }
-        item { HistorySummaryLine(uiState) }
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.weight(1f)) {
+                    TextButton(onClick = { paymentMenuOpen = true }) {
+                        Text(paymentFilter ?: "모든 결제수단", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Icon(Icons.Rounded.ChevronRight, null, modifier = Modifier.size(16.dp))
+                    }
+                    DropdownMenu(paymentMenuOpen, { paymentMenuOpen = false }) {
+                        DropdownMenuItem(text = { Text("모든 결제수단") }, onClick = { paymentFilter = null; paymentMenuOpen = false })
+                        availableMethods.forEach { method ->
+                            DropdownMenuItem(text = { Text(method) }, onClick = { paymentFilter = method; paymentMenuOpen = false })
+                        }
+                    }
+                }
+                Box {
+                    TextButton(onClick = { sortMenuOpen = true }) {
+                        Text(sort.label)
+                        Icon(Icons.Rounded.ChevronRight, null, modifier = Modifier.size(16.dp))
+                    }
+                    DropdownMenu(sortMenuOpen, { sortMenuOpen = false }) {
+                        HistorySort.entries.forEach { option ->
+                            DropdownMenuItem(text = { Text(option.label) }, onClick = { sortName = option.name; sortMenuOpen = false })
+                        }
+                    }
+                }
+            }
+            HistorySummaryLine(filteredTransactions)
+        }
         if (dateFilter != null) item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("${dateFilter} · ${filteredTransactions.size}건", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
@@ -219,19 +250,25 @@ fun HistoryScreen(
         if (filteredTransactions.isEmpty()) {
             item {
                 EmptyState(
-                    title = if (search.isBlank() && dateFilter == null && categoryFilterKey == "ALL" && filter == HistoryFilter.ALL) "아직 거래가 없어요" else "조건에 맞는 거래가 없어요",
+                    title = if (search.isBlank() && dateFilter == null && paymentFilter == null && categoryFilterKey == "ALL" && filter == HistoryFilter.ALL) "아직 거래가 없어요" else "조건에 맞는 거래가 없어요",
                     message = "중앙 + 버튼으로 기록하거나 날짜·검색·필터를 바꿔 보세요.",
                 )
             }
-        } else {
+        } else if (sort.groupsByDate) {
             val grouped = filteredTransactions.groupBy { it.occurredDate }
-            grouped.entries.sortedByDescending { it.key }.forEach { (date, transactions) ->
+            grouped.forEach { (date, transactions) ->
                 item(key = "date-${date}") {
                     DateGroup(
                         date = date,
                         transactions = transactions,
                         onSelectTransaction = { detailId = it.id },
                     )
+                }
+            }
+        } else {
+            items(filteredTransactions, key = { "transaction-${it.id}" }) { transaction ->
+                FinanceCard {
+                    TransactionRow(transaction, onClick = { detailId = transaction.id })
                 }
             }
         }
@@ -284,7 +321,7 @@ private fun HistoryFilterBar(
                 modifier = Modifier.weight(1f).heightIn(min = 40.dp),
                 onClick = { onSelect(option) },
                 color = if (option == selected) colors.accent else Color.Transparent,
-                contentColor = if (option == selected) Color(0xFF06332B) else colors.textSecondary,
+                contentColor = if (option == selected) MaterialTheme.colorScheme.onPrimary else colors.textSecondary,
                 shape = RoundedCornerShape(19.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -296,13 +333,13 @@ private fun HistoryFilterBar(
 }
 
 @Composable
-private fun HistorySummaryLine(uiState: LedgerUiState) {
+private fun HistorySummaryLine(transactions: List<Transaction>) {
     val colors = LocalFinanceColors.current
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("이번 달 ${uiState.monthTransactions.size}건 · 최신순", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+        Text("현재 조건 ${transactions.size}건", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("지출 ${formatWon(uiState.expenseTotal)}", color = colors.expense, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            Text("수입 ${formatWon(uiState.incomeTotal)}", color = colors.income, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+            Text("지출 ${formatWon(transactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount })}", color = colors.expense, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text("수입 ${formatWon(transactions.filter { it.type == TransactionType.INCOME }.sumOf { it.amount })}", color = colors.income, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
         }
     }
 }
@@ -404,7 +441,7 @@ private fun CalendarDay(
                 Text(
                     date.dayOfMonth.toString(),
                     color = when {
-                        selected -> Color(0xFF06332B)
+                        selected -> MaterialTheme.colorScheme.onPrimary
                         isSunday -> colors.expense
                         else -> colors.textPrimary
                     },
@@ -416,7 +453,7 @@ private fun CalendarDay(
                         .size(if (count > 0) 4.dp else 2.dp)
                         .background(
                             if (count > 0) {
-                                if (selected) Color(0xFF06332B) else colors.accent
+                                if (selected) MaterialTheme.colorScheme.onPrimary else colors.accent
                             } else Color.Transparent,
                             CircleShape,
                         ),

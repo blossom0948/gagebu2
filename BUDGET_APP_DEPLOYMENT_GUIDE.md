@@ -335,6 +335,8 @@ Android Studio나 다른 컴퓨터에서 SDK/JDK가 이미 설정되어 있으�
 
 Room Entity/테이블을 바꾸면 `FinanceDatabase` 버전과 이전 버전에서 올라오는 Migration을 함께 추가한다. 기존 사용자 데이터가 유지되는지 Migration 경로를 확인한 뒤 릴리스한다.
 
+이번 카드 이용기간·고정비 레이더·내역 정렬은 **Android APK만 배포**하는 변경이다. Worker/API와 Room 테이블은 바뀌지 않는다. 카드 설정은 기존 3필드 형식을 읽는 호환 디코더를 유지하고 새 저장 형식으로 확장했으므로, DataStore 변경도 기존 설정 읽기와 새 형식 재저장 테스트를 함께 수행한다. 폰의 시스템 글꼴 크기는 변경하지 않는다.
+
 ### AI Worker/API 변경
 
 ```bash

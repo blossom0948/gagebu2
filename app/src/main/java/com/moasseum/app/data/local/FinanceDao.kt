@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import com.moasseum.app.domain.nextRecurringOccurrence
+import com.moasseum.app.domain.editedRecurringOccurrence
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.flow.Flow
@@ -58,6 +59,32 @@ interface FinanceDao {
 
     @Query("DELETE FROM recurring_transactions WHERE id = :id")
     suspend fun deleteRecurringRule(id: Long)
+
+    @Query("SELECT * FROM recurring_transactions WHERE id = :id LIMIT 1")
+    suspend fun getRecurringRule(id: Long): RecurringTransactionEntity?
+
+    @Query("""
+        UPDATE recurring_transactions SET amount = :amount, type = :type, merchant = :merchant,
+            categoryKey = :categoryKey, memo = :memo, paymentMethod = :paymentMethod,
+            dayOfMonth = :dayOfMonth, nextOccurrenceDate = :nextOccurrenceDate, updatedAt = :updatedAt
+        WHERE id = :id
+    """)
+    suspend fun updateRecurringRuleFields(
+        id: Long, amount: Long, type: String, merchant: String, categoryKey: String,
+        memo: String, paymentMethod: String, dayOfMonth: Int, nextOccurrenceDate: String, updatedAt: Long,
+    )
+
+    @Transaction
+    suspend fun editRecurringRule(
+        id: Long, amount: Long, type: String, merchant: String, categoryKey: String,
+        memo: String, paymentMethod: String, dayOfMonth: Int, today: String, now: Long,
+    ) {
+        val existing = getRecurringRule(id) ?: return
+        val next = editedRecurringOccurrence(
+            LocalDate.parse(existing.nextOccurrenceDate), existing.dayOfMonth, dayOfMonth, LocalDate.parse(today),
+        )
+        updateRecurringRuleFields(id, amount, type, merchant, categoryKey, memo, paymentMethod, dayOfMonth, next.toString(), now)
+    }
 
     @Query("UPDATE recurring_transactions SET nextOccurrenceDate = :nextOccurrenceDate, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateRecurringNextOccurrence(id: Long, nextOccurrenceDate: String, updatedAt: Long)

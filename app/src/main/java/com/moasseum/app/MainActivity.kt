@@ -138,7 +138,7 @@ class MainActivity : ComponentActivity() {
                     MoasseumApp(
                         viewModel = viewModel,
                         application = application,
-                        paymentMethods = paymentMethods,
+                        paymentMethods = (paymentMethods + paymentCards.map { it.paymentMethod }).distinct(),
                         onSavePaymentMethods = { methods ->
                             lifecycleScope.launch { application.preferencesRepository.savePaymentMethods(methods) }
                         },
@@ -147,7 +147,7 @@ class MainActivity : ComponentActivity() {
                             lifecycleScope.launch {
                                 application.preferencesRepository.savePaymentCards(cards)
                                 application.preferencesRepository.savePaymentMethods(
-                                    (paymentMethods + cards.map { it.name }).distinct(),
+                                    (paymentMethods + cards.map { it.paymentMethod }).distinct(),
                                 )
                             }
                         },
@@ -630,6 +630,7 @@ private fun MoasseumApp(
                         },
                         recurringRules = recurringRules,
                         onAddRecurringRule = viewModel::addRecurringRule,
+                        onEditRecurringRule = viewModel::editRecurringRule,
                         onSetRecurringRuleActive = viewModel::setRecurringRuleActive,
                         onDeleteRecurringRule = viewModel::deleteRecurringRule,
                         onClearLocalData = {

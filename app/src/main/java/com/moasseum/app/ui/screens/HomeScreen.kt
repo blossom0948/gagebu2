@@ -36,7 +36,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
+import com.moasseum.app.ui.components.FinanceTextField as OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -155,7 +155,7 @@ private fun HomeHeader(
         ) {
             Text(
                 text = "모",
-                color = Color(0xFF06332B),
+                color = MaterialTheme.colorScheme.onPrimary,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Black,
             )
@@ -265,7 +265,7 @@ private fun HomeTabs(
                 modifier = Modifier.weight(1f).heightIn(min = 40.dp),
                 onClick = { onSelect(tab) },
                 color = tabColor,
-                contentColor = if (tab == selected) Color(0xFF06332B) else colors.textSecondary,
+                contentColor = if (tab == selected) MaterialTheme.colorScheme.onPrimary else colors.textSecondary,
                 shape = RoundedCornerShape(19.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -715,7 +715,7 @@ private fun AnalysisButton(onClick: () -> Unit, enabled: Boolean, label: String)
         onClick = onClick,
         enabled = enabled,
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = Color(0xFF06332B)),
+        colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = MaterialTheme.colorScheme.onPrimary),
         shape = RoundedCornerShape(14.dp),
     ) { Text(label, fontWeight = FontWeight.Bold) }
 }

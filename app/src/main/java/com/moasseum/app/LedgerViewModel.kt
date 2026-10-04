@@ -181,6 +181,19 @@ class LedgerViewModel(
         viewModelScope.launch { repository.setRecurringRuleActive(id, active) }
     }
 
+    fun editRecurringRule(
+        id: Long, amountInput: String, type: TransactionType, merchant: String, categoryKey: String,
+        memo: String, paymentMethod: String, dayOfMonthInput: String,
+    ): Boolean {
+        val amount = parseAmount(amountInput) ?: return false
+        val day = dayOfMonthInput.toIntOrNull()?.takeIf { it in 1..31 } ?: return false
+        if (merchant.isBlank()) return false
+        viewModelScope.launch {
+            repository.editRecurringRule(id, amount, type, merchant, categoryKey, memo, paymentMethod, day)
+        }
+        return true
+    }
+
     fun deleteRecurringRule(id: Long) {
         viewModelScope.launch { repository.deleteRecurringRule(id) }
     }

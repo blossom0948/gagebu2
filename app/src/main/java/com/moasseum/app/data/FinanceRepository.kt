@@ -237,6 +237,17 @@ class FinanceRepository(
         dao.setRecurringRuleActive(id, active, System.currentTimeMillis())
     }
 
+    suspend fun editRecurringRule(
+        id: Long, amount: Long, type: TransactionType, merchant: String, categoryKey: String,
+        memo: String, paymentMethod: String, dayOfMonth: Int,
+    ) {
+        require(amount > 0L && merchant.isNotBlank() && dayOfMonth in 1..31)
+        dao.editRecurringRule(
+            id, amount, type.name, merchant.trim(), categoryKey, memo.trim(), paymentMethod,
+            dayOfMonth, LocalDate.now().toString(), System.currentTimeMillis(),
+        )
+    }
+
     suspend fun deleteRecurringRule(id: Long) {
         dao.deleteRecurringRule(id)
     }

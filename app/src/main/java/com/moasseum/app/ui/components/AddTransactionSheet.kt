@@ -32,7 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
+import com.moasseum.app.ui.components.FinanceTextField as OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -216,11 +216,11 @@ private fun AiInputForm(
             onClick = { focusManager.clearFocus(); onParseAi(input) },
             enabled = input.isNotBlank() && aiState !is AiParseState.Loading,
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = Color(0xFF06332B)),
+            colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = MaterialTheme.colorScheme.onPrimary),
             shape = RoundedCornerShape(15.dp),
         ) {
             if (aiState is AiParseState.Loading) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color(0xFF06332B), strokeWidth = 2.dp)
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
             } else {
                 Text("거래 후보 해석하기", fontWeight = FontWeight.Bold)
             }
@@ -373,7 +373,7 @@ private fun CandidateReview(
         Button(
             onClick = onConfirm,
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = Color(0xFF06332B)),
+            colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = MaterialTheme.colorScheme.onPrimary),
             shape = RoundedCornerShape(15.dp),
         ) { Text("확인하고 저장", fontWeight = FontWeight.Bold) }
     }
@@ -526,7 +526,7 @@ private fun DirectTransactionForm(
                 if (!onSave(amount, type, merchant, categoryKey, memo, paymentMethod)) showError = true
             },
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = Color(0xFF06332B)),
+            colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = MaterialTheme.colorScheme.onPrimary),
             shape = RoundedCornerShape(15.dp),
         ) {
             Text("거래 저장", fontWeight = FontWeight.Bold)

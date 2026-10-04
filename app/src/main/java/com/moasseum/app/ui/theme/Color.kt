@@ -14,6 +14,7 @@ data class FinanceColors(
     val surfaceBase: Color,
     val surfaceRaised: Color,
     val surfaceOverlay: Color,
+    val surfaceInput: Color,
     val textPrimary: Color,
     val textSecondary: Color,
     val divider: Color,
@@ -21,17 +22,18 @@ data class FinanceColors(
 
 val DarkFinanceColors = FinanceColors(
     accent = Color(0xFF2EDAD2),
-    accentSoft = Color(0xFF155154),
+    accentSoft = Color(0xFF1B4844),
     income = Color(0xFF8ED4FF),
     expense = Color(0xFFFFA38F),
     warning = Color(0xFFFFD58A),
     success = Color(0xFF63E6BE),
-    surfaceBase = Color(0xFF09292B),
-    surfaceRaised = Color(0xFF123739),
-    surfaceOverlay = Color(0xFF1A484A),
+    surfaceBase = Color(0xFF102729),
+    surfaceRaised = Color(0xFF223A3D),
+    surfaceOverlay = Color(0xFF2D4548),
+    surfaceInput = Color(0xFF193134),
     textPrimary = Color(0xFFE9FBF8),
-    textSecondary = Color(0xFFA2C0BE),
-    divider = Color(0xFF286064),
+    textSecondary = Color(0xFFADC3C0),
+    divider = Color(0xFF40595A),
 )
 
 val LightFinanceColors = FinanceColors(
@@ -41,12 +43,13 @@ val LightFinanceColors = FinanceColors(
     expense = Color(0xFFC75442),
     warning = Color(0xFF9A6700),
     success = Color(0xFF207A57),
-    surfaceBase = Color(0xFFF5FBF7),
-    surfaceRaised = Color(0xFFFFFFFF),
-    surfaceOverlay = Color(0xFFE8F3ED),
+    surfaceBase = Color(0xFFEEF4F0),
+    surfaceRaised = Color(0xFFFAFCFB),
+    surfaceOverlay = Color(0xFFE2EDE7),
+    surfaceInput = Color(0xFFF0F5F2),
     textPrimary = Color(0xFF122321),
-    textSecondary = Color(0xFF58716A),
-    divider = Color(0xFFD3E5DC),
+    textSecondary = Color(0xFF536B64),
+    divider = Color(0xFFC9DBD1),
 )
 
 val CategoryFood = Color(0xFFFFB86C)

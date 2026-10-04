@@ -55,7 +55,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
@@ -137,9 +136,9 @@ fun FinanceCard(
         colors = CardDefaults.cardColors(
             containerColor = if (highlighted) colors.accentSoft else colors.surfaceRaised,
         ),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Brush.linearGradient(
-                listOf(colors.divider.copy(alpha = 0.7f), Color.Transparent),
-            )),
+        border = androidx.compose.foundation.BorderStroke(
+            0.7.dp, colors.divider.copy(alpha = if (highlighted) 0.65f else 0.45f),
+        ),
     ) {
         content()
     }
@@ -388,7 +387,7 @@ fun AddFloatingActionButton(
         modifier = Modifier.size(64.dp),
         shape = CircleShape,
         containerColor = LocalFinanceColors.current.accent,
-        contentColor = Color(0xFF06332B),
+        contentColor = MaterialTheme.colorScheme.onPrimary,
     ) {
         Icon(
             imageVector = Icons.Rounded.Add,

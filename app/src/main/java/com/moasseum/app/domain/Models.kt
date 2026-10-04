@@ -71,6 +71,9 @@ data class PaymentCard(
     val id: String,
     val name: String,
     val dueDay: Int,
+    val paymentMethod: String = name,
+    val periodEndDay: Int = 31,
+    val periodEndMonthsBeforeDue: Int = 1,
 )
 
 data class CategoryTotal(

@@ -9,6 +9,10 @@
 - 카테고리별 예산 한도와 홈 카테고리 사용률 표시
 - 거래 추가, 상세, 수정, soft delete와 삭제 직후 실행 취소
 - 카드 이름·결제일 관리와 결제수단 관리
+- 카드 이용기간 종료일/종료월과 연결 결제수단 설정, 결제월별 사용액 합산·거래 내역 펼치기(카드사 청구액 아님)
+- 구독·고정비 레이더: 월 예정액, 7일 예정액, 30일 일정, 기록된 반복/그 외 지출
+- 반복 거래 규칙 수정(금액·날짜·결제수단·메모 등), 기존 기록·활성 상태 보존과 처리 월 중복 방지
+- 내역 결제수단 필터와 정렬 4종, 검색/필터 결과의 정확한 건수·수입/지출 합계
 - 날짜·유형·카테고리·가맹점·메모·결제수단을 CSV로 내보내고, 전체 거래를 JSON으로 백업
 - CSV 중복 가져오기는 동일 거래 필드를 기준으로 건너뜀
 - 7개 기본 카테고리 이름 변경과 사용자 카테고리 추가·수정·삭제(최대 20개); 삭제 시 기존 거래·반복 규칙·알림 후보를 기타로 이동
@@ -43,6 +47,7 @@
 - v0.1.14: 단위 테스트 25개·lint·서명 Release 빌드 성공, Galaxy 기존 데이터 유지 설치와 설치 APK 해시 일치 확인
 - v0.1.14 APK: 56,741,406 bytes; SHA-256 `2b0799e42ee06e1ad8b94f5a2d08102f5ea3b238bbbbed177c7ba4502d2e2ca3`
 - v0.1.15: 이어서 점검한 달력 월 경계 날짜 필터 수정, 목표 지출 카드 전체 터치 적용. 단위 테스트 25개·lint·서명 Release 빌드 및 두 문제 실기기 재검증 성공
+- v0.1.16: 카드 이용기간·고정비 레이더·반복 규칙 수정·내역 필터/정렬 추가, 민트 표면 구분과 라이트 선택 글자 대비 보완. 단위 테스트 46개·lint·서명 Release 빌드 성공. 실기기 등록/수정/일시 중지/재실행/정렬/알림 확인. 상세 범위는 [QA_FEATURES_REPORT_2026-10-04.md](QA_FEATURES_REPORT_2026-10-04.md)
 
 - `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` — 성공
 - `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` — 성공
@@ -62,7 +67,7 @@
 - 연결 Android 기기 — `R3CT80B80MN` / Galaxy Z Fold4 / Android 16(API 36)에서 최종 릴리스 설치·기능·알림·재연결·백그라운드 알림 검증 완료
 - 상세 실기기 오류 기록과 수정 결과 — [QA_TEST_REPORT_2026-10-04.md](QA_TEST_REPORT_2026-10-04.md)
 - Debug APK — `app/build/outputs/apk/debug/app-debug.apk`
-- 현재 서명된 Release APK — `app/build/outputs/apk/release/app-release.apk` (v0.1.15, 56,741,402 bytes; SHA-256 `8087ee44aa107b1f942bda5949b1e2bdc554d5367c7245daba1e1a6bdbb59801`; 설치된 base.apk와 일치, 오프라인 한국어 OCR 모델 포함)
+- 현재 서명된 Release APK — `app/build/outputs/apk/release/app-release.apk` (v0.1.16, 56,790,558 bytes; SHA-256 `30ce397bd802a8855a3bd3ce22b6e4f931628fd377e58a8978ace8033d2b20ad`; 설치된 base.apk와 일치, 오프라인 한국어 OCR 모델 포함)
 
 ## 다음 작업/배포 안내
 

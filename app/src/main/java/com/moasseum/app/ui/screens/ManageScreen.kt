@@ -38,7 +38,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import com.moasseum.app.ui.components.FinanceTextField as OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -62,6 +62,7 @@ import com.moasseum.app.domain.TransactionType
 import com.moasseum.app.domain.formatDate
 import com.moasseum.app.domain.formatMonth
 import com.moasseum.app.domain.formatWon
+import com.moasseum.app.domain.cardUsage
 import com.moasseum.app.ui.components.FinanceCard
 import com.moasseum.app.ui.components.CategorySpecs
 import com.moasseum.app.ui.components.LocalCategoryLabels
@@ -87,6 +88,7 @@ fun ManageScreen(
     onClearLocalData: () -> Unit,
     recurringRules: List<RecurringRule>,
     onAddRecurringRule: (String, TransactionType, String, String, String, String, String) -> Boolean,
+    onEditRecurringRule: (Long, String, TransactionType, String, String, String, String, String) -> Boolean,
     onSetRecurringRuleActive: (Long, Boolean) -> Unit,
     onDeleteRecurringRule: (Long) -> Unit,
     darkTheme: Boolean,
@@ -120,6 +122,9 @@ fun ManageScreen(
     var showAiNotificationConsent by rememberSaveable { mutableStateOf(false) }
     var showRecurringDialog by rememberSaveable { mutableStateOf(false) }
     var showCreateRecurringDialog by rememberSaveable { mutableStateOf(false) }
+    var editingRecurringId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var showCardUsageDialog by rememberSaveable { mutableStateOf(false) }
+    var showFixedRadarDialog by rememberSaveable { mutableStateOf(false) }
     val colors = LocalFinanceColors.current
     LazyColumn(
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 24.dp),
@@ -160,6 +165,17 @@ fun ManageScreen(
                 )
                 HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                 ManageRow(Icons.Rounded.AccountBalance, "결제수단", "${paymentMethods.joinToString(" · ")}", onClick = { showPaymentMethodsDialog = true })
+            }
+        }
+        item { ManageSectionTitle("카드·고정 지출") }
+        item {
+            FinanceCard {
+                ManageRow(
+                    Icons.Rounded.CalendarMonth,
+                    "결제일 기준 보기",
+                    if (paymentCards.isEmpty()) "카드별 이용기간과 사용액 확인" else "${formatMonth(uiState.month)} 결제 · 기록 ${formatWon(paymentCards.sumOf { cardUsage(it, uiState.month, uiState.transactions).total })}",
+                    onClick = { showCardUsageDialog = true },
+                )
                 HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                 ManageRow(
                     Icons.Rounded.CreditCard,
@@ -168,7 +184,13 @@ fun ManageScreen(
                     onClick = { showPaymentCardsDialog = true },
                 )
                 HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                ManageRow(Icons.Rounded.Repeat, "구독·고정비", "매월 자동 기록 · ${recurringRules.count { it.isActive }}개 사용 중", onClick = { showRecurringDialog = true })
+                ManageRow(Icons.Rounded.Repeat, "반복 거래 관리", "매월 자동 기록 · ${recurringRules.count { it.isActive }}개 사용 중", onClick = { showRecurringDialog = true })
+                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                ManageRow(
+                    Icons.Rounded.Wallet, "구독·고정비 레이더",
+                    "월 예정 ${formatWon(recurringRules.filter { it.isActive && it.type == TransactionType.EXPENSE }.sumOf { it.amount })} · 다가오는 지출 확인",
+                    onClick = { showFixedRadarDialog = true },
+                )
             }
         }
         item { ManageSectionTitle("앱 설정") }
@@ -292,11 +314,24 @@ fun ManageScreen(
     if (showPaymentCardsDialog) {
         PaymentCardsDialog(
             cards = paymentCards,
+            paymentMethods = (paymentMethods + uiState.transactions.map { it.paymentMethod }).distinct(),
             onDismiss = { showPaymentCardsDialog = false },
             onSave = { cards ->
                 onSavePaymentCards(cards)
                 showPaymentCardsDialog = false
             },
+        )
+    }
+    if (showCardUsageDialog) {
+        CardUsageDialog(paymentCards, uiState.transactions, uiState.month,
+            onDismiss = { showCardUsageDialog = false },
+            onManageCards = { showCardUsageDialog = false; showPaymentCardsDialog = true },
+        )
+    }
+    if (showFixedRadarDialog) {
+        FixedExpenseRadarDialog(recurringRules, uiState,
+            onDismiss = { showFixedRadarDialog = false },
+            onManageRules = { showFixedRadarDialog = false; showRecurringDialog = true },
         )
     }
     if (showPrivacyDialog) {
@@ -352,6 +387,12 @@ fun ManageScreen(
             rules = recurringRules,
             onDismiss = { showRecurringDialog = false },
             onCreate = {
+                editingRecurringId = null
+                showRecurringDialog = false
+                showCreateRecurringDialog = true
+            },
+            onEdit = { id ->
+                editingRecurringId = id
                 showRecurringDialog = false
                 showCreateRecurringDialog = true
             },
@@ -361,10 +402,12 @@ fun ManageScreen(
     }
     if (showCreateRecurringDialog) {
         RecurringRuleDialog(
-            paymentMethods = paymentMethods,
+            initialRule = recurringRules.firstOrNull { it.id == editingRecurringId },
+            paymentMethods = (paymentMethods + recurringRules.map { it.paymentMethod }).distinct(),
             onDismiss = { showCreateRecurringDialog = false },
             onSave = { amount, type, merchant, categoryKey, memo, paymentMethod, day ->
-                val saved = onAddRecurringRule(amount, type, merchant, categoryKey, memo, paymentMethod, day)
+                val saved = editingRecurringId?.let { id -> onEditRecurringRule(id, amount, type, merchant, categoryKey, memo, paymentMethod, day) }
+                    ?: onAddRecurringRule(amount, type, merchant, categoryKey, memo, paymentMethod, day)
                 if (saved) {
                     showCreateRecurringDialog = false
                     showRecurringDialog = true
@@ -559,7 +602,7 @@ private fun PaymentMethodsDialog(
                 )
                 TextButton(onClick = {
                     val value = newMethod.trim()
-                    if (value.isBlank() || value in draft || draft.size >= 12) {
+                    if (value.isBlank() || value in draft || draft.size >= 36) {
                         error = true
                     } else {
                         draft = draft + value
@@ -567,7 +610,7 @@ private fun PaymentMethodsDialog(
                         error = false
                     }
                 }) { Text("추가") }
-                if (error) Text("중복되지 않은 이름을 입력해 주세요. 최대 12개까지 설정할 수 있어요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
+                if (error) Text("중복되지 않은 이름을 입력해 주세요. 최대 36개까지 설정할 수 있어요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
                 if (draft.isEmpty()) Text("결제수단을 하나 이상 남겨주세요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
             }
         },
@@ -579,6 +622,7 @@ private fun PaymentMethodsDialog(
 @Composable
 private fun PaymentCardsDialog(
     cards: List<PaymentCard>,
+    paymentMethods: List<String>,
     onDismiss: () -> Unit,
     onSave: (List<PaymentCard>) -> Unit,
 ) {
@@ -598,10 +642,10 @@ private fun PaymentCardsDialog(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Rounded.CalendarMonth, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
-                    Text("카드별 결제일을 저장해 두면 이번 달 확인 순서가 한눈에 보여요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                    Text("결제일·이용기간·연결 결제수단을 설정하면 카드별 사용액을 확인할 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                 }
                 if (draft.isEmpty()) {
-                    Text("등록된 카드가 없어요. 카드 이름과 결제일만 저장합니다.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                    Text("카드번호 없이 이름과 날짜만 저장해요. 거래에 기록된 결제수단을 연결해 주세요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                 }
                 draft.sortedWith(compareBy<PaymentCard> { it.dueDay }.thenBy { it.name }).forEach { card ->
                     FinanceCard {
@@ -614,6 +658,7 @@ private fun PaymentCardsDialog(
                             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text(card.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
                                 Text("매월 ${card.dueDay}일 결제", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                                Text("${card.paymentMethod} · ${card.periodEndDay}일 마감", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                             }
                             TextButton(onClick = {
                                 editingCard = card
@@ -644,15 +689,18 @@ private fun PaymentCardsDialog(
     if (showEditor) {
         PaymentCardEditorDialog(
             initialCard = editingCard,
+            paymentMethods = paymentMethods,
             onDismiss = { showEditor = false },
             onSave = { card ->
-                val duplicate = draft.any { it.id != card.id && it.name.equals(card.name, ignoreCase = true) }
+                val duplicate = draft.any { it.id != card.id && (it.name.equals(card.name, ignoreCase = true) || it.paymentMethod == card.paymentMethod) }
                 if (duplicate) {
-                    errorMessage = "같은 이름의 카드가 이미 있어요."
+                    errorMessage = "카드 이름과 연결 결제수단은 카드마다 달라야 해요."
+                    false
                 } else {
                     draft = if (editingCard == null) draft + card else draft.map { existing -> if (existing.id == card.id) card else existing }
                     errorMessage = null
                     showEditor = false
+                    true
                 }
             },
         )
@@ -662,12 +710,16 @@ private fun PaymentCardsDialog(
 @Composable
 private fun PaymentCardEditorDialog(
     initialCard: PaymentCard?,
+    paymentMethods: List<String>,
     onDismiss: () -> Unit,
-    onSave: (PaymentCard) -> Unit,
+    onSave: (PaymentCard) -> Boolean,
 ) {
     val colors = LocalFinanceColors.current
     var name by rememberSaveable(initialCard?.id) { mutableStateOf(initialCard?.name.orEmpty()) }
     var dueDay by rememberSaveable(initialCard?.id) { mutableStateOf(initialCard?.dueDay?.toString() ?: "25") }
+    var periodEndDay by rememberSaveable(initialCard?.id) { mutableStateOf(initialCard?.periodEndDay?.toString() ?: "31") }
+    var periodOffset by rememberSaveable(initialCard?.id) { mutableStateOf(initialCard?.periodEndMonthsBeforeDue ?: 1) }
+    var linkedMethod by rememberSaveable(initialCard?.id) { mutableStateOf(initialCard?.paymentMethod) }
     var showError by rememberSaveable(initialCard?.id) { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -691,23 +743,49 @@ private fun PaymentCardEditorDialog(
                     suffix = { Text("일") },
                     singleLine = true,
                     isError = showError,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
-                if (showError) Text("카드 이름과 1~31 사이 결제일을 입력해 주세요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
+                OutlinedTextField(
+                    value = periodEndDay,
+                    onValueChange = { periodEndDay = it.filter(Char::isDigit).take(2); showError = false },
+                    modifier = Modifier.fillMaxWidth(), label = { Text("이용기간 종료일 (1~31일)") },
+                    singleLine = true, isError = showError, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                Text("이용기간 종료월 · 결제월 기준", style = MaterialTheme.typography.labelMedium)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(0 to "이번 달", 1 to "지난달", 2 to "두 달 전").forEach { (offset, label) ->
+                        FilterChip(periodOffset == offset, { periodOffset = offset; showError = false }, label = { Text(label) })
+                    }
+                }
+                Text("합산할 결제수단", style = MaterialTheme.typography.labelMedium)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(linkedMethod == null, { linkedMethod = null }, label = { Text("카드 이름으로 새로 만들기") })
+                    (paymentMethods + listOfNotNull(initialCard?.paymentMethod)).distinct().forEach { method ->
+                        FilterChip(linkedMethod == method, { linkedMethod = method }, label = { Text(method) })
+                    }
+                }
+                Text("예: 25일 결제·지난달 31일 마감이면 지난달 1일~말일 지출을 합산해요. 짧은 달의 31일은 말일로 계산합니다.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                if (showError) Text("이름·연결 결제수단의 중복과 날짜를 확인해 주세요. 이번 달 마감일은 결제일 이후일 수 없어요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
             }
         },
         confirmButton = {
             TextButton(onClick = {
                 val parsedDueDay = dueDay.toIntOrNull()
-                if (name.isBlank() || parsedDueDay == null || parsedDueDay !in 1..31) {
+                val parsedEndDay = periodEndDay.toIntOrNull()
+                if (name.isBlank() || parsedDueDay == null || parsedDueDay !in 1..31 || parsedEndDay == null || parsedEndDay !in 1..31 || (periodOffset == 0 && parsedEndDay > parsedDueDay)) {
                     showError = true
                 } else {
-                    onSave(
+                    val saved = onSave(
                         PaymentCard(
                             id = initialCard?.id ?: "CARD_${UUID.randomUUID().toString().replace("-", "").take(12).uppercase(Locale.ROOT)}",
                             name = name.trim(),
                             dueDay = parsedDueDay,
+                            paymentMethod = linkedMethod ?: name.trim(),
+                            periodEndDay = parsedEndDay,
+                            periodEndMonthsBeforeDue = periodOffset,
                         ),
                     )
+                    if (!saved) showError = true
                 }
             }) { Text("저장", color = colors.accent) }
         },
@@ -720,13 +798,14 @@ private fun RecurringRulesDialog(
     rules: List<RecurringRule>,
     onDismiss: () -> Unit,
     onCreate: () -> Unit,
+    onEdit: (Long) -> Unit,
     onToggle: (Long, Boolean) -> Unit,
     onDelete: (Long) -> Unit,
 ) {
     val colors = LocalFinanceColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("반복 거래") },
+        title = { Text("반복 거래 관리") },
         text = {
             Column(
                 modifier = Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState()),
@@ -738,15 +817,16 @@ private fun RecurringRulesDialog(
                 }
                 rules.forEach { rule ->
                     FinanceCard {
-                        Row(modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(rule.merchant, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                                Text("매월 ${rule.dayOfMonth}일 · ${formatWon(rule.amount)} · 다음 ${formatDate(rule.nextOccurrenceDate)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-                                Text("${categoryLabel(rule.categoryKey)} · ${rule.paymentMethod}", color = colors.textSecondary, style = MaterialTheme.typography.labelSmall)
+                        Column(modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(rule.merchant, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                                Switch(checked = rule.isActive, onCheckedChange = { onToggle(rule.id, it) })
                             }
-                            Switch(checked = rule.isActive, onCheckedChange = { onToggle(rule.id, it) })
-                            IconButton(onClick = { onDelete(rule.id) }) {
-                                Icon(Icons.Rounded.DeleteOutline, contentDescription = "반복 거래 삭제", tint = colors.expense)
+                            Text("${if (rule.type == TransactionType.EXPENSE) "지출" else "수입"} ${formatWon(rule.amount)} · 매월 ${rule.dayOfMonth}일", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                            Text("${if (rule.isActive) "다음 ${rule.nextOccurrenceDate}" else "일시 중지"} · ${categoryLabel(rule.categoryKey)} · ${rule.paymentMethod}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                            Row {
+                                TextButton(onClick = { onEdit(rule.id) }) { Text("수정") }
+                                TextButton(onClick = { onDelete(rule.id) }) { Text("삭제", color = colors.expense) }
                             }
                         }
                     }
@@ -760,22 +840,24 @@ private fun RecurringRulesDialog(
 
 @Composable
 private fun RecurringRuleDialog(
+    initialRule: RecurringRule?,
     paymentMethods: List<String>,
     onDismiss: () -> Unit,
     onSave: (String, TransactionType, String, String, String, String, String) -> Boolean,
 ) {
     val colors = LocalFinanceColors.current
-    var amount by rememberSaveable { mutableStateOf("") }
-    var merchant by rememberSaveable { mutableStateOf("") }
-    var day by rememberSaveable { mutableStateOf("1") }
-    var typeName by rememberSaveable { mutableStateOf(TransactionType.EXPENSE.name) }
-    var categoryKey by rememberSaveable { mutableStateOf("LIVING") }
-    var paymentMethod by rememberSaveable { mutableStateOf(paymentMethods.firstOrNull().orEmpty()) }
+    var amount by rememberSaveable(initialRule?.id) { mutableStateOf(initialRule?.amount?.toString().orEmpty()) }
+    var merchant by rememberSaveable(initialRule?.id) { mutableStateOf(initialRule?.merchant.orEmpty()) }
+    var day by rememberSaveable(initialRule?.id) { mutableStateOf(initialRule?.dayOfMonth?.toString() ?: "1") }
+    var typeName by rememberSaveable(initialRule?.id) { mutableStateOf(initialRule?.type?.name ?: TransactionType.EXPENSE.name) }
+    var categoryKey by rememberSaveable(initialRule?.id) { mutableStateOf(initialRule?.categoryKey ?: "LIVING") }
+    var paymentMethod by rememberSaveable(initialRule?.id) { mutableStateOf(initialRule?.paymentMethod ?: paymentMethods.firstOrNull().orEmpty()) }
+    var memo by rememberSaveable(initialRule?.id) { mutableStateOf(initialRule?.memo.orEmpty()) }
     var showError by rememberSaveable { mutableStateOf(false) }
     val type = TransactionType.valueOf(typeName)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("매월 반복 거래 추가") },
+        title = { Text(if (initialRule == null) "매월 반복 거래 추가" else "반복 거래 수정") },
         text = {
             Column(
                 modifier = Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()),
@@ -798,12 +880,14 @@ private fun RecurringRuleDialog(
                         FilterChip(paymentMethod == method, { paymentMethod = method }, label = { Text(method) })
                     }
                 }
+                OutlinedTextField(value = memo, onValueChange = { memo = it }, label = { Text("메모 (선택)") }, singleLine = true)
                 if (showError) Text("금액, 이름, 반복 날짜를 확인해 주세요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
                 Text("예: 매월 31일은 2월에는 마지막 날에 기록돼요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                if (initialRule != null) Text("수정은 이후 기록에만 적용돼요. 이미 기록된 거래는 바꾸지 않고, 처리한 달에 중복 기록하지 않아요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             }
         },
         confirmButton = {
-            TextButton(onClick = { if (!onSave(amount, type, merchant, categoryKey, "", paymentMethod, day)) showError = true }) {
+            TextButton(onClick = { if (!onSave(amount, type, merchant, categoryKey, memo, paymentMethod, day)) showError = true }) {
                 Text("저장", color = colors.accent)
             }
         },

@@ -60,25 +60,13 @@ class UserPreferencesRepository(
             ?.map(String::trim)
             ?.filter(String::isNotBlank)
             ?.distinct()
-            ?.take(12)
+            ?.take(36)
             ?.takeIf(List<String>::isNotEmpty)
             ?: DEFAULT_PAYMENT_METHODS
     }
 
     val paymentCards: Flow<List<PaymentCard>> = context.settingsDataStore.data.map { preferences ->
-        preferences[PAYMENT_CARDS]
-            .orEmpty()
-            .lineSequence()
-            .mapNotNull { line ->
-                val fields = line.split('|')
-                val id = fields.getOrNull(0)?.takeIf(String::isNotBlank) ?: return@mapNotNull null
-                val name = fields.getOrNull(1)?.trim()?.takeIf(String::isNotBlank) ?: return@mapNotNull null
-                val dueDay = fields.getOrNull(2)?.toIntOrNull()?.takeIf { it in 1..31 } ?: return@mapNotNull null
-                PaymentCard(id = id, name = name, dueDay = dueDay)
-            }
-            .distinctBy(PaymentCard::id)
-            .take(MAX_PAYMENT_CARDS)
-            .toList()
+        PaymentCardSettings.decode(preferences[PAYMENT_CARDS].orEmpty())
     }
 
     val categoryBudgets: Flow<Map<String, Long>> = context.settingsDataStore.data.map { preferences ->
@@ -146,22 +134,15 @@ class UserPreferencesRepository(
     }
 
     suspend fun savePaymentMethods(methods: List<String>) {
-        val normalized = methods.map(String::trim).filter(String::isNotBlank).distinct().take(12)
+        val normalized = methods.map(String::trim).filter(String::isNotBlank).distinct().take(36)
         require(normalized.isNotEmpty()) { "결제수단은 한 개 이상 남겨야 해요." }
         context.settingsDataStore.edit { preferences -> preferences[PAYMENT_METHODS] = normalized.joinToString("\n") }
     }
 
     suspend fun savePaymentCards(cards: List<PaymentCard>) {
-        val normalized = cards
-            .mapNotNull { card ->
-                val name = card.name.replace('|', '｜').trim().take(24).takeIf(String::isNotBlank) ?: return@mapNotNull null
-                val dueDay = card.dueDay.coerceIn(1, 31)
-                PaymentCard(id = card.id.take(48), name = name, dueDay = dueDay)
-            }
-            .distinctBy(PaymentCard::id)
-            .take(MAX_PAYMENT_CARDS)
+        val encoded = PaymentCardSettings.encode(cards.distinctBy(PaymentCard::id))
         context.settingsDataStore.edit { preferences ->
-            preferences[PAYMENT_CARDS] = normalized.joinToString("\n") { card -> "${card.id}|${card.name}|${card.dueDay}" }
+            preferences[PAYMENT_CARDS] = encoded
         }
     }
 
@@ -213,7 +194,6 @@ class UserPreferencesRepository(
         val CATEGORY_LABELS = stringPreferencesKey("category_labels")
         val CUSTOM_CATEGORY_KEY = Regex("CUSTOM_[A-F0-9]{12}")
         const val MAX_CUSTOM_CATEGORIES = 20
-        const val MAX_PAYMENT_CARDS = 12
         const val MAX_CATEGORY_BUDGETS = 27
     }
 }
