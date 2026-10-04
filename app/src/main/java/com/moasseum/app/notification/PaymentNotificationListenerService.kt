@@ -4,6 +4,7 @@ import android.app.Notification
 import android.content.ComponentName
 import android.os.Build
 import android.os.Bundle
+import android.provider.Telephony
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
@@ -36,6 +37,17 @@ class PaymentNotificationListenerService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (sbn.packageName == packageName) return
+        // Do not extract or send private chat contents to AI, even if they mention money.
+        if (NotificationSourcePolicy.isExcluded(sbn.packageName)) return
+        val isConversation = runCatching {
+            sbn.notification.extras.getString(Notification.EXTRA_TEMPLATE) == Notification.MessagingStyle::class.java.name
+        }.getOrDefault(false)
+        if (NotificationSourcePolicy.isExcluded(
+                sbn.packageName,
+                isConversation = isConversation,
+                isDefaultSmsApp = sbn.packageName == Telephony.Sms.getDefaultSmsPackage(this),
+            )
+        ) return
         if (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
 
         val financeApplication = application as? FinanceApplication ?: return

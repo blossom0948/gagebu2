@@ -10,6 +10,19 @@ import org.junit.Test
 
 class PaymentNotificationParserTest {
     @Test
+    fun kakaoConversationIsExcludedEvenWhenAiClaimsItIsFinancial() {
+        listOf("1000원 입금했어", "결제 완료 1,000원", "급여 300만원 받았어요").forEach { body ->
+            assertNull(PaymentNotificationParser.parse("com.kakao.talk", "오픈채팅", body, 1_000L))
+            assertNull(PaymentNotificationParser.parse("com.kakao.talk", "친구", body, 1_000L, TransactionType.INCOME))
+        }
+    }
+
+    @Test
+    fun kakaoPayAppRemainsEligibleForFinancialDetection() {
+        assertEquals(1_000L, PaymentNotificationParser.parse("com.kakaopay.app", "카카오페이", "결제 완료 1,000원", 1_000L)?.amount)
+    }
+
+    @Test
     fun numericOnlyNotificationIsNotFinancial() {
         assertFalse(PaymentNotificationParser.shouldInspectWithAi("오늘의 운세", "행운 번호 12000"))
         assertNull(PaymentNotificationParser.parse("com.example", "오늘의 운세", "행운 번호 12000", 1_000L))

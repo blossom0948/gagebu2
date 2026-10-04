@@ -25,7 +25,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.FabPosition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
@@ -63,13 +65,13 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.moasseum.app.ui.components.AddFloatingActionButton
 import com.moasseum.app.ui.components.AddMode
 import com.moasseum.app.ui.components.AddTransactionSheet
 import com.moasseum.app.ui.components.LocalCategoryLabels
@@ -77,11 +79,11 @@ import com.moasseum.app.ui.components.BottomNavBar
 import com.moasseum.app.ui.components.ROUTE_HISTORY
 import com.moasseum.app.ui.components.ROUTE_HOME
 import com.moasseum.app.ui.components.ROUTE_MANAGE
-import com.moasseum.app.ui.components.ROUTE_TOGETHER
+import com.moasseum.app.ui.components.ROUTE_NOTIFICATIONS
 import com.moasseum.app.ui.screens.HistoryScreen
 import com.moasseum.app.ui.screens.HomeScreen
 import com.moasseum.app.ui.screens.ManageScreen
-import com.moasseum.app.ui.screens.TogetherScreen
+import com.moasseum.app.ui.screens.NotificationsScreen
 import com.moasseum.app.ui.theme.MoasseumTheme
 import com.moasseum.app.data.AiClient
 import com.moasseum.app.data.CsvBackup
@@ -246,7 +248,7 @@ private fun MoasseumApp(
     var showNotificationAccessPrompt by remember { mutableStateOf(false) }
     var notificationSetupDismissedThisSession by rememberSaveable { mutableStateOf(false) }
     var notificationSettingsInProgress by rememberSaveable { mutableStateOf(false) }
-    var notificationCandidatePrompt by remember { mutableStateOf<NotificationCandidate?>(null) }
+    var notificationPromptIds by rememberSaveable { mutableStateOf(emptyList<Long>()) }
     var postNotificationPermissionRequestStarted by rememberSaveable { mutableStateOf(false) }
     val postNotificationPermissionMissing = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -292,13 +294,17 @@ private fun MoasseumApp(
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
-    LaunchedEffect(application.notificationCandidateEvents) {
-        application.notificationCandidateEvents.collect { candidate -> notificationCandidatePrompt = candidate }
+    LaunchedEffect(application, lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            application.notificationCandidateEvents.collect { candidate ->
+                if (candidate.id !in notificationPromptIds) notificationPromptIds = notificationPromptIds + candidate.id
+            }
+        }
     }
     LaunchedEffect(incomingNotificationCandidateId, pendingCandidates) {
         val id = incomingNotificationCandidateId ?: return@LaunchedEffect
         val candidate = pendingCandidates.firstOrNull { it.id == id } ?: return@LaunchedEffect
-        notificationCandidatePrompt = candidate
+        if (id !in notificationPromptIds) notificationPromptIds = notificationPromptIds + id
         onIncomingNotificationCandidateConsumed(id)
     }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -309,7 +315,6 @@ private fun MoasseumApp(
     var aiQuestionState by remember { mutableStateOf<SpendingQuestionState>(SpendingQuestionState.Idle) }
     var addOpen by rememberSaveable { mutableStateOf(false) }
     var addModeName by rememberSaveable { mutableStateOf(AddMode.MENU.name) }
-    var unavailableMessage by rememberSaveable { mutableStateOf<String?>(null) }
     var showHelpDialog by rememberSaveable { mutableStateOf(false) }
     var updateState by remember { mutableStateOf<UpdateCheckState>(UpdateCheckState.Idle) }
     var downloadedUpdatePath by rememberSaveable { mutableStateOf<String?>(null) }
@@ -517,6 +522,7 @@ private fun MoasseumApp(
     }
 
     BackHandler(enabled = addOpen) { closeAdd() }
+    val transitionDuration = if (reduceMotion) 0 else 160
 
     Scaffold(
         containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background,
@@ -525,26 +531,23 @@ private fun MoasseumApp(
             BottomNavBar(
                 currentRoute = currentRoute,
                 onNavigate = { route -> navigateTo(navController, route) },
-            )
-        },
-        floatingActionButton = {
-            AddFloatingActionButton(
-                expanded = addOpen,
-                onClick = {
-                    if (addOpen) closeAdd() else {
-                        addOpen = true
-                        addModeName = AddMode.AI_INPUT.name
-                    }
+                pendingCount = pendingCandidates.size,
+                onAdd = {
+                    addOpen = true
+                    addModeName = AddMode.MENU.name
                 },
             )
         },
-        floatingActionButtonPosition = FabPosition.Center,
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             NavHost(
                 navController = navController,
                 startDestination = ROUTE_HOME,
                 modifier = Modifier.fillMaxSize(),
+                enterTransition = { fadeIn(tween(transitionDuration)) },
+                exitTransition = { fadeOut(tween(transitionDuration)) },
+                popEnterTransition = { fadeIn(tween(transitionDuration)) },
+                popExitTransition = { fadeOut(tween(transitionDuration)) },
             ) {
                 composable(ROUTE_HOME) {
                     HomeScreen(
@@ -562,7 +565,8 @@ private fun MoasseumApp(
                         onOpenManage = { navigateTo(navController, ROUTE_MANAGE) },
                         onOpenHistory = { navigateTo(navController, ROUTE_HISTORY) },
                         onOpenHelp = { showHelpDialog = true },
-                        onOpenNotifications = { navigateTo(navController, ROUTE_MANAGE) },
+                        onOpenNotifications = { navigateTo(navController, ROUTE_NOTIFICATIONS) },
+                        onStartVoiceInput = ::startVoiceInput,
                     )
                 }
                 composable(ROUTE_HISTORY) {
@@ -590,11 +594,18 @@ private fun MoasseumApp(
                         onImportCsv = { importCsvLauncher.launch(arrayOf("text/*", "application/vnd.ms-excel")) },
                     )
                 }
-                composable(ROUTE_TOGETHER) {
-                    TogetherScreen(
-                        onShowUnavailable = {
-                            unavailableMessage = "공동 기능은 인증·서버 연결 후 사용할 수 있어요. 개인 기록은 지금도 기기에 안전하게 남습니다."
+                composable(ROUTE_NOTIFICATIONS) {
+                    NotificationsScreen(
+                        candidates = pendingCandidates,
+                        onReview = { candidate ->
+                            notificationPromptIds = listOf(candidate.id) + notificationPromptIds.filterNot { it == candidate.id }
                         },
+                        onDismiss = { id ->
+                            viewModel.dismissNotificationCandidate(id)
+                            notificationPromptIds = notificationPromptIds.filterNot { it == id }
+                            PaymentNotificationNotifier.cancel(context, id)
+                        },
+                        onOpenSettings = { navigateTo(navController, ROUTE_MANAGE) },
                     )
                 }
                 composable(ROUTE_MANAGE) {
@@ -640,11 +651,11 @@ private fun MoasseumApp(
                         appNotificationsEnabled = appNotificationsEnabled,
                         aiNotificationClassificationEnabled = aiNotificationClassificationEnabled,
                         onSetAiNotificationClassificationEnabled = onSetAiNotificationClassificationEnabled,
+                        onOpenCandidates = { navigateTo(navController, ROUTE_NOTIFICATIONS) },
                         pendingCandidates = pendingCandidates,
                         notificationServiceConnectedAt = notificationServiceConnectedAt,
                         notificationServiceDisconnectedAt = notificationServiceDisconnectedAt,
                         notificationLastSeenAt = notificationLastSeenAt,
-                        notificationLastCandidateAt = notificationLastCandidateAt,
                         updateState = updateState,
                         onCheckForUpdate = {
                             updateState = UpdateCheckState.Checking
@@ -668,16 +679,6 @@ private fun MoasseumApp(
                         },
                         onOpenAppNotificationSettings = {
                             NotificationAccess.openAppNotificationSettings(context)
-                        },
-                        onAcceptNotificationCandidate = { id ->
-                            viewModel.acceptNotificationCandidate(id)
-                            PaymentNotificationNotifier.cancel(context, id)
-                            coroutineScope.launch { snackbarHostState.showSnackbar("알림을 거래로 저장했어요") }
-                        },
-                        onDismissNotificationCandidate = { id ->
-                            viewModel.dismissNotificationCandidate(id)
-                            PaymentNotificationNotifier.cancel(context, id)
-                            coroutineScope.launch { snackbarHostState.showSnackbar("알림 후보를 무시했어요") }
                         },
                     )
                 }
@@ -733,13 +734,6 @@ private fun MoasseumApp(
         }
     }
 
-    unavailableMessage?.let { message ->
-        LaunchedEffect(message) {
-            snackbarHostState.showSnackbar(message)
-            unavailableMessage = null
-        }
-    }
-
     if (showHelpDialog) {
         AlertDialog(
             onDismissRequest = { showHelpDialog = false },
@@ -751,24 +745,28 @@ private fun MoasseumApp(
         )
     }
 
-    notificationCandidatePrompt?.let { candidate ->
+    notificationPromptIds.firstNotNullOfOrNull { id -> pendingCandidates.firstOrNull { it.id == id } }?.let { candidate ->
         val direction = if (candidate.type == com.moasseum.app.domain.TransactionType.INCOME) "입금" else "지출"
         AlertDialog(
-            onDismissRequest = { notificationCandidatePrompt = null },
-            title = { Text("알림에서 거래를 인식했어요") },
+            onDismissRequest = { notificationPromptIds = notificationPromptIds.filterNot { it == candidate.id } },
+            title = { Text("거래를 인식했어요. 추가할까요?") },
             text = {
-                Text("인식되었습니다. 추가할까요?\n$direction · ${candidate.merchant} · ${com.moasseum.app.domain.formatWon(candidate.amount)}")
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("$direction · ${com.moasseum.app.domain.formatWon(candidate.amount)}", style = MaterialTheme.typography.titleLarge)
+                    Text(candidate.merchant)
+                    Text("확인한 거래만 가계부에 저장해요.", style = MaterialTheme.typography.bodySmall)
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
-                    notificationCandidatePrompt = null
+                    notificationPromptIds = notificationPromptIds.filterNot { it == candidate.id }
                     viewModel.acceptNotificationCandidate(candidate.id)
                     PaymentNotificationNotifier.cancel(context, candidate.id)
                     coroutineScope.launch { snackbarHostState.showSnackbar("인식한 거래를 추가했어요") }
                 }) { Text("추가") }
             },
             dismissButton = {
-                TextButton(onClick = { notificationCandidatePrompt = null }) { Text("나중에") }
+                TextButton(onClick = { notificationPromptIds = notificationPromptIds.filterNot { it == candidate.id } }) { Text("나중에") }
             },
         )
     }

@@ -4,7 +4,7 @@
 
 ## 구현된 개인용 기능
 
-- Kotlin + Jetpack Compose, Room, DataStore 기반 Android 앱과 홈·내역·함께·관리 화면
+- Kotlin + Jetpack Compose, Room, DataStore 기반 Android 앱과 홈·내역·알림 후보함·관리 화면
 - 월 목표 지출, 진행 막대, 수입·지출 합계, 카테고리 리포트
 - 카테고리별 예산 한도와 홈 카테고리 사용률 표시
 - 거래 추가, 상세, 수정, soft delete와 삭제 직후 실행 취소
@@ -31,13 +31,17 @@
 - Worker 경로: `/health`, `/v1/parse-transaction`, `/v1/analyze-spending`, `/v1/ask-spending`, `/v1/classify-notification`
 - Gemini 키는 Worker Secret `GEMINI_API_KEY`로만 관리하며 APK에 포함하지 않음
 - 현재 `REQUIRE_AUTH=false`인 개인 테스트 설정. 공개 다중 사용자 서비스로 사용하면 안 됨
-- Supabase 인증/RLS/오프라인 동기화가 연결되지 않아 함께 쓰기·초대 코드 기능은 아직 실제 동작하지 않음
+- Supabase 인증/RLS/오프라인 동기화가 연결되지 않아 함께 쓰기·초대 코드는 미구현이며, v0.1.14부터 미동작 화면·버튼을 삭제하고 해당 메뉴를 알림 후보함으로 교체
 - 알림 읽기는 Android 특수 접근 권한이라 사용자가 시스템 화면에서 직접 허용해야 함. Android 13 이상에서는 모아씀 알림 표시 런타임 권한도 필요
 - AI 알림 분류는 기본 꺼짐. 켜면 해당 알림 제목·내용이 외부 AI 서버로 전송되고 Gemini 사용량이 발생할 수 있음
 - OCR은 사진 보관 기능이 아니며 사진 선택기로 가져온 이미지에서 후보를 만들 뿐. 인식 결과를 반드시 확인해야 함
 - WorkManager 반복 거래는 Android 백그라운드 정책에 따른 예약 작업이라 정확히 정각 실행을 보장하지 않음
 
 ## 이번 작업 검증
+
+- v0.1.14: UI·애니메이션 정리, 대화 알림 제외, 알림 후보 확인 큐/중복 저장 방어. 상세 범위와 한계는 [QA_UI_REPORT_2026-10-04.md](QA_UI_REPORT_2026-10-04.md) 참고
+- v0.1.14: 단위 테스트 25개·lint·서명 Release 빌드 성공, Galaxy 기존 데이터 유지 설치와 설치 APK 해시 일치 확인
+- v0.1.14 APK: 56,741,406 bytes; SHA-256 `2b0799e42ee06e1ad8b94f5a2d08102f5ea3b238bbbbed177c7ba4502d2e2ca3`
 
 - `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` — 성공
 - `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` — 성공

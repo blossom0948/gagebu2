@@ -1,6 +1,7 @@
 package com.moasseum.app.ui.components
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,6 +45,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -80,24 +83,28 @@ fun AddTransactionSheet(
     speechResult: String? = null,
     onSpeechResultConsumed: () -> Unit = {},
 ) {
-    when (mode) {
-        AddMode.MENU -> AddMenu(onModeChange = onModeChange, onStartVoiceInput = onStartVoiceInput)
-        AddMode.DIRECT -> DirectTransactionForm(paymentMethods = paymentMethods, onModeChange = onModeChange, onDismiss = onDismiss, onSave = onSave)
-        AddMode.AI_INPUT, AddMode.AI_NOTICE -> AiInputForm(
-            paymentMethods = paymentMethods,
-            aiState = aiState,
-            onModeChange = onModeChange,
-            onParseAi = onParseAi,
-            onConfirm = onConfirmAi,
-            onStartVoiceInput = onStartVoiceInput,
-            speechResult = speechResult,
-            onSpeechResultConsumed = onSpeechResultConsumed,
-        )
-        AddMode.RECEIPT_NOTICE -> ReceiptInputNotice(
-            aiState = aiState,
-            onPickReceipt = onPickReceipt,
-            onBack = { onModeChange(AddMode.MENU) },
-        )
+    val scrollState = rememberScrollState()
+    LaunchedEffect(mode) { scrollState.scrollTo(0) }
+    Column(Modifier.fillMaxWidth().verticalScroll(scrollState)) {
+        when (mode) {
+            AddMode.MENU -> AddMenu(onModeChange = onModeChange, onStartVoiceInput = onStartVoiceInput)
+            AddMode.DIRECT -> DirectTransactionForm(paymentMethods = paymentMethods, onModeChange = onModeChange, onDismiss = onDismiss, onSave = onSave)
+            AddMode.AI_INPUT, AddMode.AI_NOTICE -> AiInputForm(
+                paymentMethods = paymentMethods,
+                aiState = aiState,
+                onModeChange = onModeChange,
+                onParseAi = onParseAi,
+                onConfirm = onConfirmAi,
+                onStartVoiceInput = onStartVoiceInput,
+                speechResult = speechResult,
+                onSpeechResultConsumed = onSpeechResultConsumed,
+            )
+            AddMode.RECEIPT_NOTICE -> ReceiptInputNotice(
+                aiState = aiState,
+                onPickReceipt = onPickReceipt,
+                onBack = { onModeChange(AddMode.MENU) },
+            )
+        }
     }
 }
 
@@ -138,29 +145,6 @@ private fun AddMenu(onModeChange: (AddMode) -> Unit, onStartVoiceInput: () -> Un
 }
 
 @Composable
-private fun AddModePill(
-    label: String,
-    selected: Boolean = false,
-    onClick: () -> Unit = {},
-) {
-    val colors = LocalFinanceColors.current
-    Surface(
-        modifier = Modifier.height(32.dp),
-        onClick = onClick,
-        color = if (selected) colors.accent else colors.surfaceRaised,
-        contentColor = if (selected) Color(0xFF06332B) else colors.textSecondary,
-        shape = RoundedCornerShape(16.dp),
-    ) {
-        Text(
-            label,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-    }
-}
-
-@Composable
 private fun AiInputForm(
     paymentMethods: List<String>,
     aiState: AiParseState,
@@ -172,6 +156,7 @@ private fun AiInputForm(
     onSpeechResultConsumed: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
+    val focusManager = LocalFocusManager.current
     var input by rememberSaveable { mutableStateOf("") }
     var amount by rememberSaveable { mutableStateOf("") }
     var merchant by rememberSaveable { mutableStateOf("") }
@@ -180,6 +165,7 @@ private fun AiInputForm(
     var typeName by rememberSaveable { mutableStateOf(TransactionType.EXPENSE.name) }
     var paymentMethod by rememberSaveable { mutableStateOf(paymentMethods.firstOrNull().orEmpty()) }
     var showConfirmError by rememberSaveable { mutableStateOf(false) }
+    var dateText by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
     val candidate = (aiState as? AiParseState.Success)?.candidate
 
     LaunchedEffect(candidate) {
@@ -189,6 +175,7 @@ private fun AiInputForm(
             memo = candidate.memo
             categoryKey = candidate.categoryKey
             typeName = candidate.type.name
+            dateText = candidate.occurredDate.toString()
             if (paymentMethod !in paymentMethods) paymentMethod = paymentMethods.firstOrNull().orEmpty()
             showConfirmError = false
         }
@@ -210,16 +197,11 @@ private fun AiInputForm(
             Text("AI로 빠르게 기록", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             TextButton(onClick = { onModeChange(AddMode.MENU) }) { Text("방법 바꾸기") }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            AddModePill(label = "개인")
-            AddModePill(label = "AI", selected = true)
-            AddModePill(label = "직접") { onModeChange(AddMode.DIRECT) }
-        }
         Text("문장을 보내면 거래 후보를 만들고, 확인한 뒤에만 저장해요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         OutlinedTextField(
             value = input,
             onValueChange = { input = it; showConfirmError = false },
-            modifier = Modifier.fillMaxWidth().height(52.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
             singleLine = true,
             placeholder = { Text("예: 어제 친구랑 치킨 24000원") },
             leadingIcon = { Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent) },
@@ -231,9 +213,9 @@ private fun AiInputForm(
             shape = RoundedCornerShape(15.dp),
         )
         Button(
-            onClick = { onParseAi(input) },
+            onClick = { focusManager.clearFocus(); onParseAi(input) },
             enabled = input.isNotBlank() && aiState !is AiParseState.Loading,
-            modifier = Modifier.fillMaxWidth().height(46.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = Color(0xFF06332B)),
             shape = RoundedCornerShape(15.dp),
         ) {
@@ -247,7 +229,7 @@ private fun AiInputForm(
             AiParseState.Idle -> {
                 Surface(color = colors.surfaceOverlay, shape = RoundedCornerShape(13.dp)) {
                     Text(
-                        "AI API 주소가 없으면 기기 안의 안전한 기본 파서가 작동해요. 서버 AI를 쓰려면 별도 Worker 주소를 설정하세요.",
+                        "예: 어제 점심 8천원, 오늘 월급 250만원. 연결이 어려울 때는 기기 안에서 해석해요.",
                         color = colors.textSecondary,
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(10.dp),
@@ -282,8 +264,11 @@ private fun AiInputForm(
                     onTypeChange = { typeName = it.name },
                     onPaymentMethodChange = { paymentMethod = it },
                     showError = showConfirmError,
+                    dateText = dateText,
+                    onDateChange = { dateText = it; showConfirmError = false },
                     onConfirm = {
-                        if (!onConfirm(amount, TransactionType.valueOf(typeName), merchant, categoryKey, memo, paymentMethod, candidate.occurredDate)) {
+                        val date = runCatching { LocalDate.parse(dateText) }.getOrNull()
+                        if (date == null || !onConfirm(amount, TransactionType.valueOf(typeName), merchant, categoryKey, memo, paymentMethod, date)) {
                             showConfirmError = true
                         }
                     },
@@ -310,6 +295,8 @@ private fun CandidateReview(
     onTypeChange: (TransactionType) -> Unit,
     onPaymentMethodChange: (String) -> Unit,
     showError: Boolean,
+    dateText: String,
+    onDateChange: (String) -> Unit,
     onConfirm: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
@@ -347,12 +334,15 @@ private fun CandidateReview(
             isError = showError && merchant.isBlank(),
             shape = RoundedCornerShape(15.dp),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(color = colors.surfaceOverlay, shape = RoundedCornerShape(11.dp)) {
-                Text("${formatDate(candidate.occurredDate)}", color = colors.textSecondary, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp))
-            }
-            Text("신뢰도 ${((candidate.amountConfidence + candidate.dateConfidence + candidate.categoryConfidence) / 3 * 100).toInt()}%", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-        }
+        OutlinedTextField(
+            value = dateText,
+            onValueChange = onDateChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("거래일 (YYYY-MM-DD)") },
+            singleLine = true,
+            isError = showError && runCatching { LocalDate.parse(dateText) }.isFailure,
+            shape = RoundedCornerShape(15.dp),
+        )
         Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             allCategorySpecs().forEach { spec ->
                 FilterChip(
@@ -379,10 +369,10 @@ private fun CandidateReview(
         if (candidate.needsConfirmation.isNotEmpty()) {
             Text("카테고리나 날짜를 한 번 확인해 주세요.", color = colors.warning, style = MaterialTheme.typography.labelMedium)
         }
-        if (showError) Text("금액과 가맹점을 확인해 주세요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
+        if (showError) Text("금액, 가맹점, 거래일을 확인해 주세요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
         Button(
             onClick = onConfirm,
-            modifier = Modifier.fillMaxWidth().height(46.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = Color(0xFF06332B)),
             shape = RoundedCornerShape(15.dp),
         ) { Text("확인하고 저장", fontWeight = FontWeight.Bold) }
@@ -535,7 +525,7 @@ private fun DirectTransactionForm(
             onClick = {
                 if (!onSave(amount, type, merchant, categoryKey, memo, paymentMethod)) showError = true
             },
-            modifier = Modifier.fillMaxWidth().height(48.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = Color(0xFF06332B)),
             shape = RoundedCornerShape(15.dp),
         ) {

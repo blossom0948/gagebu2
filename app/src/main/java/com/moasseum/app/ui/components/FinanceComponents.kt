@@ -7,12 +7,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,12 +33,15 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LocalHospital
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Payments
 import androidx.compose.material.icons.rounded.Restaurant
 import androidx.compose.material.icons.rounded.ShoppingBag
 import androidx.compose.material.icons.rounded.TrendingDown
 import androidx.compose.material.icons.rounded.TrendingUp
 import androidx.compose.material3.Card
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -55,6 +61,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.moasseum.app.domain.TransactionType
@@ -191,7 +201,26 @@ fun AmountText(
         color = if (type == TransactionType.EXPENSE) colors.expense else colors.income,
         style = style,
         fontWeight = FontWeight.Bold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
     )
+}
+
+/** Fit the entire amount on one line without cutting off financially significant digits. */
+@Composable
+fun FittedAmountText(
+    text: String,
+    style: androidx.compose.ui.text.TextStyle,
+    color: Color = LocalFinanceColors.current.textPrimary,
+) {
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val available = with(density) { maxWidth.toPx() }
+        val natural = measurer.measure(text, style = style, softWrap = false).size.width.coerceAtLeast(1)
+        val scale = (available / natural).coerceIn(0.1f, 1f)
+        Text(text, style = style.copy(fontSize = (style.fontSize.value * scale).sp), color = color, maxLines = 1, softWrap = false)
+    }
 }
 
 @Composable
@@ -212,14 +241,16 @@ fun TransactionRow(
     ) {
         CategoryIcon(transaction.categoryKey, modifier = Modifier.size(38.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(transaction.merchant, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            Text(transaction.merchant, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(
                 text = listOfNotNull(categoryLabel(transaction.categoryKey), transaction.paymentMethod.takeIf { it.isNotBlank() }).joinToString(" · "),
                 color = colors.textSecondary,
                 style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
-        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(modifier = Modifier.widthIn(max = 148.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
             AmountText(transaction.amount, transaction.type)
             Text(formatDate(transaction.occurredDate), color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         }
@@ -230,6 +261,8 @@ fun TransactionRow(
 fun BottomNavBar(
     currentRoute: String,
     onNavigate: (String) -> Unit,
+    onAdd: () -> Unit,
+    pendingCount: Int,
 ) {
     val colors = LocalFinanceColors.current
     Box(
@@ -239,7 +272,7 @@ fun BottomNavBar(
             .padding(horizontal = 14.dp, vertical = 6.dp),
     ) {
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
             color = colors.surfaceRaised,
             shape = RoundedCornerShape(28.dp),
             tonalElevation = 8.dp,
@@ -248,7 +281,7 @@ fun BottomNavBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(64.dp)
+                    .heightIn(min = 64.dp)
                     .padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -268,10 +301,11 @@ fun BottomNavBar(
                 )
                 Spacer(Modifier.width(58.dp))
                 BottomNavItem(
-                    label = "함께",
-                    icon = Icons.Rounded.TrendingUp,
-                    selected = currentRoute == ROUTE_TOGETHER,
-                    onClick = { onNavigate(ROUTE_TOGETHER) },
+                    label = "알림",
+                    icon = Icons.Rounded.Notifications,
+                    selected = currentRoute == ROUTE_NOTIFICATIONS,
+                    onClick = { onNavigate(ROUTE_NOTIFICATIONS) },
+                    badgeCount = pendingCount,
                     modifier = Modifier.weight(1f),
                 )
                 BottomNavItem(
@@ -283,6 +317,9 @@ fun BottomNavBar(
                 )
             }
         }
+        Box(Modifier.align(Alignment.TopCenter)) {
+            AddFloatingActionButton(expanded = false, onClick = onAdd)
+        }
     }
 }
 
@@ -293,6 +330,7 @@ private fun BottomNavItem(
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    badgeCount: Int = 0,
 ) {
     val colors = LocalFinanceColors.current
     val motion = LocalFinanceMotion.current
@@ -301,9 +339,14 @@ private fun BottomNavItem(
         animationSpec = tween(motion.fast),
         label = "bottomNavTint",
     )
+    val highlight by animateColorAsState(
+        targetValue = if (selected) colors.accent.copy(alpha = 0.15f) else Color.Transparent,
+        animationSpec = tween(motion.fast),
+        label = "bottomNavHighlight",
+    )
     Column(
         modifier = modifier
-            .fillMaxHeight()
+            .heightIn(min = 64.dp)
             .semantics { this.selected = selected }
             .clickable(role = Role.Tab, onClick = onClick)
             .padding(vertical = 5.dp),
@@ -313,15 +356,19 @@ private fun BottomNavItem(
         Box(
             modifier = Modifier
                 .background(
-                    color = if (selected) colors.accent.copy(alpha = 0.15f) else Color.Transparent,
+                    color = highlight,
                     shape = RoundedCornerShape(14.dp),
                 )
                 .padding(horizontal = 12.dp, vertical = 4.dp),
         ) {
-            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(19.dp))
+            BadgedBox(badge = {
+                if (badgeCount > 0) Badge { Text(if (badgeCount > 99) "99+" else "$badgeCount") }
+            }) {
+                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(19.dp))
+            }
         }
         Spacer(Modifier.height(1.dp))
-        Text(label, color = tint, style = MaterialTheme.typography.labelMedium)
+        Text(label, color = tint, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -377,11 +424,12 @@ fun EmptyState(
         ) {
             Icon(Icons.Rounded.AccountBalanceWallet, contentDescription = null, tint = colors.accent)
         }
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
         Text(
             message,
             style = MaterialTheme.typography.bodyMedium,
             color = colors.textSecondary,
+            textAlign = TextAlign.Center,
         )
         if (actionLabel != null && onAction != null) {
             androidx.compose.material3.TextButton(onClick = onAction) { Text(actionLabel) }
@@ -415,5 +463,6 @@ fun TrendLabel(
 
 const val ROUTE_HOME = "home"
 const val ROUTE_HISTORY = "history"
-const val ROUTE_TOGETHER = "together"
+// Keep the old destination ID so updating from the former Together tab restores safely.
+const val ROUTE_NOTIFICATIONS = "together"
 const val ROUTE_MANAGE = "manage"

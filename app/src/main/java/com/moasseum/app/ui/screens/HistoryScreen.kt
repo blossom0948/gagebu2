@@ -3,6 +3,7 @@ package com.moasseum.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,6 +30,8 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -50,6 +54,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.moasseum.app.domain.LedgerUiState
@@ -96,6 +102,8 @@ fun HistoryScreen(
     var search by rememberSaveable { mutableStateOf("") }
     var detailId by remember { mutableStateOf<Long?>(null) }
     var editingTransaction by remember { mutableStateOf<Transaction?>(null) }
+    var backupMenuOpen by remember { mutableStateOf(false) }
+    var dateFilter by rememberSaveable(uiState.month.toString()) { mutableStateOf<String?>(null) }
     val filter = HistoryFilter.valueOf(filterName)
     val filteredTransactions = uiState.monthTransactions
         .filter { transaction ->
@@ -109,43 +117,37 @@ fun HistoryScreen(
             search.isBlank() || transaction.merchant.contains(search.trim(), ignoreCase = true) || transaction.memo.contains(search.trim(), ignoreCase = true)
         }
         .filter { transaction -> categoryFilterKey == "ALL" || transaction.categoryKey == categoryFilterKey }
+        .filter { transaction -> dateFilter == null || transaction.occurredDate.toString() == dateFilter }
         .sortedWith(compareByDescending<Transaction> { it.occurredAt }.thenByDescending { it.id })
     val detailTransaction = detailId?.let { id -> uiState.transactions.firstOrNull { it.id == id } }
 
     LazyColumn(
         modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 96.dp),
+        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item { Text("소비내역", style = MaterialTheme.typography.headlineSmall) }
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("소비내역", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                Box {
+                    IconButton(onClick = { backupMenuOpen = true }) { Icon(Icons.Rounded.FileDownload, contentDescription = "백업·가져오기") }
+                    DropdownMenu(expanded = backupMenuOpen, onDismissRequest = { backupMenuOpen = false }) {
+                        DropdownMenuItem(text = { Text("CSV 내보내기") }, onClick = { backupMenuOpen = false; onExportCsv() })
+                        DropdownMenuItem(text = { Text("CSV 가져오기") }, onClick = { backupMenuOpen = false; onImportCsv() })
+                        DropdownMenuItem(text = { Text("JSON 전체 백업") }, onClick = { backupMenuOpen = false; onExportJson() })
+                    }
+                }
+            }
+        }
         item {
             CalendarCard(
                 month = uiState.month,
                 selectedDate = selectedDate,
                 transactions = uiState.monthTransactions,
-                onSelectDate = onSelectDate,
+                onSelectDate = { date -> onSelectDate(date); dateFilter = date.toString() },
                 onPrevious = { onSelectMonth(uiState.month.minusMonths(1)) },
                 onNext = { onSelectMonth(uiState.month.plusMonths(1)) },
             )
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(modifier = Modifier.weight(1f), onClick = onExportCsv) {
-                    Icon(Icons.Rounded.FileDownload, contentDescription = null, modifier = Modifier.size(17.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("CSV 내보내기", style = MaterialTheme.typography.labelLarge)
-                }
-                OutlinedButton(modifier = Modifier.weight(1f), onClick = onImportCsv) {
-                    Text("CSV 가져오기", style = MaterialTheme.typography.labelLarge)
-                }
-            }
-        }
-        item {
-            OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = onExportJson) {
-                Icon(Icons.Rounded.FileDownload, contentDescription = null, modifier = Modifier.size(17.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("JSON 전체 백업", style = MaterialTheme.typography.labelLarge)
-            }
         }
         item {
             HistoryFilterBar(
@@ -186,7 +188,7 @@ fun HistoryScreen(
             OutlinedTextField(
                 value = search,
                 onValueChange = { search = it },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
                 trailingIcon = {
@@ -201,11 +203,17 @@ fun HistoryScreen(
             )
         }
         item { HistorySummaryLine(uiState) }
+        if (dateFilter != null) item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("${dateFilter} · ${filteredTransactions.size}건", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+                TextButton(onClick = { dateFilter = null }) { Text("전체 날짜") }
+            }
+        }
         if (filteredTransactions.isEmpty()) {
             item {
                 EmptyState(
-                    title = if (search.isBlank()) "아직 거래가 없어요" else "검색 결과가 없어요",
-                    message = if (search.isBlank()) "중앙 + 버튼으로 첫 기록을 추가해 보세요." else "다른 가맹점이나 메모로 검색해 보세요.",
+                    title = if (search.isBlank() && dateFilter == null && categoryFilterKey == "ALL" && filter == HistoryFilter.ALL) "아직 거래가 없어요" else "조건에 맞는 거래가 없어요",
+                    message = "중앙 + 버튼으로 기록하거나 날짜·검색·필터를 바꿔 보세요.",
                 )
             }
         } else {
@@ -215,7 +223,6 @@ fun HistoryScreen(
                     DateGroup(
                         date = date,
                         transactions = transactions,
-                        onSelect = { onSelectDate(date) },
                         onSelectTransaction = { detailId = it.id },
                     )
                 }
@@ -267,7 +274,7 @@ private fun HistoryFilterBar(
     ) {
         HistoryFilter.entries.forEach { option ->
             Surface(
-                modifier = Modifier.weight(1f).height(36.dp),
+                modifier = Modifier.weight(1f).heightIn(min = 40.dp),
                 onClick = { onSelect(option) },
                 color = if (option == selected) colors.accent else Color.Transparent,
                 contentColor = if (option == selected) Color(0xFF06332B) else colors.textSecondary,
@@ -284,13 +291,12 @@ private fun HistoryFilterBar(
 @Composable
 private fun HistorySummaryLine(uiState: LedgerUiState) {
     val colors = LocalFinanceColors.current
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("${uiState.monthTransactions.size}건 | 지출 ", color = colors.textSecondary, style = MaterialTheme.typography.labelLarge)
-        Text(formatWon(uiState.expenseTotal), color = colors.expense, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-        Text(" | 수입 ", color = colors.textSecondary, style = MaterialTheme.typography.labelLarge)
-        Text("+${formatWon(uiState.incomeTotal)}", color = colors.income, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.weight(1f))
-        Text("최신순", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("이번 달 ${uiState.monthTransactions.size}건 · 최신순", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("지출 ${formatWon(uiState.expenseTotal)}", color = colors.expense, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text("수입 ${formatWon(uiState.incomeTotal)}", color = colors.income, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+        }
     }
 }
 
@@ -304,9 +310,15 @@ private fun CalendarCard(
     onNext: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
-    val startDate = selectedDate.with(DayOfWeek.SUNDAY).minusWeeks(1)
-    val days = remember(month, selectedDate) {
-        (0..13).map { startDate.plusDays(it.toLong()) }
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val compactStart by rememberSaveable(month.toString()) {
+        mutableStateOf(selectedDate.minusDays((selectedDate.dayOfWeek.value % 7).toLong()).toString())
+    }
+    val days = remember(month, compactStart, expanded) {
+        val first = month.atDay(1)
+        val startDate = if (expanded) first.minusDays((first.dayOfWeek.value % 7).toLong()) else LocalDate.parse(compactStart)
+        val count = if (expanded) ((first.dayOfWeek.value % 7 + month.lengthOfMonth() + 6) / 7) * 7 else 14
+        (0 until count).map { startDate.plusDays(it.toLong()) }
     }
     val datesWithTransactions = transactions.groupingBy { it.occurredDate }.eachCount()
     FinanceCard {
@@ -321,6 +333,9 @@ private fun CalendarCard(
                 IconButton(onClick = onNext, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Rounded.ChevronRight, contentDescription = "다음 달", tint = colors.accent)
                 }
+            }
+            TextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth()) {
+                Text(if (expanded) "달력 접기" else "월 전체 달력 보기", style = MaterialTheme.typography.labelMedium)
             }
             Row {
                 listOf(
@@ -370,7 +385,7 @@ private fun CalendarDay(
     val isSunday = date?.dayOfWeek == DayOfWeek.SUNDAY
     Box(
         modifier = modifier
-            .height(34.dp)
+            .heightIn(min = 40.dp)
             .padding(2.dp)
             .clip(RoundedCornerShape(11.dp))
             .then(if (date != null) Modifier.clickable(onClick = onClick) else Modifier)
@@ -408,14 +423,12 @@ private fun CalendarDay(
 private fun DateGroup(
     date: LocalDate,
     transactions: List<Transaction>,
-    onSelect: () -> Unit,
     onSelectTransaction: (Transaction) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onSelect)
                 .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -457,12 +470,14 @@ private fun TransactionDetailDialog(
         },
         title = { Text(transaction.merchant, fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
+            Column(modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(13.dp)) {
                 AmountText(transaction.amount, transaction.type, style = MaterialTheme.typography.headlineSmall)
                 DetailLine("날짜", formatDate(transaction.occurredDate))
                 DetailLine("카테고리", categoryLabel(transaction.categoryKey))
                 DetailLine("결제수단", transaction.paymentMethod)
-                if (transaction.memo.isNotBlank()) DetailLine("메모", transaction.memo)
+                if (transaction.memo.isNotBlank()) {
+                    DetailLine("메모", transaction.memo)
+                }
             }
         },
     )
@@ -491,7 +506,7 @@ private fun TransactionEditDialog(
         onDismissRequest = onDismiss,
         title = { Text("거래 수정", fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Column(modifier = Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(type == TransactionType.EXPENSE, { typeName = TransactionType.EXPENSE.name }, label = { Text("지출") })
                     FilterChip(type == TransactionType.INCOME, { typeName = TransactionType.INCOME.name }, label = { Text("수입") })
@@ -548,6 +563,6 @@ private fun TransactionEditDialog(
 private fun DetailLine(label: String, value: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(label, color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(70.dp))
-        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
     }
 }

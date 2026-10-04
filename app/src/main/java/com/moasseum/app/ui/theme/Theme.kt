@@ -23,9 +23,9 @@ val LocalFinanceColors = staticCompositionLocalOf { DarkFinanceColors }
 data class FinanceMotionSettings(
     val reduceMotion: Boolean = false,
 ) {
-    val fast: Int get() = if (reduceMotion) 100 else 160
-    val standard: Int get() = if (reduceMotion) 120 else 240
-    val emphasized: Int get() = if (reduceMotion) 140 else 360
+    val fast: Int get() = if (reduceMotion) 0 else 160
+    val standard: Int get() = if (reduceMotion) 0 else 240
+    val emphasized: Int get() = if (reduceMotion) 0 else 280
 }
 
 val LocalFinanceMotion = staticCompositionLocalOf { FinanceMotionSettings() }
@@ -51,6 +51,16 @@ fun MoasseumTheme(
             surfaceVariant = financeColors.surfaceRaised,
             onSurfaceVariant = financeColors.textSecondary,
             outline = financeColors.divider,
+            outlineVariant = financeColors.divider,
+            surfaceTint = financeColors.accent,
+            surfaceContainerLowest = financeColors.surfaceBase,
+            surfaceContainerLow = financeColors.surfaceRaised,
+            surfaceContainer = financeColors.surfaceRaised,
+            surfaceContainerHigh = financeColors.surfaceRaised,
+            surfaceContainerHighest = financeColors.surfaceOverlay,
+            secondaryContainer = financeColors.accentSoft,
+            onSecondaryContainer = financeColors.textPrimary,
+            error = financeColors.expense,
         )
     } else {
         lightColorScheme(
@@ -66,6 +76,16 @@ fun MoasseumTheme(
             surfaceVariant = financeColors.surfaceRaised,
             onSurfaceVariant = financeColors.textSecondary,
             outline = financeColors.divider,
+            outlineVariant = financeColors.divider,
+            surfaceTint = financeColors.accent,
+            surfaceContainerLowest = financeColors.surfaceBase,
+            surfaceContainerLow = financeColors.surfaceRaised,
+            surfaceContainer = financeColors.surfaceRaised,
+            surfaceContainerHigh = financeColors.surfaceRaised,
+            surfaceContainerHighest = financeColors.surfaceOverlay,
+            secondaryContainer = financeColors.accentSoft,
+            onSecondaryContainer = financeColors.textPrimary,
+            error = financeColors.expense,
         )
     }
 

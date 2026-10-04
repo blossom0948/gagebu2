@@ -11,6 +11,7 @@ import com.moasseum.app.domain.Transaction
 import com.moasseum.app.domain.TransactionType
 import com.moasseum.app.domain.firstRecurringOccurrence
 import com.moasseum.app.domain.toDomain
+import com.moasseum.app.notification.NotificationSourcePolicy
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.LocalDate
@@ -27,7 +28,13 @@ class FinanceRepository(
     fun observeBudget(monthKey: String): Flow<BudgetEntity?> = dao.observeBudget(monthKey)
 
     fun observePendingNotificationCandidates(): Flow<List<NotificationCandidate>> =
-        dao.observePendingNotificationCandidates().map { candidates -> candidates.map(NotificationCandidateEntity::toDomain) }
+        dao.observePendingNotificationCandidates().map { candidates ->
+            candidates.filterNot { NotificationSourcePolicy.isExcluded(it.packageName) }
+                .map(NotificationCandidateEntity::toDomain)
+        }
+
+    suspend fun dismissExcludedNotificationCandidates() =
+        dao.dismissExcludedNotificationCandidates(NotificationSourcePolicy.excludedPackages)
 
     fun observeRecurringRules(): Flow<List<RecurringRule>> =
         dao.observeRecurringRules().map { rules -> rules.map(RecurringTransactionEntity::toDomain) }
@@ -158,19 +165,27 @@ class FinanceRepository(
 
     suspend fun acceptNotificationCandidate(id: Long) {
         val candidate = dao.getNotificationCandidate(id) ?: return
-        addTransaction(
-            amount = candidate.amount,
-            type = if (candidate.type == TransactionType.INCOME.name) TransactionType.INCOME else TransactionType.EXPENSE,
-            occurredAt = java.time.Instant.ofEpochMilli(candidate.postedAt)
-                .atZone(ZoneId.systemDefault())
-                .toLocalDate(),
-            categoryKey = candidate.categoryKey,
-            merchant = candidate.merchant,
-            memo = "알림에서 가져온 거래",
-            source = "NOTIFICATION",
-            paymentMethod = "알림 감지",
+        if (NotificationSourcePolicy.isExcluded(candidate.packageName)) return
+        val now = System.currentTimeMillis()
+        val occurredAt = java.time.Instant.ofEpochMilli(candidate.postedAt)
+            .atZone(ZoneId.systemDefault()).toLocalDate()
+            .atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        dao.acceptCandidateTransaction(
+            id,
+            TransactionEntity(
+                amount = candidate.amount,
+                type = candidate.type,
+                occurredAt = occurredAt,
+                timezone = TimeZone.getDefault().id,
+                categoryKey = candidate.categoryKey,
+                merchant = candidate.merchant,
+                memo = "알림에서 가져온 거래",
+                source = "NOTIFICATION",
+                paymentMethod = "알림 감지",
+                createdAt = now,
+                updatedAt = now,
+            ),
         )
-        dao.updateNotificationCandidateStatus(id, "ACCEPTED")
     }
 
     suspend fun dismissNotificationCandidate(id: Long) {

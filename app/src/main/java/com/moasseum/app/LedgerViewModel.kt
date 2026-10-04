@@ -76,6 +76,7 @@ class LedgerViewModel(
 
     init {
         viewModelScope.launch {
+            repository.dismissExcludedNotificationCandidates()
             repository.ensureBudget(YearMonth.now().toString())
             repository.postDueRecurringTransactions()
         }

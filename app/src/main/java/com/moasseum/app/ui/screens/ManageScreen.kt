@@ -99,11 +99,9 @@ fun ManageScreen(
     notificationServiceConnectedAt: Long?,
     notificationServiceDisconnectedAt: Long?,
     notificationLastSeenAt: Long?,
-    notificationLastCandidateAt: Long?,
     onOpenNotificationSettings: () -> Unit,
     onOpenAppNotificationSettings: () -> Unit,
-    onAcceptNotificationCandidate: (Long) -> Unit,
-    onDismissNotificationCandidate: (Long) -> Unit,
+    onOpenCandidates: () -> Unit,
     appNotificationsEnabled: Boolean,
     aiNotificationClassificationEnabled: Boolean,
     onSetAiNotificationClassificationEnabled: (Boolean) -> Unit,
@@ -124,7 +122,7 @@ fun ManageScreen(
     var showCreateRecurringDialog by rememberSaveable { mutableStateOf(false) }
     val colors = LocalFinanceColors.current
     LazyColumn(
-        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 96.dp),
+        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
@@ -226,14 +224,9 @@ fun ManageScreen(
             }
         }
         item {
-            NotificationCandidatesCard(
-                candidates = pendingCandidates,
-                notificationAccessEnabled = notificationAccessEnabled,
-                lastCandidateAt = notificationLastCandidateAt,
-                onOpenSettings = onOpenNotificationSettings,
-                onAccept = onAcceptNotificationCandidate,
-                onDismiss = onDismissNotificationCandidate,
-            )
+            FinanceCard {
+                ManageRow(Icons.Rounded.NotificationsActive, "알림 후보함", "확인 대기 ${pendingCandidates.size}건 · 대화 알림 제외", onClick = onOpenCandidates)
+            }
         }
         item {
             AppUpdateCard(
@@ -255,6 +248,7 @@ fun ManageScreen(
 
     if (showBudgetDialog) {
         BudgetDialog(
+            month = uiState.month,
             initialValue = uiState.budgetAmount?.toString().orEmpty(),
             onDismiss = { showBudgetDialog = false },
             onSave = { input ->
@@ -339,7 +333,7 @@ fun ManageScreen(
             onDismissRequest = { showAiNotificationConsent = false },
             title = { Text("AI 알림 판별을 켤까요?") },
             text = {
-                Text("먼저 기기 안에서 금액과 금융 단서가 함께 있는 알림만 골라요. 선택된 알림의 제목과 내용은 Cloudflare AI Worker를 거쳐 Gemini로 전송되어 실제 입금·지출인지 판별됩니다. 이 기능은 AI 사용량을 쓸 수 있고, 원문 알림은 앱 거래로 자동 저장하지 않아요.")
+                Text("카카오톡 등 대화 앱은 읽거나 AI로 보내지 않아요. 나머지 알림 중 금액과 금융 단서가 함께 있는 제목·내용만 Gemini로 전송해 입금·지출인지 판별합니다. 이 기능은 AI 사용량을 쓸 수 있고, 확인 전에는 거래로 저장하지 않아요.")
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -547,7 +541,7 @@ private fun PaymentMethodsDialog(
         onDismissRequest = onDismiss,
         title = { Text("결제수단 관리") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Column(modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Text("항목을 눌러 제거하거나 새 결제수단을 추가하세요. 이미 저장된 거래의 값은 바뀌지 않아요.", color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.bodyMedium)
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     draft.forEach { method ->
@@ -678,7 +672,7 @@ private fun PaymentCardEditorDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initialCard == null) "카드 추가" else "카드 수정") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it.take(24); showError = false },
@@ -879,48 +873,6 @@ private fun AppUpdateCard(
     }
 }
 
-@Composable
-private fun NotificationCandidatesCard(
-    candidates: List<NotificationCandidate>,
-    notificationAccessEnabled: Boolean,
-    lastCandidateAt: Long?,
-    onOpenSettings: () -> Unit,
-    onAccept: (Long) -> Unit,
-    onDismiss: (Long) -> Unit,
-) {
-    val colors = LocalFinanceColors.current
-    FinanceCard {
-        Column(modifier = Modifier.padding(vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(modifier = Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text("알림 후보함", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(
-                        if (notificationAccessEnabled) {
-                            lastCandidateAt?.let { "마지막 후보 ${relativeNotificationTime(it)} · 확인 후에만 거래로 저장돼요." }
-                                ?: "결제 알림은 확인 후에만 거래로 저장돼요."
-                        } else {
-                            "알림 접근을 허용하면 이곳에 후보가 쌓여요."
-                        },
-                        color = colors.textSecondary,
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                }
-                Icon(Icons.Rounded.Info, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
-            }
-            if (!notificationAccessEnabled) {
-                TextButton(onClick = onOpenSettings, modifier = Modifier.padding(horizontal = 6.dp)) { Text("알림 접근 설정 열기") }
-            } else if (candidates.isEmpty()) {
-                TextButton(onClick = onOpenSettings, modifier = Modifier.padding(horizontal = 6.dp)) { Text("서비스 다시 연결") }
-            } else {
-                candidates.take(5).forEachIndexed { index, candidate ->
-                    NotificationCandidateRow(candidate = candidate, onAccept = { onAccept(candidate.id) }, onDismiss = { onDismiss(candidate.id) })
-                    if (index < candidates.take(5).lastIndex) HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                }
-            }
-        }
-    }
-}
-
 private fun notificationStatusMessage(
     notificationAccessEnabled: Boolean,
     serviceConnectedAt: Long?,
@@ -943,36 +895,6 @@ private fun relativeNotificationTime(timestamp: Long): String {
         elapsedMinutes < 60L -> "${elapsedMinutes}분 전"
         elapsedMinutes < 1_440L -> "${elapsedMinutes / 60L}시간 전"
         else -> "${elapsedMinutes / 1_440L}일 전"
-    }
-}
-
-@Composable
-private fun NotificationCandidateRow(
-    candidate: NotificationCandidate,
-    onAccept: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val colors = LocalFinanceColors.current
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(com.moasseum.app.ui.components.categoryIcon(candidate.categoryKey), contentDescription = null, tint = colors.accent, modifier = Modifier.size(19.dp))
-            Spacer(Modifier.width(9.dp))
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(candidate.merchant, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                Text("${formatDate(candidate.occurredDate)} · ${candidate.title}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-            }
-            Text(
-                text = if (candidate.type == com.moasseum.app.domain.TransactionType.EXPENSE) "−${formatWon(candidate.amount)}" else "+${formatWon(candidate.amount)}",
-                color = if (candidate.type == com.moasseum.app.domain.TransactionType.EXPENSE) colors.expense else colors.income,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-        Text(candidate.preview, color = colors.textSecondary, style = MaterialTheme.typography.labelMedium, maxLines = 2)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = onAccept) { Text("거래로 저장", color = colors.accent) }
-            TextButton(onClick = onDismiss) { Text("무시", color = colors.textSecondary) }
-        }
     }
 }
 
@@ -1031,6 +953,7 @@ private fun SettingSwitchRow(
 
 @Composable
 private fun BudgetDialog(
+    month: java.time.YearMonth,
     initialValue: String,
     onDismiss: () -> Unit,
     onSave: (String) -> Boolean,
@@ -1041,8 +964,8 @@ private fun BudgetDialog(
         onDismissRequest = onDismiss,
         title = { Text("한 달 목표 지출 수정", fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("${formatMonth(java.time.YearMonth.now())} 기준 목표", color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.bodyMedium)
+            Column(modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("${formatMonth(month)} 기준 목표", color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.bodyMedium)
                 OutlinedTextField(
                     value = input,
                     onValueChange = { input = it.filter(Char::isDigit); showError = false },

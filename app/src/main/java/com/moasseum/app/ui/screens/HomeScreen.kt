@@ -1,6 +1,10 @@
 package com.moasseum.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,6 +48,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.moasseum.app.domain.LedgerUiState
@@ -54,10 +61,12 @@ import com.moasseum.app.domain.formatWon
 import com.moasseum.app.ui.components.AddMode
 import com.moasseum.app.ui.components.EmptyState
 import com.moasseum.app.ui.components.FinanceCard
+import com.moasseum.app.ui.components.FittedAmountText
 import com.moasseum.app.ui.components.TransactionRow
 import com.moasseum.app.ui.components.categoryColor
 import com.moasseum.app.ui.components.categoryLabel
 import com.moasseum.app.ui.theme.LocalFinanceColors
+import com.moasseum.app.ui.theme.LocalFinanceMotion
 
 private enum class HomeTab(val label: String) {
     SUMMARY("요약"),
@@ -80,13 +89,14 @@ fun HomeScreen(
     onOpenHistory: () -> Unit,
     onOpenHelp: () -> Unit,
     onOpenNotifications: () -> Unit,
+    onStartVoiceInput: () -> Unit,
 ) {
     var selectedTabName by rememberSaveable { mutableStateOf(HomeTab.SUMMARY.name) }
     val selectedTab = HomeTab.valueOf(selectedTabName)
 
     LazyColumn(
         modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 96.dp),
+        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
@@ -96,7 +106,7 @@ fun HomeScreen(
                 onOpenNotifications = onOpenNotifications,
             )
         }
-        item { QuickCaptureCard(onAdd = onAdd) }
+        item { QuickCaptureCard(onAdd = onAdd, onStartVoiceInput = onStartVoiceInput) }
         item {
             HomeTabs(
                 selected = selectedTab,
@@ -156,11 +166,15 @@ private fun HomeHeader(
                 text = "좋은 하루예요",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = formatLongDate(java.time.LocalDate.now()),
                 color = colors.textSecondary,
                 style = MaterialTheme.typography.labelMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         HeaderIconButton(Icons.Rounded.HelpOutline, "도움말", onClick = onOpenHelp)
@@ -175,7 +189,7 @@ private fun HomeHeader(
 private fun HeaderIconButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
-    onClick: () -> Unit = {},
+    onClick: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
     Surface(
@@ -191,7 +205,7 @@ private fun HeaderIconButton(
 }
 
 @Composable
-private fun QuickCaptureCard(onAdd: (AddMode) -> Unit) {
+private fun QuickCaptureCard(onAdd: (AddMode) -> Unit, onStartVoiceInput: () -> Unit) {
     val colors = LocalFinanceColors.current
     FinanceCard(highlighted = true) {
         Row(
@@ -199,16 +213,15 @@ private fun QuickCaptureCard(onAdd: (AddMode) -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(7.dp),
         ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(modifier = Modifier.weight(1f).clickable(role = androidx.compose.ui.semantics.Role.Button) { onAdd(AddMode.AI_INPUT) }.padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(15.dp))
-                    Text("빠른 기록", color = colors.accent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Text("문장으로 기록", color = colors.accent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 }
                 Text("예: 점심 8,000원", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
             }
-            QuickCaptureAction(Icons.Rounded.KeyboardVoice, "AI 문장") { onAdd(AddMode.AI_INPUT) }
-            QuickCaptureAction(Icons.Rounded.CameraAlt, "영수증") { onAdd(AddMode.RECEIPT_NOTICE) }
-            QuickCaptureAction(Icons.Rounded.PhotoLibrary, "사진") { onAdd(AddMode.RECEIPT_NOTICE) }
+            QuickCaptureAction(Icons.Rounded.KeyboardVoice, "음성으로 입력", onStartVoiceInput)
+            QuickCaptureAction(Icons.Rounded.PhotoLibrary, "영수증 사진") { onAdd(AddMode.RECEIPT_NOTICE) }
         }
     }
 }
@@ -221,7 +234,7 @@ private fun QuickCaptureAction(
 ) {
     val colors = LocalFinanceColors.current
     Surface(
-        modifier = Modifier.size(34.dp),
+        modifier = Modifier.size(44.dp),
         onClick = onClick,
         color = colors.surfaceOverlay,
         contentColor = colors.accent,
@@ -247,15 +260,16 @@ private fun HomeTabs(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         HomeTab.entries.forEach { tab ->
+            val tabColor by animateColorAsState(if (tab == selected) colors.accent else Color.Transparent, tween(if (LocalFinanceMotion.current.reduceMotion) 0 else 140), label = "homeTab")
             Surface(
-                modifier = Modifier.weight(1f).height(36.dp),
+                modifier = Modifier.weight(1f).heightIn(min = 40.dp),
                 onClick = { onSelect(tab) },
-                color = if (tab == selected) colors.accent else Color.Transparent,
+                color = tabColor,
                 contentColor = if (tab == selected) Color(0xFF06332B) else colors.textSecondary,
                 shape = RoundedCornerShape(19.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(text = tab.label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    Text(text = tab.label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -275,22 +289,17 @@ private fun MonthlySummaryCard(
     } else {
         0f
     }
+    val animatedProgress by animateFloatAsState(progress, tween(if (LocalFinanceMotion.current.reduceMotion) 0 else 240), label = "budgetProgress")
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("${formatMonth(uiState.month)} 지출", color = colors.textSecondary, style = MaterialTheme.typography.labelLarge)
-            Spacer(Modifier.weight(1f))
+            Text("${formatMonth(uiState.month)} 지출", color = colors.textSecondary, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
             Text("${uiState.expenseCount}건", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         }
+        FittedAmountText(formatWon(uiState.expenseTotal), MaterialTheme.typography.displaySmall)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = formatWon(uiState.expenseTotal),
-                style = MaterialTheme.typography.displaySmall,
-                color = colors.textPrimary,
-            )
-            Spacer(Modifier.weight(1f))
             Surface(
                 onClick = onOpenManage,
                 color = colors.accentSoft,
@@ -314,29 +323,30 @@ private fun MonthlySummaryCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(progress)
+                        .fillMaxWidth(animatedProgress)
                         .height(6.dp)
                         .background(if (progress > 0.9f) colors.expense else colors.accent, RoundedCornerShape(9.dp)),
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "${(progress * 100).toInt()}% 사용",
+                    text = "${(uiState.expenseTotal.toDouble() / budget.coerceAtLeast(1L) * 100).toInt()}% 사용",
                     color = if (progress > 0.9f) colors.expense else colors.accent,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                 )
-                Spacer(Modifier.weight(1f))
                 Text(
                     text = "남은 금액 ${formatWon((budget - uiState.expenseTotal).coerceAtLeast(0))}",
                     color = colors.textSecondary,
                     style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.weight(1f).padding(start = 8.dp),
+                    textAlign = TextAlign.End,
                 )
             }
         } else {
             Text("한 달 목표 지출을 설정하면 사용량을 보여드려요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
             if (uiState.previousExpenseTotal > 0L) {
                 Text(
                     text = if (change >= 0) "지난달보다 ${formatWon(change)} 더 썼어요" else "지난달보다 ${formatWon(-change)} 아꼈어요",
@@ -347,7 +357,6 @@ private fun MonthlySummaryCard(
                 Text("비교할 지난달 기록이 없어요", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             }
             if (uiState.incomeTotal > 0) {
-                Spacer(Modifier.weight(1f))
                 Text("수입 ${formatWon(uiState.incomeTotal)}", color = colors.income, style = MaterialTheme.typography.labelMedium)
             }
         }
@@ -383,7 +392,7 @@ private fun MiniSpendCard(
     FinanceCard(modifier = modifier) {
         Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(label, color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-            Text(formatWon(amount), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            FittedAmountText(formatWon(amount), MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
             Text("${count}건", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         }
     }
@@ -401,7 +410,7 @@ private fun DailyInsightCard(uiState: LedgerUiState) {
         Row(modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(message, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
                     if (uiState.todayExpenseTotal == 0L) "좋은 하루 보내세요" else "기록은 쌓이고, 흐름은 선명해져요",
@@ -453,12 +462,16 @@ private fun CategorySpendingCard(uiState: LedgerUiState, categoryBudgets: Map<St
 private fun CategoryBar(key: String, total: Long, maxValue: Long, allTotal: Long) {
     val colors = LocalFinanceColors.current
     val tint = categoryColor(key)
-    Row(
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(Modifier.size(8.dp).background(tint, CircleShape))
-        Text(categoryLabel(key), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(48.dp))
+        Text(categoryLabel(key), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(formatWon(total), color = colors.textPrimary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -478,41 +491,7 @@ private fun CategoryBar(key: String, total: Long, maxValue: Long, allTotal: Long
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.width(34.dp),
         )
-        Text(formatWon(total), color = colors.textPrimary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
     }
-}
-
-@Composable
-private fun RecentTransactionsCard(uiState: LedgerUiState, onOpenHistory: () -> Unit) {
-    val colors = LocalFinanceColors.current
-    FinanceCard {
-        Column(modifier = Modifier.padding(top = 20.dp, bottom = 6.dp)) {
-            Row(
-                modifier = Modifier.padding(horizontal = 20.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("최근 소비", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("이번 달 기록", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-                }
-                Surface(onClick = onOpenHistory, color = Color.Transparent, contentColor = colors.accent) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("전체 보기", style = MaterialTheme.typography.labelLarge)
-                        Icon(Icons.Rounded.ChevronRight, contentDescription = null, modifier = Modifier.size(18.dp))
-                    }
-                }
-            }
-            if (uiState.latestTransactions.isEmpty()) {
-                EmptyState(
-                    title = "첫 기록을 남겨보세요",
-                    message = "작은 소비부터 모으면 나만의 흐름이 생겨요.",
-                )
-            } else {
-                uiState.latestTransactions.take(4).forEach { transaction ->
-                    TransactionRow(transaction = transaction)
-                }
-            }
-        }
     }
 }
 
@@ -552,7 +531,7 @@ private fun InsightRow(label: String, value: String) {
     val colors = LocalFinanceColors.current
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(label, color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.End)
     }
 }
 
@@ -572,7 +551,7 @@ private fun ReportContent(uiState: LedgerUiState, onExportCsv: () -> Unit) {
                     val ratio = if (uiState.expenseTotal == 0L) 0f else total.total.toFloat() / uiState.expenseTotal.toFloat()
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Box(Modifier.size(8.dp).background(categoryColor(total.key), CircleShape))
-                        Text(categoryLabel(total.key), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(44.dp))
+                        Text(categoryLabel(total.key), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Box(
                             Modifier
                                 .weight(1f)
@@ -609,7 +588,7 @@ private fun ReportMetric(label: String, value: String, tint: Color, modifier: Mo
     Surface(modifier = modifier, color = colors.surfaceOverlay, shape = RoundedCornerShape(16.dp)) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(label, color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-            Text(value, color = tint, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            FittedAmountText(value, MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp), tint)
         }
     }
 }
@@ -735,7 +714,7 @@ private fun AnalysisButton(onClick: () -> Unit, enabled: Boolean, label: String)
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth().height(44.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
         colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = Color(0xFF06332B)),
         shape = RoundedCornerShape(14.dp),
     ) { Text(label, fontWeight = FontWeight.Bold) }

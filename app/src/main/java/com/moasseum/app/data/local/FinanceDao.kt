@@ -178,6 +178,17 @@ interface FinanceDao {
     @Query("UPDATE notification_candidates SET status = :status WHERE id = :id")
     suspend fun updateNotificationCandidateStatus(id: Long, status: String)
 
+    @Query("UPDATE notification_candidates SET status = 'DISMISSED' WHERE status = 'PENDING' AND packageName IN (:packages)")
+    suspend fun dismissExcludedNotificationCandidates(packages: List<String>)
+
+    @Transaction
+    suspend fun acceptCandidateTransaction(id: Long, transaction: TransactionEntity): Boolean {
+        if (getNotificationCandidate(id)?.status != "PENDING") return false
+        insertTransaction(transaction)
+        updateNotificationCandidateStatus(id, "ACCEPTED")
+        return true
+    }
+
     @Query("UPDATE transactions SET categoryKey = :replacementKey, updatedAt = :updatedAt WHERE categoryKey = :deletedKey")
     suspend fun reassignTransactionCategory(deletedKey: String, replacementKey: String, updatedAt: Long)
 

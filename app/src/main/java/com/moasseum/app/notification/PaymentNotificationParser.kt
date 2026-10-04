@@ -31,6 +31,7 @@ object PaymentNotificationParser {
         postedAt: Long,
         aiConfirmedType: TransactionType? = null,
     ): NotificationCandidateEntity? {
+        if (NotificationSourcePolicy.isExcluded(packageName)) return null
         val normalized = "$title $body".replace(Regex("\\s+"), " ").trim()
         if (normalized.isBlank()) return null
 

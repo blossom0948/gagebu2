@@ -68,7 +68,7 @@ object PaymentNotificationNotifier {
         val amount = NumberFormat.getNumberInstance(Locale.KOREA).format(candidate.amount) + "원"
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("알림에서 거래를 인식했어요")
+            .setContentTitle("거래를 인식했어요. 추가할까요?")
             .setContentText("${candidate.merchant} · $amount")
             .setSubText("$direction · 가계부에 추가할까요?")
             .setStyle(NotificationCompat.BigTextStyle().bigText("인식되었습니다. 추가할까요?\n${candidate.merchant} · $amount"))
@@ -77,6 +77,7 @@ object PaymentNotificationNotifier {
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(contentIntent)
+            .addAction(R.drawable.ic_notification, "확인하고 추가", contentIntent)
             .build()
         runCatching { NotificationManagerCompat.from(context).notify(notificationId, notification) }
     }
