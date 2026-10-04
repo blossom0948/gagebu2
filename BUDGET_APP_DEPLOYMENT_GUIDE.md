@@ -319,6 +319,16 @@ Google Play Protect가 개인 APK를 위험 가능성으로 차단하는 경우�
 
 ### Android 로컬 기능 또는 화면만 변경
 
+이 Mac에서 터미널로 빌드할 때 Android SDK/JDK가 자동으로 잡히지 않으면 아래처럼 해당 명령에만 경로를 지정한다. 시스템 글꼴이나 휴대폰 설정을 바꾸는 작업은 빌드·배포에 필요하지 않다.
+
+```bash
+ANDROID_HOME=/opt/homebrew/share/android-commandlinetools \
+JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+```
+
+Android Studio나 다른 컴퓨터에서 SDK/JDK가 이미 설정되어 있으면 기존 명령만 실행해도 된다.
+
 ```bash
 ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 ```

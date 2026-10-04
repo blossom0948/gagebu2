@@ -44,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -103,7 +104,13 @@ fun HistoryScreen(
     var detailId by remember { mutableStateOf<Long?>(null) }
     var editingTransaction by remember { mutableStateOf<Transaction?>(null) }
     var backupMenuOpen by remember { mutableStateOf(false) }
-    var dateFilter by rememberSaveable(uiState.month.toString()) { mutableStateOf<String?>(null) }
+    var dateFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    // Preserve a day selected across a month boundary, but do not restore a stale
+    // day filter if the process restarts with a different selected month.
+    LaunchedEffect(uiState.month) {
+        val filterMonth = dateFilter?.let { runCatching { YearMonth.from(LocalDate.parse(it)) }.getOrNull() }
+        if (dateFilter != null && filterMonth != uiState.month) dateFilter = null
+    }
     val filter = HistoryFilter.valueOf(filterName)
     val filteredTransactions = uiState.monthTransactions
         .filter { transaction ->
@@ -145,8 +152,8 @@ fun HistoryScreen(
                 selectedDate = selectedDate,
                 transactions = uiState.monthTransactions,
                 onSelectDate = { date -> onSelectDate(date); dateFilter = date.toString() },
-                onPrevious = { onSelectMonth(uiState.month.minusMonths(1)) },
-                onNext = { onSelectMonth(uiState.month.plusMonths(1)) },
+                onPrevious = { dateFilter = null; onSelectMonth(uiState.month.minusMonths(1)) },
+                onNext = { dateFilter = null; onSelectMonth(uiState.month.plusMonths(1)) },
             )
         }
         item {

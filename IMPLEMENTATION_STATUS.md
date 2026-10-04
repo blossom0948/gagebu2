@@ -42,6 +42,7 @@
 - v0.1.14: UI·애니메이션 정리, 대화 알림 제외, 알림 후보 확인 큐/중복 저장 방어. 상세 범위와 한계는 [QA_UI_REPORT_2026-10-04.md](QA_UI_REPORT_2026-10-04.md) 참고
 - v0.1.14: 단위 테스트 25개·lint·서명 Release 빌드 성공, Galaxy 기존 데이터 유지 설치와 설치 APK 해시 일치 확인
 - v0.1.14 APK: 56,741,406 bytes; SHA-256 `2b0799e42ee06e1ad8b94f5a2d08102f5ea3b238bbbbed177c7ba4502d2e2ca3`
+- v0.1.15: 이어서 점검한 달력 월 경계 날짜 필터 수정, 목표 지출 카드 전체 터치 적용. 단위 테스트 25개·lint·서명 Release 빌드 및 두 문제 실기기 재검증 성공
 
 - `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` — 성공
 - `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` — 성공
@@ -54,13 +55,14 @@
 - GitHub Release `v0.1.11` 및 `app-release.apk` 업로드 완료: https://github.com/blossom0948/gagebu2/releases/tag/v0.1.11
 - GitHub Release `v0.1.12` 및 `app-release.apk` 업로드 완료: https://github.com/blossom0948/gagebu2/releases/tag/v0.1.12
 - GitHub Release `v0.1.13` 및 `app-release.apk` 업로드 완료: https://github.com/blossom0948/gagebu2/releases/tag/v0.1.13
+- GitHub Release `v0.1.14` 및 `app-release.apk` 업로드 완료: https://github.com/blossom0948/gagebu2/releases/tag/v0.1.14 (업로드된 asset digest가 설치 APK SHA-256과 일치)
 - `npm run typecheck` (`cloudflare/ai-worker`) — 성공; Worker 배포 버전 `170aa326-e7e8-400b-8d0b-5c77f066af6e`
 - Worker `/health` 확인 — 성공; 잘못된 알림 분류·소비 Q&A 요청은 400 반환(모델 호출 없이)
 - Worker `/v1/parse-transaction`, `/v1/analyze-spending`, `/v1/ask-spending`, `/v1/classify-notification` 실호출 — 모두 HTTP 200 확인 (2026-10-04)
 - 연결 Android 기기 — `R3CT80B80MN` / Galaxy Z Fold4 / Android 16(API 36)에서 최종 릴리스 설치·기능·알림·재연결·백그라운드 알림 검증 완료
 - 상세 실기기 오류 기록과 수정 결과 — [QA_TEST_REPORT_2026-10-04.md](QA_TEST_REPORT_2026-10-04.md)
 - Debug APK — `app/build/outputs/apk/debug/app-debug.apk`
-- 서명된 Release APK — `app/build/outputs/apk/release/app-release.apk` (56,741,406 bytes; SHA-256 `0a2695dac26025e1aa15502d63dc5525cb6767fe7b434ac11ee1d87aa3820666`; 오프라인 한국어 OCR 모델 포함)
+- 현재 서명된 Release APK — `app/build/outputs/apk/release/app-release.apk` (v0.1.15, 56,741,402 bytes; SHA-256 `8087ee44aa107b1f942bda5949b1e2bdc554d5367c7245daba1e1a6bdbb59801`; 설치된 base.apk와 일치, 오프라인 한국어 OCR 모델 포함)
 
 ## 다음 작업/배포 안내
 

@@ -129,7 +129,10 @@ fun ManageScreen(
             Text("관리", style = MaterialTheme.typography.headlineSmall)
         }
         item {
-            FinanceCard(highlighted = true) {
+            FinanceCard(
+                modifier = Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button) { showBudgetDialog = true },
+                highlighted = true,
+            ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Rounded.Wallet, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
@@ -138,9 +141,7 @@ fun ManageScreen(
                             Text("${formatMonth(uiState.month)} 목표 지출", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text("홈 화면의 진행률에 반영돼요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                         }
-                        IconButton(onClick = { showBudgetDialog = true }) {
-                            Icon(Icons.Rounded.ChevronRight, contentDescription = "예산 수정")
-                        }
+                        Icon(Icons.Rounded.ChevronRight, contentDescription = null, modifier = Modifier.size(24.dp))
                     }
                     Text(uiState.budgetAmount?.let(::formatWon) ?: "설정되지 않음", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 }
