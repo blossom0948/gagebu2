@@ -61,4 +61,5 @@ Galaxy Z Fold4(SM-F936N), Android 16/API 36, 접힌 화면 904×2316. 원래 시
 - APK: `app/build/outputs/apk/release/app-release.apk`, 56,790,558 bytes
 - APK SHA-256: `30ce397bd802a8855a3bd3ce22b6e4f931628fd377e58a8978ace8033d2b20ad`
 - 최종 기기의 `base.apk` SHA-256과 빌드 APK가 일치. 최종 설치본의 라이트 선택 글자/FAB 확인 후 다크 모드 복원, `font_scale=0.8` 재확인. crash 버퍼에 모아씀 오류 없음.
+- [GitHub Release v0.1.16](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.16) 게시 완료. latest API의 태그·APK 크기·asset digest가 최종 설치본과 일치.
 - 이 변경은 APK 업데이트만 필요하다. 다음에도 로컬 화면/통계 변경은 테스트 → 버전 증가 → 동일 키 서명 APK → 기기 확인 → GitHub Release 순서다. Worker 계약을 바꾸는 경우에만 별도 서버 배포가 추가된다.
