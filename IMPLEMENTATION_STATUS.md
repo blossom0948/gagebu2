@@ -85,7 +85,7 @@
 - 연결 Android 기기 — `R3CT80B80MN` / Galaxy Z Fold4 / Android 16(API 36)에서 최종 릴리스 설치·기능·알림·재연결·백그라운드 알림 검증 완료
 - 상세 실기기 오류 기록과 수정 결과 — [QA_TEST_REPORT_2026-10-04.md](QA_TEST_REPORT_2026-10-04.md)
 - Debug APK — `app/build/outputs/apk/debug/app-debug.apk`
-- 현재 설치 APK — v0.1.18, 56,905,458 bytes; SHA-256 `172d481f7915d9916a27c4d809d6618ce62ced3830c1c7722a3fed91e3a23521`. 기기에서 다시 가져온 설치 APK와 빌드 파일 일치. 공개 Release 최종 검증은 이번 로그인 QA 문서에 별도 기록
+- 현재 공개/설치 APK — [v0.1.18](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.18), 56,905,458 bytes; SHA-256 `172d481f7915d9916a27c4d809d6618ce62ced3830c1c7722a3fed91e3a23521`. 무인증 latest·asset digest·공개 재다운로드·설치 APK 일치. 실제 로그인/AI 검증과 메일 수신 한계는 이번 로그인 QA 문서에 기록
 
 ## 다음 작업/배포 안내
 

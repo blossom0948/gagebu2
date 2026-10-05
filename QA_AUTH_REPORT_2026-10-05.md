@@ -36,7 +36,7 @@
 - APK: versionCode **18**, versionName **0.1.18**, **56,905,458 bytes**.
 - SHA-256: `172d481f7915d9916a27c4d809d6618ce62ced3830c1c7722a3fed91e3a23521`.
 - 서명 인증서 SHA-256: `669674a2114fb59d85c56bba774b89fec9ce7f7ee79825769826130362a091c9`(기존 릴리스와 동일).
-- 기기에서 설치 APK를 다시 가져와 빌드 APK와 SHA-256 일치를 확인했다. 공개 Release/재다운로드 최종 비교는 게시 후 아래에 기록한다.
+- [공개 v0.1.18 Release](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.18)를 게시했다. 무인증 GitHub API에서 latest/draft=false/prerelease=false와 크기·asset digest를 확인했고, 공개 APK를 다시 내려받아 빌드·설치 APK 세 파일의 SHA-256 일치를 확인했다. 소스 커밋 `cec509c`.
 
 ## 미검증 / 미구현 — 완료로 간주하지 않음
 
