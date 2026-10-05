@@ -77,13 +77,14 @@
 - GitHub Release `v0.1.13` 및 `app-release.apk` 업로드 완료: https://github.com/blossom0948/gagebu2/releases/tag/v0.1.13
 - GitHub Release `v0.1.14` 및 `app-release.apk` 업로드 완료: https://github.com/blossom0948/gagebu2/releases/tag/v0.1.14 (업로드된 asset digest가 설치 APK SHA-256과 일치)
 - GitHub Release `v0.1.16` 및 `app-release.apk` 업로드 완료: https://github.com/blossom0948/gagebu2/releases/tag/v0.1.16 (latest 태그·크기·asset digest와 설치 APK 일치)
+- GitHub Release `v0.1.17` 및 `app-release.apk` 업로드 완료: https://github.com/blossom0948/gagebu2/releases/tag/v0.1.17 (latest 태그·크기·digest와 재다운로드·설치 APK 일치; 로그인은 서버 연결 대기)
 - `npm run typecheck` (`cloudflare/ai-worker`) — 성공; Worker 배포 버전 `170aa326-e7e8-400b-8d0b-5c77f066af6e`
 - Worker `/health` 확인 — 성공; 잘못된 알림 분류·소비 Q&A 요청은 400 반환(모델 호출 없이)
 - Worker `/v1/parse-transaction`, `/v1/analyze-spending`, `/v1/ask-spending`, `/v1/classify-notification` 실호출 — 모두 HTTP 200 확인 (2026-10-04)
 - 연결 Android 기기 — `R3CT80B80MN` / Galaxy Z Fold4 / Android 16(API 36)에서 최종 릴리스 설치·기능·알림·재연결·백그라운드 알림 검증 완료
 - 상세 실기기 오류 기록과 수정 결과 — [QA_TEST_REPORT_2026-10-04.md](QA_TEST_REPORT_2026-10-04.md)
 - Debug APK — `app/build/outputs/apk/debug/app-debug.apk`
-- 이전 공개 APK — v0.1.16, 56,790,558 bytes; SHA-256 `30ce397bd802a8855a3bd3ce22b6e4f931628fd377e58a8978ace8033d2b20ad`. v0.1.17의 최종 파일 정보와 설치·게시 결과는 이번 QA 문서에 별도 기록
+- 현재 공개/설치 APK — v0.1.17, 56,905,294 bytes; SHA-256 `0f8f36f0d714cd5756cbc8e5d8ccda6c548e5a538b0f43a454af6653bfb37f7e`. 최종 설치·공개 파일 검증과 기능 제한은 이번 QA 문서에 별도 기록
 
 ## 다음 작업/배포 안내
 
