@@ -86,6 +86,7 @@ private enum class HistoryFilter(val label: String) {
     ALL("전체"),
     EXPENSE("지출"),
     INCOME("수입"),
+    TRANSFER("이체"),
 }
 
 @Composable
@@ -125,6 +126,7 @@ fun HistoryScreen(
             HistoryFilter.ALL -> null
             HistoryFilter.EXPENSE -> TransactionType.EXPENSE
             HistoryFilter.INCOME -> TransactionType.INCOME
+            HistoryFilter.TRANSFER -> TransactionType.TRANSFER
         },
         categoryKey = categoryFilterKey.takeUnless { it == "ALL" },
         date = dateFilter?.let(LocalDate::parse), paymentMethod = paymentFilter, search = search, sort = sort,
@@ -534,6 +536,12 @@ private fun TransactionEditDialog(
     onDismiss: () -> Unit,
     onSave: (String, TransactionType, String, String, String, String, LocalDate) -> Boolean,
 ) {
+    if (transaction.type == TransactionType.TRANSFER) {
+        AlertDialog(onDismissRequest = onDismiss, title = { Text("이체 기록 수정") },
+            text = { Text("계좌 연결과 잔액을 함께 변경하려면 관리 → 계좌·지갑과 이체에서 수정해 주세요.") },
+            confirmButton = { TextButton(onClick = onDismiss) { Text("닫기") } })
+        return
+    }
     val colors = LocalFinanceColors.current
     var amount by rememberSaveable(transaction.id) { mutableStateOf(transaction.amount.toString()) }
     var merchant by rememberSaveable(transaction.id) { mutableStateOf(transaction.merchant) }

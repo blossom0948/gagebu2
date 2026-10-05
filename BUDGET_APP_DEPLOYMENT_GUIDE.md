@@ -157,6 +157,8 @@ app/build/outputs/apk/debug/app-debug.apk
 
 APK를 USB나 본인 클라우드 드라이브로 휴대폰에 옮겨 열고 설치한다. Android가 안내하면 해당 파일 앱에 **이 출처의 앱 설치 허용**을 켠다. 이 APK는 개인 테스트용이며 Google Play 출시용 서명 APK/AAB를 대신하지 않는다.
 
+v0.1.17부터 Debug 앱 ID는 `com.moasseum.app.qa`다. 테스트가 개인 원장을 수정하지 않도록 별도 설치되며, 기존 개인용 `com.moasseum.app` 앱의 업데이트가 아니다. 실제 사용 앱은 동일 키의 서명 Release APK로 업데이트한다.
+
 ---
 
 ## 7. GitHub에서 APK 빌드 결과 받기
@@ -241,7 +243,7 @@ ANDROID_KEY_PASSWORD
 
 1. `main`에 기능을 push한다.
 2. Actions가 unit test와 lint를 실행한다.
-3. `versionCode`에는 Actions 실행 번호가 들어가고, 서명 APK/AAB가 만들어진다.
+3. 템플릿은 Actions 실행 번호로 버전을 만든다. 활성화 전 기존 공개 APK보다 항상 큰 `versionCode`가 되도록 기준값을 조정해야 한다. 현재 수동 릴리스는 `gradle.properties`의 버전을 사용한다.
 4. GitHub Release에 `app-release.apk`와 `app-release.aab`가 첨부된다.
 5. 폰에서 모아씀의 `관리 → 앱 업데이트`를 열고 `업데이트 확인`을 누른다.
 6. 앱이 GitHub Release의 APK를 직접 내려받아 크기·SHA-256(제공된 경우)·앱 ID·버전·서명을 검증한 다음 Android 시스템 설치 화면을 연다.
@@ -337,6 +339,8 @@ Room Entity/테이블을 바꾸면 `FinanceDatabase` 버전과 이전 버전에�
 
 이번 카드 이용기간·고정비 레이더·내역 정렬은 **Android APK만 배포**하는 변경이다. Worker/API와 Room 테이블은 바뀌지 않는다. 카드 설정은 기존 3필드 형식을 읽는 호환 디코더를 유지하고 새 저장 형식으로 확장했으므로, DataStore 변경도 기존 설정 읽기와 새 형식 재저장 테스트를 함께 수행한다. 폰의 시스템 글꼴 크기는 변경하지 않는다.
 
+v0.1.17의 계좌·이체·전체 복원·PDF·카메라·예산 이월은 APK 변경이다. Room 3→4 Migration을 적용해 기존 거래에 nullable 계좌 연결을 추가하고 계좌 테이블을 생성한다. 설치 전 앱 삭제/데이터 초기화를 하지 않는다. 계좌 연결이 없는 기존 거래도 그대로 읽는다. 앱 글꼴 토큰과 시스템 글꼴 크기는 바꾸지 않는다. 로그인 코드 추가만으로 서버가 만들어지지는 않으며 아래의 별도 설정이 필요하다.
+
 ### AI Worker/API 변경
 
 ```bash
@@ -359,6 +363,41 @@ npm run deploy
 ### 공동 계정/서버 동기화
 
 Supabase 프로젝트와 RLS 정책을 실제로 만들고 사용자 간 데이터 격리 테스트를 하기 전에는 함께 쓰기 기능을 활성화하지 않는다. 현재 Worker의 `REQUIRE_AUTH=false`는 개인 테스트 전용이며 공개 서비스용 설정이 아니다.
+
+### 앱 로그인 연결
+
+현재는 인증 화면/REST/암호화 세션 코드만 구현되어 있다. 실제 설정이 없는 APK는 로그인 버튼을 비활성화한다. 회원가입을 성공한 것처럼 표시하거나 다른 프로젝트의 키를 빌려 쓰지 않는다.
+
+1. 브라우저에서 사용자가 GitHub→Supabase 관리 계정 로그인/MFA를 마친다. 비밀번호/OTP를 채팅에 보내거나 저장소에 기록하지 않는다.
+2. **모아씀 전용 무료 프로젝트**를 새로 만든다. 기존 `tngodvudrk` 프로젝트는 수정하지 않는다. 현재 Free는 활성 프로젝트 2개 한도이며, 1주 비활성 시 프로젝트가 일시 중지될 수 있다. 생성 제한에 걸리면 멈추고 사용자에게 선택을 요청한다. 유료 전환이나 다른 프로젝트 삭제를 대신 하지 않는다. [공식 Free 플랜/한도](https://supabase.com/pricing)
+3. 프로젝트 URL과 **publishable key**를 확인한다. legacy anon 키도 허용하지만 secret/service_role 키는 APK에 금지한다. `GEMINI_API_KEY`는 기존 Worker Secret에만 유지한다.
+4. Supabase 이메일 인증을 활성화하고 가입 확인을 켠다. 가입 확인/비밀번호 재설정 메일에 `{{ .Token }}`을 넣어 앱의 인증 번호 입력 흐름을 지원한다. 기본 템플릿의 링크만으로는 앱 내 번호 확인을 검증할 수 없다. [이메일 템플릿 공식 문서](https://supabase.com/docs/guides/auth/auth-email-templates)
+5. 기본 SMTP는 프로젝트 조직의 허용 이메일만 대상으로 하며 문서상 현재 시간당 2통 제한이다. 개인 테스트 범위와 발송 제한을 확인한다. 임의 이메일의 공개 회원가입은 별도 SMTP 공급자/발신자 설정이 필요하므로, 비용·무료 한도와 필요한 계정 인증을 먼저 확인한다. 이메일 확인을 끄는 방식으로 제한을 우회하지 않는다. [SMTP 공식 문서](https://supabase.com/docs/guides/auth/auth-smtp)
+6. 이 Mac의 저장소 밖 Gradle 사용자 설정 또는 해당 빌드에 다음 **공개 설정**을 전달한다. 실제 secret 값은 파일·명령·로그에 넣지 않는다.
+
+```bash
+./gradlew :app:assembleDebug \
+  -PSUPABASE_URL=https://<새-모아씀-프로젝트>.supabase.co \
+  -PSUPABASE_PUBLISHABLE_KEY=<publishable-key>
+```
+
+7. 격리된 QA 앱에서 실제 가입 → 메일 번호 확인 → 로그인 → 앱 재시작 → 세션 갱신 → 비밀번호 재설정 → 로그아웃을 검증한다. 테스트 계정만 사용하며 사용자 실제 기록을 서버에 자동 업로드하지 않는다.
+8. 인증이 확인된 뒤 동일 공개 설정으로 버전을 올린 서명 Release APK를 빌드/설치/게시한다. URL/key가 APK의 BuildConfig이므로 서버 설정만 하고 예전 APK를 유지하면 로그인이 켜지지 않는다.
+9. 앱 로그인이 실제 작동한 후 Worker에 같은 프로젝트의 `SUPABASE_URL`/`SUPABASE_PUBLISHABLE_KEY`를 설정하고 `REQUIRE_AUTH=true`로 별도 배포한다. 무인증 401, 올바른 로그인 토큰 성공, 만료 토큰 거부를 확인한다. 지금 이를 먼저 바꾸면 기존 사용자의 AI가 중단된다.
+
+로그인은 로컬 기록의 자동 동기화/공동 장부가 아니다. 이후 서버 테이블과 RLS, 사용자별 원장, outbox/충돌 처리, 1회 만료 초대, 선택 공유와 두 계정 격리 테스트를 구현·검증한 뒤 해당 기능을 노출한다. [RLS 공식 문서](https://supabase.com/docs/guides/database/postgres/row-level-security)
+
+### 다음 기능별 배포 판단
+
+| 변경 | 필요한 배포/검증 |
+| --- | --- |
+| 화면·로컬 계산·PDF·카메라 | 테스트 후 새 버전 동일 키 APK |
+| Room 필드/테이블 | Migration과 이전 데이터 보존 검사 후 APK |
+| AI 프롬프트/API/인증 검사 | Worker typecheck·배포, 계약/앱 설정이 바뀌면 APK도 배포 |
+| 로그인 프로젝트/공개 설정 | Supabase 이메일 설정·실제 인증 검사 후 새 설정 APK |
+| 동기화/공동 원장 | 서버 Migration·RLS 격리/두 기기 충돌 검사 + Worker/앱 배포 |
+
+현재 수동 GitHub Release 방식은 무료 개인 설치 경로이며, 관리→앱 업데이트에서 직접 다운로드한다. 무음 설치나 Android 보안 팝업 생략을 보장하지 않는다.
 
 ---
 

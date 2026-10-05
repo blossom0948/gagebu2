@@ -11,11 +11,16 @@ import com.moasseum.app.notification.PaymentNotificationNotifier
 import com.moasseum.app.work.RecurringTransactionWorker
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.launch
 
 class FinanceApplication : Application() {
     val database by lazy { FinanceDatabase.create(this) }
     val financeRepository by lazy { FinanceRepository(database.financeDao()) }
     val preferencesRepository by lazy { UserPreferencesRepository(this) }
+    val backupManager by lazy { com.moasseum.app.data.BackupManager(this, financeRepository, preferencesRepository) }
+    val authRepository by lazy { com.moasseum.app.auth.AuthRepository(com.moasseum.app.auth.SupabaseAuthApi(), com.moasseum.app.auth.EncryptedSessionStore(this)) }
+    val aiClient by lazy { com.moasseum.app.data.AiClient(bearerTokenProvider = { authRepository.validAccessToken() }) }
+    private val applicationScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
 
     private val notificationCandidateEventsChannel = Channel<NotificationCandidate>(Channel.BUFFERED)
     val notificationCandidateEvents = notificationCandidateEventsChannel.receiveAsFlow()
@@ -28,6 +33,10 @@ class FinanceApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        applicationScope.launch {
+            authRepository.initialize()
+            authRepository.validAccessToken()
+        }
         PaymentNotificationNotifier.createChannel(this)
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityStarted(activity: Activity) {

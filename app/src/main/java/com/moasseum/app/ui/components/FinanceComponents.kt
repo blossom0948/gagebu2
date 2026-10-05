@@ -169,7 +169,7 @@ fun CategoryIcon(
 @Composable
 fun TypeBadge(type: TransactionType) {
     val colors = LocalFinanceColors.current
-    val tint = if (type == TransactionType.EXPENSE) colors.expense else colors.income
+    val tint = when (type) { TransactionType.EXPENSE -> colors.expense; TransactionType.INCOME -> colors.income; TransactionType.TRANSFER -> colors.textSecondary }
     val icon = if (type == TransactionType.EXPENSE) Icons.Rounded.ArrowDownward else Icons.Rounded.ArrowUpward
     Row(
         modifier = Modifier
@@ -180,7 +180,7 @@ fun TypeBadge(type: TransactionType) {
     ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(13.dp))
         Text(
-            text = if (type == TransactionType.EXPENSE) "지출" else "수입",
+            text = when (type) { TransactionType.EXPENSE -> "지출"; TransactionType.INCOME -> "수입"; TransactionType.TRANSFER -> "이체" },
             color = tint,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.SemiBold,
@@ -197,7 +197,7 @@ fun AmountText(
     val colors = LocalFinanceColors.current
     Text(
         text = formatSignedWon(amount, type),
-        color = if (type == TransactionType.EXPENSE) colors.expense else colors.income,
+        color = when (type) { TransactionType.EXPENSE -> colors.expense; TransactionType.INCOME -> colors.income; TransactionType.TRANSFER -> colors.textSecondary },
         style = style,
         fontWeight = FontWeight.Bold,
         maxLines = 1,

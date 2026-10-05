@@ -16,6 +16,7 @@ enum class AiCandidateSource {
 enum class TransactionType {
     EXPENSE,
     INCOME,
+    TRANSFER,
 }
 
 data class AiTransactionCandidate(
@@ -49,6 +50,8 @@ data class Transaction(
     val memo: String,
     val paymentMethod: String,
     val source: String,
+    val accountId: String? = null,
+    val destinationAccountId: String? = null,
 ) {
     val occurredDate: LocalDate
         get() = Instant.ofEpochMilli(occurredAt).atZone(ZoneId.systemDefault()).toLocalDate()
@@ -106,6 +109,9 @@ data class LedgerUiState(
     val month: YearMonth,
     val transactions: List<Transaction> = emptyList(),
     val budgetAmount: Long? = null,
+    val baseBudgetAmount: Long? = budgetAmount,
+    val carriedBudgetAmount: Long = 0,
+    val budgetRollover: Boolean = false,
 ) {
     val monthTransactions: List<Transaction>
         get() = transactions.filter { it.occurredDate.let { date -> YearMonth.from(date) == month } }
@@ -169,7 +175,7 @@ fun parseAmount(input: String): Long? =
         .filter(Char::isDigit)
         .takeIf(String::isNotEmpty)
         ?.toLongOrNull()
-        ?.takeIf { it > 0 }
+        ?.takeIf { it in 1..1_000_000_000_000L }
 
 fun formatWon(amount: Long): String {
     val formatter = NumberFormat.getNumberInstance(Locale.KOREA)
@@ -180,6 +186,7 @@ fun formatSignedWon(amount: Long, type: TransactionType): String =
     when (type) {
         TransactionType.EXPENSE -> "−${formatWon(amount)}"
         TransactionType.INCOME -> "+${formatWon(amount)}"
+        TransactionType.TRANSFER -> "↔ ${formatWon(amount)}"
     }
 
 fun formatMonth(month: YearMonth): String = "${month.year}년 ${month.monthValue}월"

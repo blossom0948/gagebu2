@@ -23,7 +23,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 class PaymentNotificationListenerService : NotificationListenerService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val aiClient by lazy { AiClient() }
+    private val aiClient by lazy { (application as FinanceApplication).aiClient }
 
     override fun onListenerConnected() {
         super.onListenerConnected()

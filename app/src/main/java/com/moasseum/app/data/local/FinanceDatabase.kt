@@ -8,20 +8,28 @@ import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [TransactionEntity::class, BudgetEntity::class, NotificationCandidateEntity::class, RecurringTransactionEntity::class],
-    version = 3,
+    entities = [TransactionEntity::class, BudgetEntity::class, NotificationCandidateEntity::class, RecurringTransactionEntity::class, AccountEntity::class],
+    version = 4,
     exportSchema = false,
 )
 abstract class FinanceDatabase : RoomDatabase() {
     abstract fun financeDao(): FinanceDao
 
     companion object {
-        fun create(context: Context): FinanceDatabase =
+        fun create(context: Context, name: String = "moasseum.db"): FinanceDatabase =
             Room.databaseBuilder(
                 context,
                 FinanceDatabase::class.java,
-                "moasseum.db",
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
+                name,
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
+    }
+}
+
+internal val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE transactions ADD COLUMN accountId TEXT")
+        database.execSQL("ALTER TABLE transactions ADD COLUMN destinationAccountId TEXT")
+        database.execSQL("CREATE TABLE IF NOT EXISTS accounts (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, openingBalance INTEGER NOT NULL, archived INTEGER NOT NULL, updatedAt INTEGER NOT NULL)")
     }
 }
 

@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -25,9 +27,22 @@ android {
             ?: "https://moasseum-ai-worker.blossom0948.workers.dev"
         val escapedAiBaseUrl = aiBaseUrl.replace("\\", "\\\\").replace("\"", "\\\"")
         buildConfigField("String", "AI_API_BASE_URL", "\"$escapedAiBaseUrl\"")
+        for (name in listOf("SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY")) {
+            val raw = providers.gradleProperty(name).orNull.orEmpty()
+            if (name == "SUPABASE_PUBLISHABLE_KEY" && raw.isNotBlank()) {
+                require(!raw.startsWith("sb_secret_")) { "Never package a Supabase secret key in the APK." }
+                if (!raw.startsWith("sb_publishable_")) {
+                    val payload = runCatching { String(Base64.getUrlDecoder().decode(raw.split('.')[1])) }.getOrDefault("")
+                    require(Regex("\"role\"\\s*:\\s*\"anon\"").containsMatchIn(payload)) { "Use only a publishable key or legacy anon key in the APK." }
+                }
+            }
+            val value = raw.replace("\\", "\\\\").replace("\"", "\\\"")
+            buildConfigField("String", name, "\"$value\"")
+        }
     }
 
     buildTypes {
+        debug { applicationIdSuffix = ".qa" }
         release {
             isMinifyEnabled = false
             proguardFiles(
@@ -107,6 +122,9 @@ dependencies {
     implementation("com.google.mlkit:text-recognition-korean:16.0.1")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
 }
 
 kapt {

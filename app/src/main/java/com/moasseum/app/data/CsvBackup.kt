@@ -13,11 +13,14 @@ data class ImportedTransaction(
     val memo: String,
     val paymentMethod: String,
     val source: String,
+    val accountId: String? = null,
+    val destinationAccountId: String? = null,
 )
 
 object CsvBackup {
     private val headers = listOf(
         "id", "type", "amount", "occurredAt", "categoryKey", "merchant", "memo", "paymentMethod", "source",
+        "accountId", "destinationAccountId",
     )
 
     fun encode(transactions: List<Transaction>): String = buildString {
@@ -35,6 +38,8 @@ object CsvBackup {
                 transaction.memo,
                 transaction.paymentMethod,
                 transaction.source,
+                transaction.accountId.orEmpty(),
+                transaction.destinationAccountId.orEmpty(),
             ).joinTo(this, separator = ",", transform = ::escape)
             append("\r\n")
         }
@@ -62,6 +67,10 @@ object CsvBackup {
                     .getOrElse { throw IllegalArgumentException("${lineNumber}번째 줄의 날짜를 확인해 주세요.") }
             val merchant = value("merchant").takeIf(String::isNotBlank)
                 ?: throw IllegalArgumentException("${lineNumber}번째 줄의 가맹점이 비어 있어요.")
+            val accountId = value("accountId").takeIf(String::isNotBlank)
+            val destination = value("destinationAccountId").takeIf(String::isNotBlank)
+            if (type == TransactionType.TRANSFER) require(accountId != null && destination != null && accountId != destination) { "${lineNumber}번째 줄의 이체 계좌를 확인해 주세요. 계좌까지 복원하려면 JSON 전체 백업을 사용하세요." }
+            else require(destination == null)
             ImportedTransaction(
                 type = type,
                 amount = amount,
@@ -71,6 +80,8 @@ object CsvBackup {
                 memo = value("memo"),
                 paymentMethod = value("paymentMethod").ifBlank { "카드" },
                 source = value("source").ifBlank { "IMPORT" },
+                accountId = accountId,
+                destinationAccountId = destination,
             )
         }
     }

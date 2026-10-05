@@ -111,6 +111,14 @@ fun ManageScreen(
     onCheckForUpdate: () -> Unit,
     onInstallUpdate: (AppRelease) -> Unit,
     onContinueInstall: () -> Unit,
+    onOpenAccounts: () -> Unit,
+    onExportBackup: () -> Unit,
+    onRestoreBackup: () -> Unit,
+    onExportSafetyBackup: () -> Unit,
+    onExportPdf: () -> Unit,
+    onSetBudgetRollover: (Boolean) -> Unit,
+    onOpenAuth: () -> Unit,
+    accountStatus: String,
 ) {
     var showBudgetDialog by rememberSaveable { mutableStateOf(false) }
     var showCategoryDialog by rememberSaveable { mutableStateOf(false) }
@@ -133,6 +141,7 @@ fun ManageScreen(
         item {
             Text("관리", style = MaterialTheme.typography.headlineSmall)
         }
+        item { FinanceCard { ManageRow(Icons.Rounded.Security, "로그인·계정", accountStatus, onClick = onOpenAuth) } }
         item {
             FinanceCard(
                 modifier = Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button) { showBudgetDialog = true },
@@ -152,9 +161,14 @@ fun ManageScreen(
                 }
             }
         }
+        item {
+            FinanceCard { SettingSwitchRow(Icons.Rounded.Wallet, "남은 예산 다음 달 이월", "지출 후 남은 예산을 다음 달 목표에 더해요.", uiState.budgetRollover, onSetBudgetRollover) }
+        }
         item { ManageSectionTitle("가계부 구성") }
         item {
             FinanceCard {
+                ManageRow(Icons.Rounded.AccountBalance, "계좌·지갑과 이체", "잔액 관리 · 계좌 간 이체 · 거래 연결", onClick = onOpenAccounts)
+                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                 ManageRow(Icons.Rounded.Category, "카테고리", "기본 7개 이름 변경 · 내 카테고리 추가", onClick = { showCategoryDialog = true })
                 HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                 ManageRow(
@@ -194,6 +208,14 @@ fun ManageScreen(
             }
         }
         item { ManageSectionTitle("앱 설정") }
+        item {
+            FinanceCard {
+                ManageRow(Icons.Rounded.Wallet, "JSON 전체 백업", "거래·계좌·예산·반복 규칙·앱 설정", onClick = onExportBackup)
+                ManageRow(Icons.Rounded.Wallet, "백업 복원", "미리보기 후 복원 · 복원 전 데이터 안전 저장", onClick = onRestoreBackup)
+                ManageRow(Icons.Rounded.Wallet, "복원 전 안전 백업 내보내기", "마지막 복원 이전 상태 보관", onClick = onExportSafetyBackup)
+                ManageRow(Icons.Rounded.CalendarMonth, "월별 PDF 리포트", "선택한 달의 요약과 전체 거래 내역", onClick = onExportPdf)
+            }
+        }
         item {
             FinanceCard {
                 SettingSwitchRow(
@@ -272,7 +294,7 @@ fun ManageScreen(
     if (showBudgetDialog) {
         BudgetDialog(
             month = uiState.month,
-            initialValue = uiState.budgetAmount?.toString().orEmpty(),
+            initialValue = uiState.baseBudgetAmount?.toString().orEmpty(),
             onDismiss = { showBudgetDialog = false },
             onSave = { input ->
                 val saved = onUpdateBudget(input)
@@ -354,7 +376,7 @@ fun ManageScreen(
         AlertDialog(
             onDismissRequest = { showDeleteConfirmation = false },
             title = { Text("기기 데이터를 삭제할까요?") },
-            text = { Text("저장된 거래, 예산, 알림 후보, 반복 규칙을 모두 지워요. 이 작업은 되돌릴 수 없으니 필요하면 먼저 내역 화면에서 CSV로 내보내세요. 앱 설정은 유지됩니다.") },
+            text = { Text("저장된 거래, 계좌, 예산, 알림 후보, 반복 규칙을 모두 지워요. 이 작업은 되돌릴 수 없으니 필요하면 먼저 JSON 전체 백업을 내보내세요. 앱 설정과 로그인 상태는 유지됩니다.") },
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteConfirmation = false

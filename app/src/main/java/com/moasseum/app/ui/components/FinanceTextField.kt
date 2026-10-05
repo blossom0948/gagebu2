@@ -8,6 +8,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.moasseum.app.ui.theme.LocalFinanceColors
 
@@ -31,6 +32,7 @@ fun FinanceTextField(
     maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
     minLines: Int = 1,
     shape: Shape = RoundedCornerShape(14.dp),
+    visualTransformation: VisualTransformation = VisualTransformation.None,
 ) {
     val colors = LocalFinanceColors.current
     OutlinedTextField(
@@ -40,6 +42,7 @@ fun FinanceTextField(
         suffix = suffix, supportingText = supportingText, isError = isError,
         keyboardOptions = keyboardOptions, singleLine = singleLine, maxLines = maxLines, minLines = minLines,
         shape = shape,
+        visualTransformation = visualTransformation,
         colors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = colors.surfaceInput,
             unfocusedContainerColor = colors.surfaceInput,

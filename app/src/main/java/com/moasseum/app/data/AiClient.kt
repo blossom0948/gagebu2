@@ -24,7 +24,7 @@ data class NotificationAiClassification(
 
 class AiClient(
     private val baseUrl: String = BuildConfig.AI_API_BASE_URL,
-    private val bearerTokenProvider: () -> String? = { null },
+    private val bearerTokenProvider: suspend () -> String? = { null },
 ) {
     suspend fun parseTransaction(text: String, today: LocalDate = LocalDate.now()): Result<AiTransactionCandidate> =
         withContext(Dispatchers.IO) {
@@ -70,7 +70,7 @@ class AiClient(
             }
         }
 
-    private fun parseWithServer(text: String, today: LocalDate): AiTransactionCandidate {
+    private suspend fun parseWithServer(text: String, today: LocalDate): AiTransactionCandidate {
         val endpoint = if (baseUrl.endsWith("/v1/parse-transaction")) {
             baseUrl
         } else {
@@ -112,7 +112,7 @@ class AiClient(
         }
     }
 
-    private fun analyzeWithServer(state: LedgerUiState): SpendingAnalysis {
+    private suspend fun analyzeWithServer(state: LedgerUiState): SpendingAnalysis {
         val endpoint = if (baseUrl.endsWith("/v1/analyze-spending")) {
             baseUrl
         } else {
@@ -169,7 +169,7 @@ class AiClient(
         }
     }
 
-    private fun classifyNotificationWithServer(title: String, text: String): NotificationAiClassification {
+    private suspend fun classifyNotificationWithServer(title: String, text: String): NotificationAiClassification {
         require(title.isNotBlank() && title.length <= 200) { "알림 제목을 확인해 주세요." }
         require(text.isNotBlank() && text.length <= 2_000) { "알림 내용을 확인해 주세요." }
         val endpoint = "${baseUrl.trimEnd('/')}/v1/classify-notification"
@@ -213,7 +213,7 @@ class AiClient(
         }
     }
 
-    private fun askSpendingWithServer(question: String, state: LedgerUiState): String {
+    private suspend fun askSpendingWithServer(question: String, state: LedgerUiState): String {
         val endpoint = "${baseUrl.trimEnd('/')}/v1/ask-spending"
         val connection = (URL(endpoint).openConnection() as? HttpURLConnection)
             ?: throw IOException("AI 서버 주소를 확인해 주세요.")

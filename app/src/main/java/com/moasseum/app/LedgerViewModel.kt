@@ -51,22 +51,16 @@ class LedgerViewModel(
             initialValue = emptyList(),
         )
 
-    private val budget: StateFlow<Long?> =
-        selectedMonth
-            .flatMapLatest { month -> repository.observeBudget(month.toString()) }
-            .map { budget -> budget?.amount }
-            .stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5_000),
-                initialValue = null,
-            )
-
     val uiState: StateFlow<LedgerUiState> =
-        combine(transactions, selectedMonth, budget) { entries, month, budgetAmount ->
+        combine(transactions, selectedMonth, repository.observeAllBudgets()) { entries, month, budgets ->
+            val effective = com.moasseum.app.domain.effectiveBudget(month, budgets.map { com.moasseum.app.domain.BudgetPlan(YearMonth.parse(it.monthKey), it.amount, it.rollover) }, entries)
             LedgerUiState(
                 month = month,
                 transactions = entries,
-                budgetAmount = budgetAmount,
+                budgetAmount = effective?.total,
+                baseBudgetAmount = effective?.base,
+                carriedBudgetAmount = effective?.carried ?: 0,
+                budgetRollover = effective?.rollover ?: false,
             )
         }.stateIn(
             scope = viewModelScope,
@@ -85,11 +79,13 @@ class LedgerViewModel(
     fun selectMonth(month: YearMonth) {
         selectedMonth.value = month
         selectedDate.value = month.atDay(1)
+        viewModelScope.launch { repository.ensureRollingBudget(month.toString()) }
     }
 
     fun selectDate(date: LocalDate) {
         selectedMonth.value = YearMonth.from(date)
         selectedDate.value = date
+        viewModelScope.launch { repository.ensureRollingBudget(YearMonth.from(date).toString()) }
     }
 
     fun addTransaction(
@@ -100,12 +96,14 @@ class LedgerViewModel(
         memo: String,
         occurredAt: LocalDate = LocalDate.now(),
         paymentMethod: String = "카드",
+        accountId: String? = null,
+        onComplete: (Result<Unit>) -> Unit = {},
     ): Boolean {
-        val amount = parseAmount(amountInput) ?: return false
+        val amount = parseAmount(amountInput)?.takeIf { it <= 1_000_000_000_000L } ?: return false
         if (merchant.isBlank()) return false
 
         viewModelScope.launch {
-            repository.addTransaction(
+            onComplete(runCatching { repository.addTransaction(
                 amount = amount,
                 type = type,
                 occurredAt = occurredAt,
@@ -113,7 +111,8 @@ class LedgerViewModel(
                 merchant = merchant,
                 memo = memo,
                 paymentMethod = paymentMethod,
-            )
+                accountId = accountId,
+            ) })
         }
         return true
     }
@@ -212,6 +211,10 @@ class LedgerViewModel(
             repository.updateBudget(selectedMonth.value.toString(), amount)
         }
         return true
+    }
+
+    fun setBudgetRollover(enabled: Boolean) {
+        viewModelScope.launch { repository.setBudgetRollover(selectedMonth.value.toString(), enabled) }
     }
 
     class Factory(

@@ -9,6 +9,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.moasseum.app.domain.PaymentCard
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import java.util.Locale
 
 val DEFAULT_PAYMENT_METHODS = listOf("카드", "현금", "이체", "기타")
@@ -27,6 +28,20 @@ private val Context.settingsDataStore by preferencesDataStore(name = "moasseum_s
 class UserPreferencesRepository(
     private val context: Context,
 ) {
+    suspend fun backupSettings(): BackupSettings = BackupSettings(isDarkTheme.first(), reduceMotion.first(), paymentMethods.first(), paymentCards.first(), categoryLabels.first(), categoryBudgets.first())
+
+    suspend fun restoreSettings(settings: BackupSettings) {
+        // One DataStore edit keeps presentation settings consistent. Consent and permissions are never restored.
+        val cards = PaymentCardSettings.encode(settings.paymentCards)
+        context.settingsDataStore.edit { preferences ->
+            preferences[DARK_THEME] = settings.darkTheme
+            preferences[REDUCE_MOTION] = settings.reduceMotion
+            preferences[PAYMENT_METHODS] = settings.paymentMethods.joinToString("\n")
+            preferences[PAYMENT_CARDS] = cards
+            preferences[CATEGORY_LABELS] = settings.categoryLabels.entries.joinToString("\n") { "${it.key}=${it.value}" }
+            preferences[CATEGORY_BUDGETS] = settings.categoryBudgets.entries.joinToString("\n") { "${it.key}=${it.value}" }
+        }
+    }
     val isDarkTheme: Flow<Boolean> =
         context.settingsDataStore.data.map { preferences -> preferences[DARK_THEME] ?: true }
 

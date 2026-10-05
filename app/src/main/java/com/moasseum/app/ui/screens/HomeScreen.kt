@@ -347,6 +347,11 @@ private fun MonthlySummaryCard(
             Text("한 달 목표 지출을 설정하면 사용량을 보여드려요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         }
         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            val pace = com.moasseum.app.domain.budgetPace(uiState)
+            if (uiState.carriedBudgetAmount > 0) Text("지난달 이월 ${formatWon(uiState.carriedBudgetAmount)} 포함", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            if (budget != null && pace.remainingDays > 0) Text("남은 ${pace.remainingDays}일 · 하루 ${formatWon(pace.dailyAllowance)} 사용 가능", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            pace.projectedExpense?.let { Text("현재 속도 월말 예상 ${formatWon(it)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium) }
+            if (pace.previousSamePeriodExpense > 0 && uiState.month == java.time.YearMonth.now()) Text("지난달 같은 기간 ${formatWon(pace.previousSamePeriodExpense)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             if (uiState.previousExpenseTotal > 0L) {
                 Text(
                     text = if (change >= 0) "지난달보다 ${formatWon(change)} 더 썼어요" else "지난달보다 ${formatWon(-change)} 아꼈어요",

@@ -1,6 +1,9 @@
 package com.moasseum.app.data
 
 import com.moasseum.app.data.local.BudgetEntity
+import com.moasseum.app.data.local.AccountEntity
+import com.moasseum.app.domain.Account
+import com.moasseum.app.domain.validateAccount
 import com.moasseum.app.data.local.FinanceDao
 import com.moasseum.app.data.local.NotificationCandidateEntity
 import com.moasseum.app.data.local.RecurringTransactionEntity
@@ -22,10 +25,45 @@ import java.util.TimeZone
 class FinanceRepository(
     private val dao: FinanceDao,
 ) {
+    suspend fun backupSnapshot(): FullBackup = dao.backupSnapshot()
+    suspend fun restoreBackup(backup: FullBackup) = dao.restoreSnapshot(backup)
+    fun observeAccounts(): Flow<List<Account>> = dao.observeAccounts().map { rows ->
+        rows.map { Account(it.id, it.name, it.openingBalance, it.archived) }
+    }
+
+    suspend fun saveAccount(id: String?, name: String, openingBalance: Long) {
+        validateAccount(name, openingBalance)
+        val existing = id?.let { dao.getAccount(it) }
+        require(id == null || existing != null)
+        dao.upsertAccount(AccountEntity(id ?: java.util.UUID.randomUUID().toString(), name.trim(), openingBalance, existing?.archived ?: false, System.currentTimeMillis()))
+    }
+
+    suspend fun archiveAccount(id: String, archived: Boolean) = dao.archiveAccount(id, archived, System.currentTimeMillis())
+
+    suspend fun linkTransactionAccount(id: Long, accountId: String?) = dao.linkTransactionAccount(id, accountId, System.currentTimeMillis())
+
+    suspend fun saveTransfer(id: Long?, amount: Long, fromId: String, toId: String, date: LocalDate, memo: String) {
+        val now = System.currentTimeMillis()
+        val occurredAt = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        if (id != null) dao.saveTransferEdit(id, amount, occurredAt, fromId, toId, memo.trim(), now)
+        else {
+            val from = dao.getAccount(fromId) ?: error("보내는 계좌가 없어요.")
+            val to = dao.getAccount(toId) ?: error("받는 계좌가 없어요.")
+            dao.saveLinkedTransaction(TransactionEntity(type = "TRANSFER", amount = amount, occurredAt = occurredAt,
+                timezone = TimeZone.getDefault().id, categoryKey = "OTHER", merchant = "${from.name} → ${to.name}",
+                memo = memo.trim(), paymentMethod = "계좌 이체", accountId = fromId, destinationAccountId = toId,
+                createdAt = now, updatedAt = now))
+        }
+    }
     fun observeTransactions(): Flow<List<Transaction>> =
         dao.observeTransactions().map { entities -> entities.map(TransactionEntity::toDomain) }
 
     fun observeBudget(monthKey: String): Flow<BudgetEntity?> = dao.observeBudget(monthKey)
+    fun observeAllBudgets(): Flow<List<BudgetEntity>> = dao.observeAllBudgets()
+    suspend fun setBudgetRollover(monthKey: String, enabled: Boolean) {
+        ensureBudget(monthKey)
+        dao.setBudgetRollover(monthKey, enabled, System.currentTimeMillis())
+    }
 
     fun observePendingNotificationCandidates(): Flow<List<NotificationCandidate>> =
         dao.observePendingNotificationCandidates().map { candidates ->
@@ -41,21 +79,29 @@ class FinanceRepository(
 
     suspend fun ensureBudget(monthKey: String) {
         if (dao.getBudget(monthKey) == null) {
+            val previous = dao.getBudget(YearMonth.parse(monthKey).minusMonths(1).toString())?.takeIf { it.rollover }
             dao.upsertBudget(
                 BudgetEntity(
                     monthKey = monthKey,
-                    amount = DEFAULT_MONTHLY_BUDGET,
+                    amount = previous?.amount ?: DEFAULT_MONTHLY_BUDGET,
+                    rollover = previous != null,
                     updatedAt = System.currentTimeMillis(),
                 ),
             )
         }
     }
 
+    suspend fun ensureRollingBudget(monthKey: String) {
+        if (dao.getBudget(YearMonth.parse(monthKey).minusMonths(1).toString())?.rollover == true) ensureBudget(monthKey)
+    }
+
     suspend fun updateBudget(monthKey: String, amount: Long) {
+        val previous = dao.getBudget(monthKey)
         dao.upsertBudget(
             BudgetEntity(
                 monthKey = monthKey,
                 amount = amount,
+                rollover = previous?.rollover ?: false,
                 updatedAt = System.currentTimeMillis(),
             ),
         )
@@ -70,10 +116,12 @@ class FinanceRepository(
         memo: String,
         source: String = "MANUAL",
         paymentMethod: String = "카드",
+        accountId: String? = null,
     ) {
+        require(type != TransactionType.TRANSFER)
         val now = System.currentTimeMillis()
         val occurredAtMillis = occurredAt.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        dao.insertTransaction(
+        dao.saveLinkedTransaction(
             TransactionEntity(
                 type = type.name,
                 amount = amount,
@@ -84,6 +132,7 @@ class FinanceRepository(
                 memo = memo.trim(),
                 paymentMethod = paymentMethod,
                 source = source,
+                accountId = accountId,
                 createdAt = now,
                 updatedAt = now,
             ),
@@ -123,42 +172,7 @@ class FinanceRepository(
         return updated > 0
     }
 
-    suspend fun importTransactions(rows: List<ImportedTransaction>): Int {
-        var inserted = 0
-        rows.forEach { row ->
-            val merchant = row.merchant.trim()
-            val memo = row.memo.trim()
-            if (!dao.transactionExists(
-                    type = row.type.name,
-                    amount = row.amount,
-                    occurredAt = row.occurredAt,
-                    categoryKey = row.categoryKey,
-                    merchant = merchant,
-                    memo = memo,
-                    paymentMethod = row.paymentMethod,
-                )
-            ) {
-                val now = System.currentTimeMillis()
-                dao.insertTransaction(
-                    TransactionEntity(
-                        type = row.type.name,
-                        amount = row.amount,
-                        occurredAt = row.occurredAt,
-                        timezone = TimeZone.getDefault().id,
-                        categoryKey = row.categoryKey,
-                        merchant = merchant,
-                        memo = memo,
-                        paymentMethod = row.paymentMethod,
-                        source = row.source,
-                        createdAt = now,
-                        updatedAt = now,
-                    ),
-                )
-                inserted++
-            }
-        }
-        return inserted
-    }
+    suspend fun importTransactions(rows: List<ImportedTransaction>): Int = dao.importRows(rows, TimeZone.getDefault().id, System.currentTimeMillis())
 
     suspend fun saveNotificationCandidate(candidate: NotificationCandidateEntity): Long? =
         dao.insertNotificationCandidate(candidate).takeIf { it > 0L }
@@ -263,7 +277,7 @@ class FinanceRepository(
 private fun TransactionEntity.toDomain(): Transaction =
     Transaction(
         id = id,
-        type = if (type == TransactionType.INCOME.name) TransactionType.INCOME else TransactionType.EXPENSE,
+        type = TransactionType.valueOf(type),
         amount = amount,
         occurredAt = occurredAt,
         categoryKey = categoryKey,
@@ -271,6 +285,8 @@ private fun TransactionEntity.toDomain(): Transaction =
         memo = memo,
         paymentMethod = paymentMethod,
         source = source,
+        accountId = accountId,
+        destinationAccountId = destinationAccountId,
     )
 
 private fun RecurringTransactionEntity.toDomain(): RecurringRule =

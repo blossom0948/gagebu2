@@ -309,11 +309,16 @@ private fun MoasseumApp(
     }
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
-    val aiClient = remember { AiClient() }
+    val aiClient = remember { application.aiClient }
+    val accounts by application.financeRepository.observeAccounts().collectAsStateWithLifecycle(initialValue = emptyList())
+    var showAccounts by rememberSaveable { mutableStateOf(false) }
+    var showAuth by rememberSaveable { mutableStateOf(false) }
+    val authState by application.authRepository.state.collectAsStateWithLifecycle()
     var aiState by remember { mutableStateOf<AiParseState>(AiParseState.Idle) }
     var aiAnalysisState by remember { mutableStateOf<SpendingAnalysisState>(SpendingAnalysisState.Idle) }
     var aiQuestionState by remember { mutableStateOf<SpendingQuestionState>(SpendingQuestionState.Idle) }
     var addOpen by rememberSaveable { mutableStateOf(false) }
+    var savingTransaction by remember { mutableStateOf(false) }
     var addModeName by rememberSaveable { mutableStateOf(AddMode.MENU.name) }
     var showHelpDialog by rememberSaveable { mutableStateOf(false) }
     var updateState by remember { mutableStateOf<UpdateCheckState>(UpdateCheckState.Idle) }
@@ -327,8 +332,7 @@ private fun MoasseumApp(
                 ?.firstOrNull()
         }
     }
-    val receiptPhotoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) {
+    fun recognizeReceipt(uri: android.net.Uri, temporaryFile: java.io.File? = null) {
             aiState = AiParseState.Loading
             addOpen = true
             addModeName = AddMode.RECEIPT_NOTICE.name
@@ -347,17 +351,27 @@ private fun MoasseumApp(
                     },
                     onFailure = { error -> aiState = AiParseState.Error(error.message ?: "영수증을 읽지 못했어요.") },
                 )
+                temporaryFile?.delete()
             }
-        }
+    }
+    val receiptPhotoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) recognizeReceipt(uri)
+    }
+    var receiptCameraPath by rememberSaveable { mutableStateOf<String?>(null) }
+    val receiptCameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        val file = receiptCameraPath?.let { java.io.File(it) }
+        receiptCameraPath = null
+        if (file != null && success) recognizeReceipt(androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file), file)
+        else file?.delete()
     }
     val exportCsvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         if (uri != null) {
-            val result = runCatching {
-                val output = context.contentResolver.openOutputStream(uri)
-                    ?: error("선택한 위치에 CSV 파일을 쓸 수 없어요.")
-                output.bufferedWriter(Charsets.UTF_8).use { it.write(CsvBackup.encode(uiState.transactions)) }
-            }
             coroutineScope.launch {
+                val rows = uiState.transactions
+                val result = withContext(Dispatchers.IO) { runCatching {
+                    val output = context.contentResolver.openOutputStream(uri) ?: error("선택한 위치에 CSV 파일을 쓸 수 없어요.")
+                    output.bufferedWriter(Charsets.UTF_8).use { it.write(CsvBackup.encode(rows)) }
+                } }
                 snackbarHostState.showSnackbar(
                     if (result.isSuccess) "${uiState.transactions.size}건을 CSV로 내보냈어요."
                     else result.exceptionOrNull()?.message ?: "CSV 내보내기에 실패했어요.",
@@ -367,17 +381,51 @@ private fun MoasseumApp(
     }
     val exportJsonLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) {
-            val result = runCatching {
-                val output = context.contentResolver.openOutputStream(uri)
-                    ?: error("선택한 위치에 JSON 파일을 쓸 수 없어요.")
-                output.bufferedWriter(Charsets.UTF_8).use { it.write(JsonBackup.encode(uiState.transactions)) }
-            }
             coroutineScope.launch {
+                val result = withContext(Dispatchers.IO) { runCatching {
+                    val backup = application.backupManager.snapshot()
+                    val content = com.moasseum.app.data.FullBackupCodec.encode(backup)
+                    require(content.toByteArray(Charsets.UTF_8).size <= com.moasseum.app.data.FullBackupCodec.MAX_BYTES) { "전체 백업 용량 한도는 10MB입니다." }
+                    val output = context.contentResolver.openOutputStream(uri) ?: error("백업 파일을 쓸 수 없어요.")
+                    output.bufferedWriter(Charsets.UTF_8).use { it.write(content) }
+                } }
                 snackbarHostState.showSnackbar(
-                    if (result.isSuccess) "${uiState.transactions.size}건을 JSON으로 백업했어요."
+                    if (result.isSuccess) "거래·계좌·예산과 앱 설정을 백업했어요."
                     else result.exceptionOrNull()?.message ?: "JSON 백업에 실패했어요.",
                 )
             }
+        }
+    }
+    var backupToRestore by remember { mutableStateOf<com.moasseum.app.data.FullBackup?>(null) }
+    var restoringBackup by remember { mutableStateOf(false) }
+    val importJsonLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) coroutineScope.launch {
+            val parsed = withContext(Dispatchers.IO) { runCatching {
+                val input = context.contentResolver.openInputStream(uri) ?: error("백업 파일을 열 수 없어요.")
+                com.moasseum.app.data.FullBackupCodec.decode(com.moasseum.app.data.FullBackupCodec.read(input))
+            } }
+            parsed.onSuccess { backupToRestore = it }.onFailure { snackbarHostState.showSnackbar(it.message ?: "백업이 손상됐어요.") }
+        }
+    }
+    val exportSafetyLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) coroutineScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching {
+                require(application.backupManager.safetyFile.exists()) { "아직 복원 전 안전 백업이 없어요." }
+                val output = context.contentResolver.openOutputStream(uri) ?: error("파일을 쓸 수 없어요.")
+                output.use { out -> application.backupManager.safetyFile.inputStream().use { it.copyTo(out) } }
+            } }
+            snackbarHostState.showSnackbar(if (result.isSuccess) "복원 전 안전 백업을 내보냈어요." else result.exceptionOrNull()?.message ?: "내보내기에 실패했어요.")
+        }
+    }
+    val exportPdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        if (uri != null) coroutineScope.launch {
+            val snapshot = uiState
+            val result = withContext(Dispatchers.IO) { runCatching {
+                val labels = application.preferencesRepository.backupSettings().categoryLabels
+                val output = context.contentResolver.openOutputStream(uri) ?: error("PDF를 쓸 수 없어요.")
+                output.use { com.moasseum.app.data.MonthlyPdfReport.write(snapshot, labels, it) }
+            } }
+            snackbarHostState.showSnackbar(if (result.isSuccess) "${snapshot.month} PDF 리포트를 저장했어요." else result.exceptionOrNull()?.message ?: "PDF 저장에 실패했어요.")
         }
     }
     val importCsvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -387,8 +435,8 @@ private fun MoasseumApp(
                     runCatching {
                         val input = context.contentResolver.openInputStream(uri)
                             ?: error("선택한 CSV 파일을 열 수 없어요.")
-                        val content = input.bufferedReader(Charsets.UTF_8).use { it.readText() }
-                        require(content.length <= 5_000_000) { "CSV 파일은 5MB 이하만 가져올 수 있어요." }
+                        val content = com.moasseum.app.data.FullBackupCodec.read(input)
+                        require(content.toByteArray(Charsets.UTF_8).size <= 5_000_000) { "CSV 파일은 5MB 이하만 가져올 수 있어요." }
                         CsvBackup.decode(content)
                     }
                 }
@@ -464,6 +512,7 @@ private fun MoasseumApp(
     }
 
     fun closeAdd() {
+        if (savingTransaction) return
         addOpen = false
         addModeName = AddMode.MENU.name
         aiState = AiParseState.Idle
@@ -610,6 +659,14 @@ private fun MoasseumApp(
                 }
                 composable(ROUTE_MANAGE) {
                     ManageScreen(
+                        onOpenAuth = { showAuth = true },
+                        accountStatus = authState.user?.let { "로그인됨 · ${it.email}" } ?: if (application.authRepository.configured) "이메일 로그인 · 회원가입 · 비밀번호 재설정" else "로그인 서버 연결 대기 중",
+                        onSetBudgetRollover = viewModel::setBudgetRollover,
+                        onExportBackup = { exportJsonLauncher.launch("moasseum-full-${java.time.LocalDate.now()}.json") },
+                        onRestoreBackup = { importJsonLauncher.launch(arrayOf("application/json", "text/*")) },
+                        onExportSafetyBackup = { exportSafetyLauncher.launch("moasseum-before-restore.json") },
+                        onExportPdf = { exportPdfLauncher.launch("moasseum-report-${uiState.month}.pdf") },
+                        onOpenAccounts = { showAccounts = true },
                         uiState = uiState,
                         paymentMethods = paymentMethods,
                         paymentCards = paymentCards,
@@ -697,10 +754,12 @@ private fun MoasseumApp(
         ) {
             AddTransactionSheet(
                 mode = addMode,
-                onModeChange = { addModeName = it.name },
+                onModeChange = { if (!savingTransaction) addModeName = it.name },
                 onDismiss = { closeAdd() },
                 aiState = aiState,
                 paymentMethods = paymentMethods,
+                accounts = accounts,
+                saving = savingTransaction,
                 onParseAi = { text ->
                     aiState = AiParseState.Loading
                     coroutineScope.launch {
@@ -712,29 +771,62 @@ private fun MoasseumApp(
                     }
                 },
                 onConfirmAi = { amount, type, merchant, categoryKey, memo, paymentMethod, occurredAt ->
-                    val saved = viewModel.addTransaction(amount, type, merchant, categoryKey, memo, occurredAt, paymentMethod)
-                    if (saved) {
-                        closeAdd()
-                        coroutineScope.launch { snackbarHostState.showSnackbar("AI 거래 후보를 저장했어요") }
-                    }
+                    val alreadySaving = savingTransaction
+                    if (!alreadySaving) savingTransaction = true
+                    val saved = !alreadySaving && viewModel.addTransaction(amount, type, merchant, categoryKey, memo, occurredAt, paymentMethod, onComplete = { result ->
+                        savingTransaction = false
+                        if (result.isSuccess) closeAdd()
+                        coroutineScope.launch { snackbarHostState.showSnackbar(if (result.isSuccess) "AI 거래 후보를 저장했어요" else result.exceptionOrNull()?.message ?: "저장에 실패했어요.") }
+                    })
+                    if (!saved && !alreadySaving) savingTransaction = false
                     saved
                 },
                 onStartVoiceInput = ::startVoiceInput,
                 onPickReceipt = ::pickReceiptPhoto,
+                onTakeReceipt = {
+                    runCatching {
+                        val folder = java.io.File(context.cacheDir, "receipt-capture").apply { mkdirs() }
+                        val file = java.io.File.createTempFile("receipt-", ".jpg", folder)
+                        receiptCameraPath = file.absolutePath
+                        receiptCameraLauncher.launch(androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file))
+                    }.onFailure { error -> coroutineScope.launch { snackbarHostState.showSnackbar(error.message ?: "카메라를 열 수 없어요.") } }
+                },
                 speechResult = speechResult,
                 onSpeechResultConsumed = { speechResult = null },
-                onSave = { amount, type, merchant, categoryKey, memo, paymentMethod ->
-                    val saved = viewModel.addTransaction(amount, type, merchant, categoryKey, memo, paymentMethod = paymentMethod)
-                    if (saved) {
-                        closeAdd()
-                        coroutineScope.launch { snackbarHostState.showSnackbar("거래가 저장됐어요") }
-                    }
+                onSave = { amount, type, merchant, categoryKey, memo, paymentMethod, accountId ->
+                    val alreadySaving = savingTransaction
+                    if (!alreadySaving) savingTransaction = true
+                    val saved = !alreadySaving && viewModel.addTransaction(amount, type, merchant, categoryKey, memo, paymentMethod = paymentMethod, accountId = accountId, onComplete = { result ->
+                        savingTransaction = false
+                        if (result.isSuccess) closeAdd()
+                        coroutineScope.launch { snackbarHostState.showSnackbar(if (result.isSuccess) "거래가 저장됐어요" else result.exceptionOrNull()?.message ?: "저장에 실패했어요.") }
+                    })
+                    if (!saved && !alreadySaving) savingTransaction = false
                     saved
                 },
             )
         }
     }
 
+    if (showAccounts) com.moasseum.app.ui.screens.AccountsDialog(accounts, uiState.transactions, application.financeRepository) { showAccounts = false }
+    if (showAuth) com.moasseum.app.ui.screens.AuthDialog(application.authRepository) { showAuth = false }
+    backupToRestore?.let { backup ->
+        AlertDialog(onDismissRequest = { if (!restoringBackup) backupToRestore = null }, title = { Text("백업을 복원할까요?") },
+            text = { Column {
+                Text("거래 ${backup.transactions.count { it.deletedAt == null }}건 · 계좌 ${backup.accounts.size}개 · 예산 ${backup.budgets.size}개월 · 반복 ${backup.recurringRules.size}개")
+                Text(if (backup.legacy) "이전 버전의 거래 백업입니다. 기존 내역을 유지하고 중복을 제외한 거래를 추가해요." else "이 기기의 가계부와 앱 설정을 백업 내용으로 교체합니다. 현재 상태는 먼저 안전 백업되며, 관리에서 내보낼 수 있어요. 알림 권한·AI 전송 동의는 바꾸지 않습니다.")
+                if (restoringBackup) androidx.compose.material3.LinearProgressIndicator()
+            } },
+            confirmButton = { TextButton(enabled = !restoringBackup, onClick = {
+                restoringBackup = true
+                coroutineScope.launch {
+                    val result = withContext(Dispatchers.IO) { runCatching { application.backupManager.restore(backup) } }
+                    restoringBackup = false
+                    if (result.isSuccess) backupToRestore = null
+                    snackbarHostState.showSnackbar(if (result.isSuccess) "${result.getOrNull()}건의 거래를 복원했어요." else result.exceptionOrNull()?.message ?: "복원에 실패했어요.")
+                }
+            }) { Text("복원") } }, dismissButton = { TextButton(enabled = !restoringBackup, onClick = { backupToRestore = null }) { Text("취소") } })
+    }
     if (showHelpDialog) {
         AlertDialog(
             onDismissRequest = { showHelpDialog = false },

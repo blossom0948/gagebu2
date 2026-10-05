@@ -30,4 +30,6 @@ data class TransactionEntity(
     val createdAt: Long,
     val updatedAt: Long,
     val deletedAt: Long? = null,
+    val accountId: String? = null,
+    val destinationAccountId: String? = null,
 )
