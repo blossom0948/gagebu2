@@ -28,17 +28,24 @@ fun AuthDialog(repository: AuthRepository, onDismiss: () -> Unit) {
     var mode by rememberSaveable { mutableStateOf("LOGIN") }
     var localError by remember { mutableStateOf<String?>(null) }
     var showLogout by rememberSaveable { mutableStateOf(false) }
+    var showCode by rememberSaveable { mutableStateOf(false) }
     val colors = LocalFinanceColors.current
-    fun switch(value: String) { mode = value; password = ""; confirmation = ""; code = ""; localError = null }
-    AlertDialog(onDismissRequest = { if (!state.busy) onDismiss() }, title = { Text("로그인·계정") }, text = {
+    fun switch(value: String) { mode = value; password = ""; confirmation = ""; code = ""; localError = null; showCode = false }
+    LaunchedEffect(state.recoveryEmail) {
+        state.recoveryEmail?.let { email = it; switch("NEW_PASSWORD") }
+    }
+    fun close() { if (!state.busy) scope.launch { repository.cancelRecovery(); onDismiss() } }
+    AlertDialog(onDismissRequest = { close() }, title = { Text("로그인·계정") }, text = {
         Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("로그인에는 이메일과 비밀번호가 Supabase 인증 서버로 전송돼요. 비밀번호는 기기에 저장하지 않으며, 로그인만으로 가계부가 업로드되거나 공유되지 않아요.", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
             if (!repository.configured) Text("로그인 서버 연결 대기 중입니다. 앱 전용 Supabase 프로젝트 설정 후 사용할 수 있어요. 기기 가계부는 지금도 이용할 수 있습니다.", style = MaterialTheme.typography.bodyMedium, color = colors.expense)
-            state.user?.let { user ->
+            if (repository.configured) Text("현재 본인용 무료 메일 설정입니다. 인증 메일은 Supabase 조직에 등록된 이메일로만 발송되며 시간당 2회로 제한돼요.", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+            Text("AI 분석·질문·알림 판별은 로그인 후 이용해요. 로그인하지 않아도 기본 기록과 기기 내 알림 감지는 유지됩니다.", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+            state.user?.takeIf { mode != "NEW_PASSWORD" }?.let { user ->
                 Text("로그인됨 · ${user.email}", style = MaterialTheme.typography.titleSmall)
                 TextButton(enabled = !state.busy, onClick = { showLogout = true }) { Text("로그아웃") }
             } ?: run {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (mode != "NEW_PASSWORD") Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilterChip(mode == "LOGIN", { switch("LOGIN") }, enabled = !state.busy, label = { Text("로그인") })
                     FilterChip(mode == "SIGNUP", { switch("SIGNUP") }, enabled = !state.busy, label = { Text("회원가입") })
                 }
@@ -51,10 +58,11 @@ fun AuthDialog(repository: AuthRepository, onDismiss: () -> Unit) {
                 }
                 if (mode == "RECOVER") Text("가입한 이메일로 재설정 인증 메일을 요청해요.", style = MaterialTheme.typography.labelMedium)
                 if (mode in listOf("VERIFY", "RECOVERY_CODE")) {
-                    Text("메일에 안내된 인증 번호를 입력해 주세요.", style = MaterialTheme.typography.labelMedium)
-                    FinanceTextField(code, { code = it.filter(Char::isDigit).take(10) }, label = { Text("인증 번호") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), enabled = !state.busy)
+                    Text("이 휴대폰에서 메일의 ${if (mode == "VERIFY") "Confirm your mail" else "Reset Password"} 링크를 누르면 앱으로 돌아와요. 인증 요청은 1시간 동안 유지됩니다.", style = MaterialTheme.typography.labelMedium)
+                    TextButton(enabled = !state.busy, onClick = { showCode = !showCode }) { Text(if (showCode) "인증 링크로 진행하기" else "메일에 인증 번호가 있는 경우") }
+                    if (showCode) FinanceTextField(code, { code = it.filter(Char::isDigit).take(10) }, label = { Text("인증 번호") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), enabled = !state.busy)
                 }
-                Button(enabled = repository.configured && !state.busy, onClick = {
+                if (mode !in listOf("VERIFY", "RECOVERY_CODE") || showCode) Button(enabled = repository.configured && !state.busy, onClick = {
                     if (mode in listOf("SIGNUP", "NEW_PASSWORD") && password != confirmation) { localError = "비밀번호 확인이 일치하지 않아요."; return@Button }
                     localError = null
                     val operation = mode
@@ -74,6 +82,7 @@ fun AuthDialog(repository: AuthRepository, onDismiss: () -> Unit) {
                             "SIGNUP" -> switch("VERIFY")
                             "RECOVER" -> switch("RECOVERY_CODE")
                             "RECOVERY_CODE" -> switch("NEW_PASSWORD")
+                            "NEW_PASSWORD" -> switch("LOGIN")
                             else -> { password = ""; confirmation = ""; code = "" }
                         }
                     }
@@ -81,13 +90,16 @@ fun AuthDialog(repository: AuthRepository, onDismiss: () -> Unit) {
                     Text(when (mode) { "LOGIN" -> "로그인"; "SIGNUP" -> "회원가입"; "RECOVER" -> "재설정 메일 보내기"; "NEW_PASSWORD" -> "비밀번호 변경"; else -> "인증 번호 확인" })
                 }
                 if (mode == "VERIFY") TextButton(enabled = repository.configured && !state.busy, onClick = { scope.launch { repository.resend(email) } }) { Text("인증 메일 다시 보내기") }
-                TextButton(enabled = !state.busy, onClick = { switch(if (mode == "LOGIN") "RECOVER" else "LOGIN") }) { Text(if (mode == "LOGIN") "비밀번호를 잊으셨나요?" else "로그인으로 돌아가기") }
+                TextButton(enabled = !state.busy, onClick = {
+                    if (mode == "NEW_PASSWORD") scope.launch { repository.cancelRecovery(); switch("LOGIN") }
+                    else switch(if (mode == "LOGIN") "RECOVER" else "LOGIN")
+                }) { Text(if (mode == "LOGIN") "비밀번호를 잊으셨나요?" else "로그인으로 돌아가기") }
             }
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             (localError ?: state.error)?.let { Text(it, color = colors.expense, style = MaterialTheme.typography.labelMedium) }
             state.message?.let { Text(it, color = colors.accent, style = MaterialTheme.typography.labelMedium) }
         }
-    }, confirmButton = { TextButton(enabled = !state.busy, onClick = onDismiss) { Text("닫기") } })
+    }, confirmButton = { TextButton(enabled = !state.busy, onClick = { close() }) { Text("닫기") } })
     if (showLogout) AlertDialog(onDismissRequest = { showLogout = false }, title = { Text("로그아웃할까요?") }, text = { Text("이 기기의 로그인 정보를 지웁니다. 기기에 저장된 가계부 기록은 유지돼요.") },
         confirmButton = { TextButton(onClick = { showLogout = false; scope.launch { repository.logout() } }) { Text("로그아웃") } }, dismissButton = { TextButton(onClick = { showLogout = false }) { Text("취소") } })
 }

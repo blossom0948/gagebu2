@@ -7,17 +7,18 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-class AuthRepository(private val api: AuthApi, private val store: SessionStore, private val now: () -> Long = { System.currentTimeMillis() / 1000 }) {
+class AuthRepository(private val api: AuthApi, private val store: SessionStore, private val pendingStore: PendingAuthStore? = null, private val redirectUri: String? = null, private val now: () -> Long = { System.currentTimeMillis() / 1000 }) {
     private val mutex = Mutex()
     private val mutableState = MutableStateFlow(AuthState())
     val state = mutableState.asStateFlow()
     val configured: Boolean get() = api.configured
+    val supportsEmailLinks: Boolean get() = api is AuthLinkApi && pendingStore != null && redirectUri != null
     private var session: AuthSession? = null
     private var recoverySession: AuthSession? = null
     private suspend fun save(value: AuthSession) {
         withContext(Dispatchers.IO) { store.write(value) }
         session = value; recoverySession = null
-        mutableState.value = mutableState.value.copy(user = value.user, initialized = true)
+        mutableState.value = mutableState.value.copy(user = value.user, initialized = true, recoveryEmail = null)
     }
     suspend fun initialize() = mutex.withLock {
         if (mutableState.value.initialized) return@withLock
@@ -35,25 +36,73 @@ class AuthRepository(private val api: AuthApi, private val store: SessionStore, 
         catch (error: Exception) { mutableState.value = mutableState.value.copy(error = error.message ?: "로그인 작업에 실패했어요."); Result.failure(error) }
         finally { mutableState.value = mutableState.value.copy(busy = false, initialized = true) }
     }
-    suspend fun login(email: String, password: String) = action { save(api.login(email.trim(), password)); message("로그인했어요. 기기 기록은 자동 공유되지 않아요.") }
-    suspend fun signup(email: String, password: String) = action {
-        val result = api.signup(email.trim(), password)
-        if (result != null) save(result)
-        message(if (result == null) "인증 메일을 보냈어요. 메일의 인증 번호를 입력하거나 확인 링크를 누른 뒤 로그인해 주세요." else "가입하고 로그인했어요.")
+    suspend fun login(email: String, password: String) = action {
+        save(api.login(email.trim(), password)); clearPending(); message("로그인했어요. 기기 기록은 자동 공유되지 않아요.")
     }
-    suspend fun resend(email: String) = action { api.resendSignup(email.trim()); message("가입 인증 메일을 다시 요청했어요.") }
-    suspend fun verifySignup(email: String, code: String) = action { save(api.verify(email.trim(), code.trim(), false)); message("이메일 인증을 마쳤어요.") }
-    suspend fun recover(email: String) = action { recoverySession = null; api.recover(email.trim()); message("등록된 이메일이라면 재설정 인증 메일이 전송됩니다.") }
-    suspend fun verifyRecovery(email: String, code: String) = action { recoverySession = api.verify(email.trim(), code.trim(), true); message("인증됐어요. 새 비밀번호를 입력해 주세요.") }
+    suspend fun signup(email: String, password: String) = action {
+        val address = email.trim()
+        validateCredentials(address, password)
+        val result = if (supportsEmailLinks) (api as AuthLinkApi).signupWithLink(address, password, beginFlow(address, false)) else api.signup(address, password)
+        if (result != null) { save(result); clearPending() }
+        message(if (result == null) "인증 메일을 보냈어요. 이 휴대폰에서 메일의 확인 링크를 누르면 앱으로 돌아옵니다." else "가입하고 로그인했어요.")
+    }
+    suspend fun resend(email: String) = action {
+        val address = email.trim()
+        if (supportsEmailLinks) {
+            val flow = readPending() ?: error("이 앱에서 회원가입을 다시 요청해 주세요.")
+            require(!flow.recovery && flow.email.equals(address, true) && flow.isCurrent(now())) { "가입 인증이 만료됐어요. 회원가입을 다시 요청해 주세요." }
+            (api as AuthLinkApi).resendWithLink(address, flow)
+        } else api.resendSignup(address)
+        message("가입 인증 메일을 다시 요청했어요.")
+    }
+    suspend fun verifySignup(email: String, code: String) = action { save(api.verify(email.trim(), code.trim(), false)); clearPending(); message("이메일 인증을 마쳤어요.") }
+    suspend fun recover(email: String) = action {
+        val address = email.trim(); validateCredentials(address)
+        recoverySession = null
+        mutableState.value = mutableState.value.copy(recoveryEmail = null)
+        if (supportsEmailLinks) (api as AuthLinkApi).recoverWithLink(address, beginFlow(address, true)) else api.recover(address)
+        message("등록된 이메일이라면 재설정 메일이 전송됩니다. 이 휴대폰에서 메일의 링크를 눌러 주세요.")
+    }
+    suspend fun verifyRecovery(email: String, code: String) = action {
+        recoverySession = api.verify(email.trim(), code.trim(), true); clearPending()
+        mutableState.value = mutableState.value.copy(recoveryEmail = recoverySession?.user?.email)
+        message("인증됐어요. 새 비밀번호를 입력해 주세요.")
+    }
+    suspend fun handleAuthCallback(raw: String): Result<Unit> = action {
+        // Only a locally initiated, unexpired PKCE flow can change the session.
+        check(supportsEmailLinks) { "이 앱에서 인증 메일을 다시 요청해 주세요." }
+        val link = AuthLink.parse(raw, redirectUri!!)
+        // A well-formed return link must also show an explanation when it is old
+        // or the app has been reinstalled; silently opening Home looks like success.
+        mutableState.value = mutableState.value.copy(linkEvent = mutableState.value.linkEvent + 1)
+        val pending = readPending() ?: error("이 앱에서 먼저 인증 메일을 요청해 주세요. 다른 기기에서 요청한 링크는 사용할 수 없어요.")
+        require(pending.flowId == link.flowId && pending.redirectUri == redirectUri) { "이 앱에서 요청한 최신 인증 링크를 눌러 주세요." }
+        require(pending.isCurrent(now())) { "인증 요청이 만료됐어요. 인증 메일을 다시 요청해 주세요." }
+        if (link.failed) { clearPending(); error("인증 링크가 만료됐거나 이미 사용됐어요. 인증 메일을 다시 요청해 주세요.") }
+        val verified = (api as AuthLinkApi).exchangeCode(link.code!!, pending.verifier)
+        require(verified.user.email.equals(pending.email, true)) { "인증 계정이 일치하지 않아요. 인증 메일을 다시 요청해 주세요." }
+        if (pending.recovery) {
+            recoverySession = verified
+            mutableState.value = mutableState.value.copy(recoveryEmail = verified.user.email)
+            message("이메일 인증을 마쳤어요. 새 비밀번호를 입력해 주세요.")
+        } else {
+            save(verified); message("이메일 인증과 로그인을 마쳤어요. 기기 기록은 자동 공유되지 않아요.")
+        }
+        clearPending()
+    }
     suspend fun resetPassword(password: String) = action {
         val verified = recoverySession ?: error("먼저 재설정 인증 번호를 확인해 주세요.")
         require(verified.expiresAt > now()) { "재설정 인증이 만료됐어요. 다시 인증해 주세요." }
         api.updatePassword(verified, password); save(verified); message("비밀번호를 변경했어요.")
     }
+    suspend fun cancelRecovery() = mutex.withLock {
+        recoverySession = null
+        mutableState.value = mutableState.value.copy(recoveryEmail = null)
+    }
     suspend fun logout(): Result<Unit> = mutex.withLock {
         val token = session?.accessToken
         try {
-            withContext(Dispatchers.IO) { store.clear() }; session = null; recoverySession = null
+            withContext(Dispatchers.IO) { store.clear() }; clearPending(); session = null; recoverySession = null
             mutableState.value = AuthState(initialized = true, busy = true)
             val revoked = token == null || try { api.logout(token); true }
                 catch (error: kotlinx.coroutines.CancellationException) { throw error }
@@ -81,4 +130,15 @@ class AuthRepository(private val api: AuthApi, private val store: SessionStore, 
         } catch (_: Exception) { existing.accessToken.takeIf { existing.expiresAt > now() } }
     }
     private fun message(value: String) { mutableState.value = mutableState.value.copy(message = value, error = null) }
+    private suspend fun beginFlow(email: String, recovery: Boolean): PendingAuthFlow {
+        val flow = PendingAuthFlow.create(email, recovery, now(), redirectUri!!)
+        withContext(Dispatchers.IO) { pendingStore!!.write(flow) }
+        return flow
+    }
+    private suspend fun readPending(): PendingAuthFlow? = withContext(Dispatchers.IO) {
+        try { pendingStore?.read() }
+        catch (error: kotlinx.coroutines.CancellationException) { throw error }
+        catch (_: Exception) { throw java.io.IOException("저장된 인증 요청을 확인하지 못했어요. 인증 메일을 다시 요청해 주세요.") }
+    }
+    private suspend fun clearPending() = withContext(Dispatchers.IO) { pendingStore?.clear() }
 }

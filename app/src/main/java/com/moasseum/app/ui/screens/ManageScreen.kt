@@ -106,6 +106,7 @@ fun ManageScreen(
     onOpenCandidates: () -> Unit,
     appNotificationsEnabled: Boolean,
     aiNotificationClassificationEnabled: Boolean,
+    aiLoginRequired: Boolean = false,
     onSetAiNotificationClassificationEnabled: (Boolean) -> Unit,
     updateState: UpdateCheckState,
     onCheckForUpdate: () -> Unit,
@@ -257,7 +258,7 @@ fun ManageScreen(
                 SettingSwitchRow(
                     icon = Icons.Rounded.Security,
                     title = "AI 알림 오탐 줄이기",
-                    message = if (aiNotificationClassificationEnabled) "금융 단서가 있는 알림을 AI가 판별해요." else "선택 알림의 금융 거래 여부를 AI가 판별해요.",
+                    message = if (aiLoginRequired) "로그인 후 AI 판별 · 기본 알림 감지는 유지돼요." else if (aiNotificationClassificationEnabled) "금융 단서가 있는 알림을 AI가 판별해요." else "선택 알림의 금융 거래 여부를 AI가 판별해요.",
                     checked = aiNotificationClassificationEnabled,
                     onCheckedChange = { enabled ->
                         if (enabled) showAiNotificationConsent = true
@@ -391,7 +392,7 @@ fun ManageScreen(
             onDismissRequest = { showAiNotificationConsent = false },
             title = { Text("AI 알림 판별을 켤까요?") },
             text = {
-                Text("카카오톡 등 대화 앱은 읽거나 AI로 보내지 않아요. 나머지 알림 중 금액과 금융 단서가 함께 있는 제목·내용만 Gemini로 전송해 입금·지출인지 판별합니다. 이 기능은 AI 사용량을 쓸 수 있고, 확인 전에는 거래로 저장하지 않아요.")
+                Text("카카오톡 등 대화 앱은 읽거나 AI로 보내지 않아요. 로그인 후 나머지 알림 중 금액과 금융 단서가 함께 있는 제목·내용만 Gemini로 전송해 입금·지출인지 판별합니다. 로그인하지 않았거나 AI 연결에 실패하면 기기 내 기본 검사로 감지를 유지합니다. 이 기능은 AI 사용량을 쓸 수 있고, 확인 전에는 거래로 저장하지 않아요.")
             },
             confirmButton = {
                 TextButton(onClick = {

@@ -6,6 +6,8 @@
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
     "GEMINI_MODEL": "gemini-3.5-flash-lite",
-    "REQUIRE_AUTH": "false"
+    "REQUIRE_AUTH": "true",
+    "SUPABASE_URL": "https://nbkedjtzbdtjlkkkxrta.supabase.co",
+    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_Ih_meKXD30yCnLaIbKd1tg_EKBBS9Jm"
   }
 }

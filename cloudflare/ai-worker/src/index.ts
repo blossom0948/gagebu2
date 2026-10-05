@@ -66,7 +66,7 @@ export default {
 
     const url = new URL(request.url);
     if (url.pathname === "/health" && request.method === "GET") {
-      return json(request, env, { ok: true, service: "moasseum-ai-worker", schemaVersion: 1 });
+      return json(request, env, { ok: true, service: "moasseum-ai-worker", schemaVersion: 1, authRequired: env.REQUIRE_AUTH !== "false" });
     }
     const isSpendingAnalysis = url.pathname === "/v1/analyze-spending";
     const isSpendingQuestion = url.pathname === "/v1/ask-spending";
@@ -79,15 +79,20 @@ export default {
       return json(request, env, { error: { code: "AI_NOT_CONFIGURED", message: "AI 서버 secret이 설정되지 않았습니다." } }, 503);
     }
 
-    if (env.REQUIRE_AUTH === "false" && !allowPublicRequest(request)) {
-      return json(request, env, { error: { code: "RATE_LIMITED", message: "잠시 후 다시 시도해 주세요." } }, 429);
-    }
-
+    let userId: string | null = null;
     if (env.REQUIRE_AUTH !== "false") {
-      const authorized = await verifySupabaseUser(request, env);
-      if (!authorized) {
+      try { userId = await verifySupabaseUser(request, env); }
+      catch (error) {
+        // Only the error category, never request headers, tokens or upstream body.
+        console.warn("Auth verification unavailable", error instanceof Error ? error.name : "unknown");
+        return json(request, env, { error: { code: "AUTH_UNAVAILABLE", message: "로그인 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요." } }, 503);
+      }
+      if (!userId) {
         return json(request, env, { error: { code: "UNAUTHORIZED", message: "로그인이 필요한 요청입니다." } }, 401);
       }
+    }
+    if (!allowRequest(userId ? `user:${userId}` : `ip:${request.headers.get("CF-Connecting-IP") || "unknown"}`)) {
+      return json(request, env, { error: { code: "RATE_LIMITED", message: "잠시 후 다시 시도해 주세요." } }, 429);
     }
 
     if (isSpendingAnalysis) return analyzeSpending(request, env);
@@ -499,9 +504,12 @@ function stripCodeFence(value: string): string {
   return value.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
 }
 
-function allowPublicRequest(request: Request): boolean {
+function allowRequest(clientKey: string): boolean {
   const now = Date.now();
-  const clientKey = request.headers.get("CF-Connecting-IP") || "unknown";
+  if (publicRequestBuckets.size >= 5000) {
+    for (const [key, value] of publicRequestBuckets) if (now - value.startedAt >= 60_000) publicRequestBuckets.delete(key);
+    while (publicRequestBuckets.size >= 5000) publicRequestBuckets.delete(publicRequestBuckets.keys().next().value!);
+  }
   const existing = publicRequestBuckets.get(clientKey);
   if (!existing || now - existing.startedAt >= 60_000) {
     publicRequestBuckets.set(clientKey, { startedAt: now, count: 1 });
@@ -512,11 +520,18 @@ function allowPublicRequest(request: Request): boolean {
   return true;
 }
 
-async function verifySupabaseUser(request: Request, env: Env): Promise<boolean> {
+async function verifySupabaseUser(request: Request, env: Env): Promise<string | null> {
   const authorization = request.headers.get("Authorization");
-  if (!authorization?.startsWith("Bearer ") || !env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY) return false;
+  if (!authorization?.startsWith("Bearer ") || authorization.length > 8192 || !env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY) return null;
   const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, "")}/auth/v1/user`, {
     headers: { Authorization: authorization, apikey: env.SUPABASE_PUBLISHABLE_KEY },
+    // Workerd currently rejects redirect:"error" even though Node accepts it.
+    // Manual mode prevents forwarding bearer credentials to another host.
+    redirect: "manual", signal: AbortSignal.timeout(8000),
   });
-  return response.ok;
+  if (response.status >= 300 && response.status < 400) throw new Error("Auth redirect refused");
+  if (response.status >= 500) { console.warn("Auth upstream status", response.status); throw new Error("Auth upstream unavailable"); }
+  if (!response.ok) return null;
+  const user = await response.json<{ id?: unknown }>();
+  return typeof user.id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(user.id) ? user.id : null;
 }

@@ -18,8 +18,15 @@ class FinanceApplication : Application() {
     val financeRepository by lazy { FinanceRepository(database.financeDao()) }
     val preferencesRepository by lazy { UserPreferencesRepository(this) }
     val backupManager by lazy { com.moasseum.app.data.BackupManager(this, financeRepository, preferencesRepository) }
-    val authRepository by lazy { com.moasseum.app.auth.AuthRepository(com.moasseum.app.auth.SupabaseAuthApi(), com.moasseum.app.auth.EncryptedSessionStore(this)) }
-    val aiClient by lazy { com.moasseum.app.data.AiClient(bearerTokenProvider = { authRepository.validAccessToken() }) }
+    val authRepository by lazy {
+        com.moasseum.app.auth.AuthRepository(
+            com.moasseum.app.auth.SupabaseAuthApi(), com.moasseum.app.auth.EncryptedSessionStore(this),
+            pendingStore = com.moasseum.app.auth.EncryptedPendingAuthStore(this), redirectUri = "$packageName://auth/callback",
+        )
+    }
+    val aiClient by lazy { com.moasseum.app.data.AiClient(bearerTokenProvider = {
+        authRepository.validAccessToken() ?: throw java.io.IOException("AI 기능은 관리 → 로그인·계정에서 로그인한 뒤 사용할 수 있어요. 기본 알림 감지와 기기 기록은 계속 동작합니다.")
+    }) }
     private val applicationScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
 
     private val notificationCandidateEventsChannel = Channel<NotificationCandidate>(Channel.BUFFERED)

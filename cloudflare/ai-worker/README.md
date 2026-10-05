@@ -15,6 +15,7 @@
 ```bash
 npm install
 npm run typecheck
+npm test
 npm run dev
 ```
 
@@ -23,11 +24,12 @@ npm run dev
 ```bash
 npx wrangler login
 npx wrangler secret put GEMINI_API_KEY
-npx wrangler secret put SUPABASE_PUBLISHABLE_KEY
 npm run deploy
 ```
 
-현재 저장소의 기본값은 개인 테스트를 위해 `REQUIRE_AUTH=false`이며, IP별 간단한 호출 제한과 입력 제한을 적용합니다. 여러 사용자에게 공개하기 전에는 `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`를 설정하고 `REQUIRE_AUTH=true`로 바꾼 뒤 앱의 로그인 토큰 연동을 완료해야 합니다. 인증 없는 Worker는 공개 Gemini 프록시가 될 수 있으므로 운영 배포에 그대로 사용하지 마세요.
+현재 `REQUIRE_AUTH=true`이며 모아씀 전용 Free Supabase의 `/auth/v1/user`로 토큰을 확인합니다. 무인증/위조 토큰은 401, 인증 서버 장애는 503입니다. 사용자별 분당 30회 제한은 Worker 인스턴스 메모리 기반이며 전 세계 합산의 절대 한도를 보장하지 않습니다. `SUPABASE_URL`과 publishable key는 클라이언트 공개 설정으로 `wrangler.jsonc`에 있고, Gemini 키만 runtime secret입니다. Secret/service_role key는 필요하지 않습니다.
+
+`npm test`는 Node의 타입 제거 기능과 Miniflare/Workerd를 사용합니다(이 작업은 Node 26에서 검증). Cloudflare 실행 환경은 `fetch`의 `redirect:"error"`를 거부하므로 `manual`을 사용하고 3xx를 거절합니다. Node mock 테스트만으로 통과시키지 않고 실제 Workerd와 배포 서버의 401/200, Galaxy의 인증된 AI 응답을 함께 검사합니다. 토큰·요청 헤더·본문을 로그에 출력하지 않습니다.
 
 배포 후 `/health`가 응답하는지 확인하고, Android 앱을 다음처럼 빌드할 때 Worker 주소를 주입합니다.
 

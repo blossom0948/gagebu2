@@ -67,6 +67,19 @@ class FinanceIntegrationTest {
         } finally { store.clear() }
         assertNull(store.read())
     }
+    @Test fun pendingEmailLinkSurvivesRestartWithoutPlaintextVerifier() {
+        val store = EncryptedPendingAuthStore(context)
+        store.clear()
+        try {
+            val flow = PendingAuthFlow.create("qa@example.invalid", true, 1000, "${context.packageName}://auth/callback")
+            store.write(flow)
+            val bytes = java.io.File(context.noBackupFilesDir, "auth-pending.enc").readBytes()
+            assertFalse(String(bytes, Charsets.ISO_8859_1).contains(flow.verifier))
+            assertEquals(flow.verifier, EncryptedPendingAuthStore(context).read()!!.verifier)
+            assertTrue(EncryptedPendingAuthStore(context).read()!!.recovery)
+        } finally { store.clear() }
+        assertNull(store.read())
+    }
     @Test fun fullRestoreKeepsNotificationDeduplicationAndConsentAndWritesSafetyCopy() = runBlocking {
         val database = Room.inMemoryDatabaseBuilder(context, FinanceDatabase::class.java).build()
         val preferences = UserPreferencesRepository(context)

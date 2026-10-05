@@ -362,18 +362,27 @@ npm run deploy
 
 ### 공동 계정/서버 동기화
 
-Supabase 프로젝트와 RLS 정책을 실제로 만들고 사용자 간 데이터 격리 테스트를 하기 전에는 함께 쓰기 기능을 활성화하지 않는다. 현재 Worker의 `REQUIRE_AUTH=false`는 개인 테스트 전용이며 공개 서비스용 설정이 아니다.
+모아씀 전용 Supabase 프로젝트와 앱 로그인은 v0.1.18에서 연결했다. Worker도 `REQUIRE_AUTH=true`로 배포했다. 다만 원장 테이블·RLS 정책·사용자 간 데이터 격리와 충돌 테스트를 하기 전에는 함께 쓰기/서버 동기화를 활성화하지 않는다. 로그인만으로 금융 기록을 자동 전송하지 않는다.
 
 ### 앱 로그인 연결
 
-현재는 인증 화면/REST/암호화 세션 코드만 구현되어 있다. 실제 설정이 없는 APK는 로그인 버튼을 비활성화한다. 회원가입을 성공한 것처럼 표시하거나 다른 프로젝트의 키를 빌려 쓰지 않는다.
+현재 연결: Supabase Free `moasseum` / 서울 / `https://nbkedjtzbdtjlkkkxrta.supabase.co`. 공개 URL/publishable key는 `gradle.properties`와 Worker vars에 있고, 비밀 키는 APK에 없다. 기존 `tngodvudrk` 등 다른 프로젝트는 수정하지 않았다. Supabase 관리자 로그인과 휴대폰 앱의 가입/로그인은 별개다.
 
 1. 브라우저에서 사용자가 GitHub→Supabase 관리 계정 로그인/MFA를 마친다. 비밀번호/OTP를 채팅에 보내거나 저장소에 기록하지 않는다.
 2. **모아씀 전용 무료 프로젝트**를 새로 만든다. 기존 `tngodvudrk` 프로젝트는 수정하지 않는다. 현재 Free는 활성 프로젝트 2개 한도이며, 1주 비활성 시 프로젝트가 일시 중지될 수 있다. 생성 제한에 걸리면 멈추고 사용자에게 선택을 요청한다. 유료 전환이나 다른 프로젝트 삭제를 대신 하지 않는다. [공식 Free 플랜/한도](https://supabase.com/pricing)
 3. 프로젝트 URL과 **publishable key**를 확인한다. legacy anon 키도 허용하지만 secret/service_role 키는 APK에 금지한다. `GEMINI_API_KEY`는 기존 Worker Secret에만 유지한다.
-4. Supabase 이메일 인증을 활성화하고 가입 확인을 켠다. 가입 확인/비밀번호 재설정 메일에 `{{ .Token }}`을 넣어 앱의 인증 번호 입력 흐름을 지원한다. 기본 템플릿의 링크만으로는 앱 내 번호 확인을 검증할 수 없다. [이메일 템플릿 공식 문서](https://supabase.com/docs/guides/auth/auth-email-templates)
-5. 기본 SMTP는 프로젝트 조직의 허용 이메일만 대상으로 하며 문서상 현재 시간당 2통 제한이다. 개인 테스트 범위와 발송 제한을 확인한다. 임의 이메일의 공개 회원가입은 별도 SMTP 공급자/발신자 설정이 필요하므로, 비용·무료 한도와 필요한 계정 인증을 먼저 확인한다. 이메일 확인을 끄는 방식으로 제한을 우회하지 않는다. [SMTP 공식 문서](https://supabase.com/docs/guides/auth/auth-smtp)
-6. 이 Mac의 저장소 밖 Gradle 사용자 설정 또는 해당 빌드에 다음 **공개 설정**을 전달한다. 실제 secret 값은 파일·명령·로그에 넣지 않는다.
+4. 이메일 가입/로그인과 가입 확인을 켠 상태로 유지한다. 현재 새 Free 프로젝트는 기본 메일 템플릿 변경이 제한되므로, 기본 메일의 확인/재설정 링크를 **PKCE S256**으로 앱에 반환한다. 메일 링크는 요청한 휴대폰에서 열어야 하며, 앱의 암호화된 요청 검증값은 1시간 후 만료된다. 가입 인증 번호 입력은 향후 사용자 SMTP/템플릿을 설정한 경우의 보조 경로이며 현재 기본 흐름은 링크다. [PKCE 공식 문서](https://supabase.com/docs/guides/auth/sessions/pkce-flow), [Free 템플릿 변경 제한](https://supabase.com/changelog/46599-changes-to-email-template-customisation-on-free-tier)
+5. Supabase `Authentication → URL Configuration`은 아래와 같다. 새 패키지/QA 패키지를 추가한다면 실제 콜백 주소만 허용하고 임의 웹 도메인 전체를 허용하지 않는다.
+
+```text
+Site URL: com.moasseum.app://auth/callback
+Redirect URLs:
+com.moasseum.app://auth/callback?**
+com.moasseum.app.qa://auth/callback?**
+```
+
+6. 기본 SMTP는 프로젝트 조직의 허용 이메일만 대상으로 하며 시간당 2통 제한이다. 본인 휴대폰의 `관리 → 로그인·계정 → 회원가입`에서 Supabase 조직에 등록된 본인 이메일과 직접 정한 비밀번호를 사용하고, 그 휴대폰에서 메일 링크를 연다. 임의 이메일의 공개 회원가입은 별도 SMTP 공급자/발신자 설정이 필요하므로 비용·무료 한도와 계정 인증을 먼저 확인한다. 무료 개인 사용 요청에 맞춰 유료 전환/SMTP 구매/이메일 확인 해제는 하지 않았다. [SMTP 공식 문서](https://supabase.com/docs/guides/auth/auth-smtp)
+7. URL/publishable key는 공개 가능한 설정이다. 다른 앱 전용 프로젝트로 바꿀 때 `gradle.properties` 또는 해당 빌드에 새 값을 전달하고 반드시 새 APK를 빌드한다. service_role/secret/Gemini 키는 파일·명령·로그·APK에 넣지 않는다.
 
 ```bash
 ./gradlew :app:assembleDebug \
@@ -381,9 +390,9 @@ Supabase 프로젝트와 RLS 정책을 실제로 만들고 사용자 간 데이�
   -PSUPABASE_PUBLISHABLE_KEY=<publishable-key>
 ```
 
-7. 격리된 QA 앱에서 실제 가입 → 메일 번호 확인 → 로그인 → 앱 재시작 → 세션 갱신 → 비밀번호 재설정 → 로그아웃을 검증한다. 테스트 계정만 사용하며 사용자 실제 기록을 서버에 자동 업로드하지 않는다.
-8. 인증이 확인된 뒤 동일 공개 설정으로 버전을 올린 서명 Release APK를 빌드/설치/게시한다. URL/key가 APK의 BuildConfig이므로 서버 설정만 하고 예전 APK를 유지하면 로그인이 켜지지 않는다.
-9. 앱 로그인이 실제 작동한 후 Worker에 같은 프로젝트의 `SUPABASE_URL`/`SUPABASE_PUBLISHABLE_KEY`를 설정하고 `REQUIRE_AUTH=true`로 별도 배포한다. 무인증 401, 올바른 로그인 토큰 성공, 만료 토큰 거부를 확인한다. 지금 이를 먼저 바꾸면 기존 사용자의 AI가 중단된다.
+8. 격리된 QA 앱에서 로그인 → 암호화 저장 → 앱 재시작 → 세션 갱신 → 로그아웃과 잘못된 비밀번호/위조 링크 거부를 검증한다. 별도로 소유자 이메일의 실제 가입/복구 메일 수신 → 링크 완료를 확인한다. 현재 합성 계정의 실제 서버 로그인과 AI 호출은 통과했지만 **본인 이메일의 실수신/링크 완료는 아직 확인하지 않았다**. 자동 테스트를 실제 메일 수신 성공으로 대신 기록하지 않는다. 테스트 계정/임시 비밀번호는 확인 후 사용자 승인 아래 정리한다.
+9. 동일 공개 설정으로 버전을 올린 서명 Release APK를 빌드/설치/게시한다. URL/key가 APK의 BuildConfig이므로 서버만 설정하고 v0.1.17 이하 APK를 유지하면 로그인이 켜지지 않는다. 기존 패키지/서명과 기기 기록을 유지한다.
+10. 앱 로그인과 실제 서버 AI 호출이 확인되면 Worker에 같은 프로젝트 URL/publishable key와 `REQUIRE_AUTH=true`를 배포한다. v0.1.18에서 완료했다. 무인증/위조 401, 인증 장애 503, 올바른 토큰으로 네 AI 경로의 200을 확인했고 실제 Workerd 회귀 테스트도 추가했다. v0.1.17 이하의 서버 AI 사용자는 업데이트/앱 로그인이 필요하다. 기본 수동 기록·기기 내 알림 감지와 로컬 파싱 fallback은 유지된다.
 
 로그인은 로컬 기록의 자동 동기화/공동 장부가 아니다. 이후 서버 테이블과 RLS, 사용자별 원장, outbox/충돌 처리, 1회 만료 초대, 선택 공유와 두 계정 격리 테스트를 구현·검증한 뒤 해당 기능을 노출한다. [RLS 공식 문서](https://supabase.com/docs/guides/database/postgres/row-level-security)
 

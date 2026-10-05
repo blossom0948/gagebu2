@@ -115,6 +115,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         incomingNotificationCandidateId.value = intentCandidateId(intent)
         val application = application as FinanceApplication
+        consumeAuthIntent(intent)
         setContent {
             val viewModel: LedgerViewModel = viewModel(
                 factory = LedgerViewModel.Factory(application.financeRepository),
@@ -192,6 +193,19 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         incomingNotificationCandidateId.value = intentCandidateId(intent)
+        consumeAuthIntent(intent)
+    }
+
+    private fun consumeAuthIntent(incoming: Intent?) {
+        if (incoming?.action != Intent.ACTION_VIEW) return
+        val callback = incoming.data?.toString() ?: return
+        // Do not retain a one-time auth code in the Activity intent after dispatch.
+        incoming.data = null
+        lifecycleScope.launch {
+            val repository = (application as FinanceApplication).authRepository
+            repository.initialize()
+            repository.handleAuthCallback(callback)
+        }
     }
 
     private fun intentCandidateId(intent: Intent?): Long? =
@@ -314,6 +328,9 @@ private fun MoasseumApp(
     var showAccounts by rememberSaveable { mutableStateOf(false) }
     var showAuth by rememberSaveable { mutableStateOf(false) }
     val authState by application.authRepository.state.collectAsStateWithLifecycle()
+    LaunchedEffect(authState.linkEvent) {
+        if (authState.linkEvent > 0) showAuth = true
+    }
     var aiState by remember { mutableStateOf<AiParseState>(AiParseState.Idle) }
     var aiAnalysisState by remember { mutableStateOf<SpendingAnalysisState>(SpendingAnalysisState.Idle) }
     var aiQuestionState by remember { mutableStateOf<SpendingQuestionState>(SpendingQuestionState.Idle) }
@@ -661,6 +678,7 @@ private fun MoasseumApp(
                     ManageScreen(
                         onOpenAuth = { showAuth = true },
                         accountStatus = authState.user?.let { "로그인됨 · ${it.email}" } ?: if (application.authRepository.configured) "이메일 로그인 · 회원가입 · 비밀번호 재설정" else "로그인 서버 연결 대기 중",
+                        aiLoginRequired = authState.user == null,
                         onSetBudgetRollover = viewModel::setBudgetRollover,
                         onExportBackup = { exportJsonLauncher.launch("moasseum-full-${java.time.LocalDate.now()}.json") },
                         onRestoreBackup = { importJsonLauncher.launch(arrayOf("application/json", "text/*")) },

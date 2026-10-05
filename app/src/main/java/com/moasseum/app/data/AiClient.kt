@@ -85,6 +85,7 @@ class AiClient(
 
         return try {
             connection.requestMethod = "POST"
+            connection.instanceFollowRedirects = false
             connection.connectTimeout = 12_000
             connection.readTimeout = 20_000
             connection.doOutput = true
@@ -104,7 +105,7 @@ class AiClient(
             val stream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
             val responseText = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
             if (responseCode !in 200..299) {
-                throw IOException("AI 서버 응답 오류($responseCode)")
+                throw serverError(responseCode, "AI 서버")
             }
             parseResponse(responseText, today)
         } finally {
@@ -126,6 +127,7 @@ class AiClient(
         }
         return try {
             connection.requestMethod = "POST"
+            connection.instanceFollowRedirects = false
             connection.connectTimeout = 12_000
             connection.readTimeout = 25_000
             connection.doOutput = true
@@ -155,7 +157,7 @@ class AiClient(
             val responseCode = connection.responseCode
             val stream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
             val responseText = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (responseCode !in 200..299) throw IOException("AI 분석 응답 오류($responseCode)")
+            if (responseCode !in 200..299) throw serverError(responseCode, "AI 분석")
             val root = JSONObject(responseText)
             val summary = root.optString("summary").trim()
             require(summary.isNotBlank()) { "AI가 분석 문장을 만들지 못했어요." }
@@ -181,6 +183,7 @@ class AiClient(
         }
         return try {
             connection.requestMethod = "POST"
+            connection.instanceFollowRedirects = false
             connection.connectTimeout = 8_000
             connection.readTimeout = 12_000
             connection.doOutput = true
@@ -196,7 +199,7 @@ class AiClient(
             val responseCode = connection.responseCode
             val stream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
             val responseText = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (responseCode !in 200..299) throw IOException("AI 알림 판별 응답 오류($responseCode)")
+            if (responseCode !in 200..299) throw serverError(responseCode, "AI 알림 판별")
             val root = JSONObject(responseText)
             val isFinancialTransaction = root.optBoolean("isFinancialTransaction", false)
             val transactionType = when (root.optString("type")) {
@@ -223,6 +226,7 @@ class AiClient(
         }
         return try {
             connection.requestMethod = "POST"
+            connection.instanceFollowRedirects = false
             connection.connectTimeout = 12_000
             connection.readTimeout = 20_000
             connection.doOutput = true
@@ -253,7 +257,7 @@ class AiClient(
             val responseCode = connection.responseCode
             val stream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
             val responseText = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (responseCode !in 200..299) throw IOException("AI 질문 응답 오류($responseCode)")
+            if (responseCode !in 200..299) throw serverError(responseCode, "AI 질문")
             val answer = JSONObject(responseText).optString("answer").trim()
             require(answer.isNotBlank()) { "AI가 답변을 만들지 못했어요." }
             answer.take(600)
@@ -261,6 +265,8 @@ class AiClient(
             connection.disconnect()
         }
     }
+
+    private fun serverError(status: Int, label: String) = IOException(if (status == 401) "로그인이 만료됐어요. 관리 → 로그인·계정에서 다시 로그인해 주세요." else "$label 응답 오류($status)")
 
     private fun parseResponse(responseText: String, today: LocalDate): AiTransactionCandidate {
         val root = JSONObject(responseText)

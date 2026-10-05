@@ -1,11 +1,13 @@
 {
   "name": "moasseum-ai-worker",
   "private": true,
+  "type": "module",
   "version": "0.1.0",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test test/auth.test.ts test/workerd-compat.test.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260915.1",

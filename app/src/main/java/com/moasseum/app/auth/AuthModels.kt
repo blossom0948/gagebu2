@@ -1,7 +1,7 @@
 package com.moasseum.app.auth
 
 data class SignedInUser(val id: String, val email: String)
-data class AuthState(val user: SignedInUser? = null, val initialized: Boolean = false, val busy: Boolean = false, val message: String? = null, val error: String? = null)
+data class AuthState(val user: SignedInUser? = null, val initialized: Boolean = false, val busy: Boolean = false, val message: String? = null, val error: String? = null, val recoveryEmail: String? = null, val linkEvent: Long = 0)
 
 class AuthSession(val user: SignedInUser, val accessToken: String, val refreshToken: String, val expiresAt: Long) {
     override fun toString(): String = "AuthSession(redacted)"
@@ -23,6 +23,19 @@ interface AuthApi {
     suspend fun updatePassword(session: AuthSession, password: String)
     suspend fun refresh(refreshToken: String): AuthSession
     suspend fun logout(accessToken: String)
+}
+
+interface AuthLinkApi : AuthApi {
+    suspend fun signupWithLink(email: String, password: String, flow: PendingAuthFlow): AuthSession?
+    suspend fun resendWithLink(email: String, flow: PendingAuthFlow)
+    suspend fun recoverWithLink(email: String, flow: PendingAuthFlow)
+    suspend fun exchangeCode(code: String, verifier: String): AuthSession
+}
+
+interface PendingAuthStore {
+    fun read(): PendingAuthFlow?
+    fun write(flow: PendingAuthFlow)
+    fun clear()
 }
 
 class AuthHttpException(val status: Int, val code: String, message: String) : java.io.IOException(message)

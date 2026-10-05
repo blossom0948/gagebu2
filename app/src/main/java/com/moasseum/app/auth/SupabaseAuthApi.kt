@@ -10,7 +10,7 @@ import java.net.URL
 class SupabaseAuthApi(
     private val baseUrl: String = BuildConfig.SUPABASE_URL,
     private val publishableKey: String = BuildConfig.SUPABASE_PUBLISHABLE_KEY,
-) : AuthApi {
+) : AuthLinkApi {
     override val configured: Boolean get() = baseUrl.isNotBlank() && publishableKey.isNotBlank()
     override suspend fun login(email: String, password: String): AuthSession {
         validateCredentials(email, password)
@@ -21,6 +21,25 @@ class SupabaseAuthApi(
         val response = request("signup", JSONObject().put("email", email).put("password", password))
         return if (response.optString("access_token").isBlank()) null else parseSession(response)
     }
+    override suspend fun signupWithLink(email: String, password: String, flow: PendingAuthFlow): AuthSession? {
+        validateCredentials(email, password)
+        val response = request(redirectPath("signup", flow), challengeBody(flow).put("email", email).put("password", password))
+        return if (response.optString("access_token").isBlank()) null else parseSession(response)
+    }
+    override suspend fun resendWithLink(email: String, flow: PendingAuthFlow) {
+        validateCredentials(email)
+        request(redirectPath("resend", flow), JSONObject().put("email", email).put("type", "signup"))
+    }
+    override suspend fun recoverWithLink(email: String, flow: PendingAuthFlow) {
+        validateCredentials(email)
+        request(redirectPath("recover", flow), challengeBody(flow).put("email", email))
+    }
+    override suspend fun exchangeCode(code: String, verifier: String): AuthSession {
+        require(code.matches(Regex("[A-Za-z0-9._~-]{1,512}")) && verifier.matches(Regex("[A-Za-z0-9_-]{43}"))) { "인증 링크를 다시 요청해 주세요." }
+        return parseSession(request("token?grant_type=pkce", JSONObject().put("auth_code", code).put("code_verifier", verifier)))
+    }
+    private fun redirectPath(path: String, flow: PendingAuthFlow): String = "$path?redirect_to=${java.net.URLEncoder.encode(flow.callbackUri, "UTF-8")}"
+    private fun challengeBody(flow: PendingAuthFlow) = JSONObject().put("code_challenge", flow.challenge).put("code_challenge_method", "s256")
     override suspend fun resendSignup(email: String) { validateCredentials(email); request("resend", JSONObject().put("email", email).put("type", "signup")) }
     override suspend fun recover(email: String) { validateCredentials(email); request("recover", JSONObject().put("email", email)) }
     override suspend fun verify(email: String, code: String, recovery: Boolean): AuthSession {
@@ -69,6 +88,8 @@ class SupabaseAuthApi(
                     code == "otp_expired" -> "인증 번호가 만료됐거나 올바르지 않아요. 다시 요청해 주세요."
                     code == "invalid_credentials" -> "이메일 또는 비밀번호가 올바르지 않아요."
                     code == "user_already_exists" -> "이미 등록된 계정입니다. 로그인해 주세요."
+                    code == "email_address_not_authorized" -> "현재 무료 기본 메일은 서버 조직에 등록된 이메일로만 보낼 수 있어요. 본인용 이메일을 사용해 주세요."
+                    code in setOf("flow_state_expired", "flow_state_not_found", "bad_code_verifier") -> "인증 링크가 만료됐거나 다른 기기에서 요청됐어요. 이 앱에서 인증 메일을 다시 요청해 주세요."
                     status in 500..599 -> "로그인 서버가 잠시 응답하지 않아요."
                     else -> "인증 요청을 완료하지 못했어요. 입력 내용과 서버 설정을 확인해 주세요."
                 }
