@@ -3,7 +3,7 @@ package com.moasseum.app.auth
 data class SignedInUser(val id: String, val email: String)
 data class AuthState(val user: SignedInUser? = null, val initialized: Boolean = false, val busy: Boolean = false, val message: String? = null, val error: String? = null, val recoveryEmail: String? = null, val linkEvent: Long = 0)
 
-class AuthSession(val user: SignedInUser, val accessToken: String, val refreshToken: String, val expiresAt: Long) {
+class AuthSession(val user: SignedInUser, val accessToken: String, val refreshToken: String, val expiresAt: Long, val providers: Set<String> = emptySet()) {
     override fun toString(): String = "AuthSession(redacted)"
 }
 
@@ -30,6 +30,10 @@ interface AuthLinkApi : AuthApi {
     suspend fun resendWithLink(email: String, flow: PendingAuthFlow)
     suspend fun recoverWithLink(email: String, flow: PendingAuthFlow)
     suspend fun exchangeCode(code: String, verifier: String): AuthSession
+}
+
+interface OAuthAuthApi : AuthLinkApi {
+    suspend fun googleAuthorizationUrl(flow: PendingAuthFlow): String
 }
 
 interface PendingAuthStore {

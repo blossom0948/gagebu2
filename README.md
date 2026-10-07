@@ -37,15 +37,17 @@ Debug는 `com.moasseum.app.qa`로 설치되어 개인용 앱과 데이터가 분
 
 알림 감지는 Android의 알림 접근과 모아씀의 알림 표시 권한이 필요합니다. 기본은 기기 내 엄격한 거래 문구 검사이며, `관리`에서 AI 오탐 줄이기를 켠 경우에만 금액/금융 단서가 있는 알림의 제목·내용을 Cloudflare Worker를 통해 Gemini에 보내 완료된 지출/수입인지 분류합니다. 이 선택 기능은 알림에 담긴 개인정보를 외부 AI 서버로 전송하고 Gemini 사용량을 쓸 수 있습니다. 인식 결과는 자동 저장하지 않고 앱에서 확인을 받습니다.
 
-이메일 로그인은 v0.1.18부터 연결됩니다. 함께 쓰기·기기 간 동기화는 아직 미구현입니다. 공동 장부를 실제로 활성화하려면 사용자별 테이블, RLS 정책과 동기화 검증이 필요합니다. 알림 감지는 Android의 알림 접근 설정에서 사용자가 허용해야 하며, 앱이 대신 켤 수 없습니다.
+이메일 로그인은 v0.1.18, 구글 로그인은 v0.1.19부터 연결됩니다. 함께 쓰기·기기 간 동기화는 아직 미구현입니다. 공동 장부를 실제로 활성화하려면 사용자별 테이블, RLS 정책과 동기화 검증이 필요합니다. 알림 감지는 Android의 알림 접근 설정에서 사용자가 허용해야 하며, 앱이 대신 켤 수 없습니다.
 
 ### 본인용 무료 로그인
 
-`관리 → 로그인·계정`에서 이메일 로그인·회원가입·비밀번호 복구·로그아웃을 사용합니다. 모아씀 전용 Supabase Free 프로젝트 `moasseum`(서울)에 연결했으며 기존 `tngodvudrk` 등 다른 프로젝트는 사용하거나 수정하지 않습니다. 관리 계정 로그인과 앱 회원가입은 별개입니다. 처음에는 앱에서 한 번 가입해야 합니다.
+`관리 → 로그인·계정 → Google로 계속하기`를 누르면 기본 브라우저에서 구글 계정을 선택하고 앱으로 돌아옵니다. 첫 구글 로그인은 앱 계정도 생성하므로 별도 비밀번호나 이메일 가입 인증 메일이 필요하지 않습니다. 현재 Google 인증은 **Testing 상태이며, 사용자가 승인한 소유자 계정 하나만 허용 목록에 등록**했습니다. 전체 공개 로그인으로 전환하지 않았습니다. 이메일 로그인·회원가입·비밀번호 복구·로그아웃도 유지합니다. 모아씀 전용 Supabase Free 프로젝트 `moasseum`(서울)에 연결했으며 기존 `tngodvudrk` 등 다른 프로젝트는 사용하거나 수정하지 않습니다. 관리 계정 로그인과 앱 로그인은 별개입니다.
 
-현재 무료 기본 메일은 **Supabase 조직에 등록된 이메일로만, 시간당 2통** 발송됩니다. 그 이메일로 가입하고 **같은 휴대폰에서** 확인 링크를 누르세요. PKCE 검증 후 앱으로 돌아오며, 비밀번호 복구 링크는 새 비밀번호 화면을 엽니다. 요청은 1시간 유지되고 앱 재실행에도 기기 내 암호화된 요청 정보를 복구합니다. 임의 이메일의 공개 가입이나 인증번호 템플릿은 별도 SMTP 설정이 필요합니다. 이메일 확인을 끄거나 유료로 전환하지 않았습니다. [무료 SMTP 제한](https://supabase.com/docs/guides/auth/auth-smtp), [새 Free 프로젝트의 템플릿 제한](https://supabase.com/changelog/46599-changes-to-email-template-customisation-on-free-tier)
+이메일로 가입하는 경우 현재 무료 기본 메일은 **Supabase 조직에 등록된 이메일로만, 시간당 2통** 발송됩니다. 그 이메일로 가입하고 **같은 휴대폰에서** 확인 링크를 누르세요. PKCE 검증 후 앱으로 돌아오며, 비밀번호 복구 링크는 새 비밀번호 화면을 엽니다. 요청은 1시간 유지되고 앱 재실행에도 기기 내 암호화된 요청 정보를 복구합니다. 임의 이메일의 공개 가입이나 인증번호 템플릿은 별도 SMTP 설정이 필요합니다. 구글 로그인은 이 가입 메일 발송을 사용하지 않습니다. 이메일 확인을 끄거나 유료로 전환하지 않았습니다. [무료 SMTP 제한](https://supabase.com/docs/guides/auth/auth-smtp), [새 Free 프로젝트의 템플릿 제한](https://supabase.com/changelog/46599-changes-to-email-template-customisation-on-free-tier)
 
 비밀번호는 기기에 저장하지 않고, 세션과 PKCE 검증값은 Android Keystore로 암호화하여 OS 백업과 JSON 내보내기에서 제외합니다. 로그인만으로 로컬 금융 기록이 서버에 업로드되거나 공동 장부가 되지 않습니다. 실제 서버 로그인·갱신·로그아웃·인증된 AI 호출은 가짜 개인정보의 테스트 계정으로 검증했습니다. 소유자 이메일의 실제 가입/복구 메일 수신과 링크 완료, 동기화·공동 장부는 아직 검증하지 않았습니다. 상세 결과는 [로그인 QA](QA_AUTH_REPORT_2026-10-05.md)를 참고하세요.
+
+구글 로그인은 이메일·기본 프로필 범위만 요청하며 Gmail·Drive·가계부 접근은 요청하지 않습니다. Google Client Secret은 Supabase 서버 설정에만 저장하고 APK·GitHub에 넣지 않았습니다. v0.1.19의 단위 테스트 95개와 실제 서버의 Google 인증 시작/반환 주소 검사는 통과했지만, 휴대폰이 연결되지 않아 실제 구글 계정 로그인·동의·앱 복귀·설치는 미검증입니다. [구글 로그인 QA](QA_GOOGLE_AUTH_REPORT_2026-10-07.md)
 
 ### 개발 확인
 
@@ -71,7 +73,7 @@ Google Play Protect가 개인 APK를 추가로 차단하면 시스템 화면의 
 
 `docs/android-apk.yml`에 GitHub Actions 설정을 준비해 두었습니다. GitHub 계정에 Actions workflow 등록 권한이 있으면 이 파일을 `.github/workflows/android-apk.yml`로 옮긴 뒤 `main`에 push할 때 테스트·lint·Debug APK 빌드가 실행됩니다. 성공한 실행의 Artifacts에서 `moasseum-debug-apk`를 내려받아 기기에 설치하면 됩니다. Debug APK는 테스트용이며 Play Store 배포용 서명 APK/AAB를 대신하지 않습니다.
 
-현재는 Android 앱만 배포합니다. AI Worker나 Supabase를 추가하는 작업부터는 Android APK 배포와 별도로 Cloudflare Worker 배포 및 Supabase RLS 검증이 필요합니다. Gemini 키와 Supabase secret은 APK·GitHub 소스에 넣지 않고 서버 secret으로만 등록합니다. 상세 절차는 [BUDGET_APP_DEPLOYMENT_GUIDE.md](BUDGET_APP_DEPLOYMENT_GUIDE.md)를 따릅니다.
+변경 위치에 따라 Android APK와 서버를 따로 배포합니다. AI Worker 코드 변경은 Cloudflare 배포, 로그인 공급자 변경은 Supabase/Google 인증 설정과 반환 주소 검증이 필요합니다. v0.1.19는 Google/Supabase 설정과 APK 변경이며 Worker 코드·Room 스키마는 변경하지 않았습니다. Gemini 키, Google Client Secret과 Supabase secret은 APK·GitHub 소스에 넣지 않습니다. 상세 절차는 [BUDGET_APP_DEPLOYMENT_GUIDE.md](BUDGET_APP_DEPLOYMENT_GUIDE.md)를 따릅니다.
 
 서명 릴리스 자동화 템플릿은 `docs/android-release.yml`에 있습니다. GitHub Actions workflow 권한을 받은 뒤 `.github/workflows/android-release.yml`로 옮기고, 아래 저장소 secrets를 등록하면 `main` push마다 테스트·서명 APK/AAB 빌드와 GitHub Release 생성이 실행됩니다.
 

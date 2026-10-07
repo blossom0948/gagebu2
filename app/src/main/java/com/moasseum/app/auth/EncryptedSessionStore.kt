@@ -33,10 +33,11 @@ class EncryptedSessionStore(context: Context) : SessionStore {
         val iv = ByteArray(ivSize).also { buffer.get(it) }; val encrypted = ByteArray(buffer.remaining()).also { buffer.get(it) }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv)) }
         val data = JSONObject(String(cipher.doFinal(encrypted), Charsets.UTF_8))
-        return AuthSession(SignedInUser(data.getString("id"), data.getString("email")), data.getString("access"), data.getString("refresh"), data.getLong("expires"))
+        val providers = data.optJSONArray("providers")?.let { values -> (0 until values.length()).map { values.getString(it) }.toSet() }.orEmpty()
+        return AuthSession(SignedInUser(data.getString("id"), data.getString("email")), data.getString("access"), data.getString("refresh"), data.getLong("expires"), providers)
     }
     @Synchronized override fun write(session: AuthSession) {
-        val text = JSONObject().put("id", session.user.id).put("email", session.user.email).put("access", session.accessToken).put("refresh", session.refreshToken).put("expires", session.expiresAt).toString()
+        val text = JSONObject().put("id", session.user.id).put("email", session.user.email).put("access", session.accessToken).put("refresh", session.refreshToken).put("expires", session.expiresAt).put("providers", org.json.JSONArray(session.providers.toList())).toString()
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
         val encrypted = cipher.doFinal(text.toByteArray(Charsets.UTF_8))
         val bytes = ByteBuffer.allocate(1 + cipher.iv.size + encrypted.size).put(cipher.iv.size.toByte()).put(cipher.iv).put(encrypted).array()

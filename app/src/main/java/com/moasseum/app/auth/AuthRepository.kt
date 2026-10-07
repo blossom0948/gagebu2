@@ -13,6 +13,7 @@ class AuthRepository(private val api: AuthApi, private val store: SessionStore, 
     val state = mutableState.asStateFlow()
     val configured: Boolean get() = api.configured
     val supportsEmailLinks: Boolean get() = api is AuthLinkApi && pendingStore != null && redirectUri != null
+    val supportsGoogleLogin: Boolean get() = api is OAuthAuthApi && supportsEmailLinks
     private var session: AuthSession? = null
     private var recoverySession: AuthSession? = null
     private suspend fun save(value: AuthSession) {
@@ -39,6 +40,30 @@ class AuthRepository(private val api: AuthApi, private val store: SessionStore, 
     suspend fun login(email: String, password: String) = action {
         save(api.login(email.trim(), password)); clearPending(); message("로그인했어요. 기기 기록은 자동 공유되지 않아요.")
     }
+    suspend fun beginGoogleLogin(): Result<String> {
+        var url: String? = null
+        val result = action {
+            check(supportsGoogleLogin) { "이 버전에서는 구글 로그인을 사용할 수 없어요." }
+            val flow = PendingAuthFlow.create("", false, now(), redirectUri!!, provider = "google")
+            url = (api as OAuthAuthApi).googleAuthorizationUrl(flow)
+            // Persist before browser launch, and only after provider availability is verified.
+            withContext(Dispatchers.IO) { pendingStore!!.write(flow) }
+            recoverySession = null
+            mutableState.value = mutableState.value.copy(recoveryEmail = null)
+            message("브라우저에서 구글 계정을 선택해 주세요. 완료하면 앱으로 돌아옵니다.")
+        }
+        return result.map { checkNotNull(url) }
+    }
+    suspend fun cancelGoogleLogin(): Result<Unit> = mutex.withLock {
+        try {
+            if (readPending()?.provider == "google") clearPending()
+            Result.success(Unit)
+        } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+        catch (error: Exception) {
+            mutableState.value = mutableState.value.copy(error = "저장된 인증 요청을 정리하지 못했어요. 앱에서 인증을 다시 시작해 주세요.")
+            Result.failure(error)
+        }
+    }
     suspend fun signup(email: String, password: String) = action {
         val address = email.trim()
         validateCredentials(address, password)
@@ -50,7 +75,7 @@ class AuthRepository(private val api: AuthApi, private val store: SessionStore, 
         val address = email.trim()
         if (supportsEmailLinks) {
             val flow = readPending() ?: error("이 앱에서 회원가입을 다시 요청해 주세요.")
-            require(!flow.recovery && flow.email.equals(address, true) && flow.isCurrent(now())) { "가입 인증이 만료됐어요. 회원가입을 다시 요청해 주세요." }
+            require(flow.provider == null && !flow.recovery && flow.email.equals(address, true) && flow.isCurrent(now())) { "가입 인증이 만료됐어요. 회원가입을 다시 요청해 주세요." }
             (api as AuthLinkApi).resendWithLink(address, flow)
         } else api.resendSignup(address)
         message("가입 인증 메일을 다시 요청했어요.")
@@ -70,28 +95,31 @@ class AuthRepository(private val api: AuthApi, private val store: SessionStore, 
     }
     suspend fun handleAuthCallback(raw: String): Result<Unit> = action {
         // Only a locally initiated, unexpired PKCE flow can change the session.
-        check(supportsEmailLinks) { "이 앱에서 인증 메일을 다시 요청해 주세요." }
+        check(supportsEmailLinks) { "이 앱에서 인증을 다시 시작해 주세요." }
         val link = AuthLink.parse(raw, redirectUri!!)
         // A well-formed return link must also show an explanation when it is old
         // or the app has been reinstalled; silently opening Home looks like success.
         mutableState.value = mutableState.value.copy(linkEvent = mutableState.value.linkEvent + 1)
-        val pending = readPending() ?: error("이 앱에서 먼저 인증 메일을 요청해 주세요. 다른 기기에서 요청한 링크는 사용할 수 없어요.")
-        require(pending.flowId == link.flowId && pending.redirectUri == redirectUri) { "이 앱에서 요청한 최신 인증 링크를 눌러 주세요." }
-        require(pending.isCurrent(now())) { "인증 요청이 만료됐어요. 인증 메일을 다시 요청해 주세요." }
-        if (link.failed) { clearPending(); error("인증 링크가 만료됐거나 이미 사용됐어요. 인증 메일을 다시 요청해 주세요.") }
+        val pending = readPending() ?: error("이 앱에서 먼저 로그인이나 인증 메일을 요청해 주세요. 다른 기기에서 시작한 인증은 사용할 수 없어요.")
+        require(pending.flowId == link.flowId && pending.redirectUri == redirectUri) { "이 앱에서 시작한 최신 인증 요청을 완료해 주세요." }
+        require(pending.isCurrent(now())) { "인증 요청이 만료됐어요. 이 앱에서 인증을 다시 시작해 주세요." }
+        if (link.failed) { clearPending(); error(if (pending.provider == "google") "구글 로그인이 취소됐거나 완료되지 않았어요. 다시 시도해 주세요." else "인증 링크가 만료됐거나 이미 사용됐어요. 인증 메일을 다시 요청해 주세요.") }
         val verified = (api as AuthLinkApi).exchangeCode(link.code!!, pending.verifier)
-        require(verified.user.email.equals(pending.email, true)) { "인증 계정이 일치하지 않아요. 인증 메일을 다시 요청해 주세요." }
+        if (pending.provider == "google") {
+            require("google" in verified.providers) { "구글 인증 계정을 확인하지 못했어요. 구글 로그인을 다시 시도해 주세요." }
+            validateCredentials(verified.user.email)
+        } else require(verified.user.email.equals(pending.email, true)) { "인증 계정이 일치하지 않아요. 인증 메일을 다시 요청해 주세요." }
         if (pending.recovery) {
             recoverySession = verified
             mutableState.value = mutableState.value.copy(recoveryEmail = verified.user.email)
             message("이메일 인증을 마쳤어요. 새 비밀번호를 입력해 주세요.")
         } else {
-            save(verified); message("이메일 인증과 로그인을 마쳤어요. 기기 기록은 자동 공유되지 않아요.")
+            save(verified); message(if (pending.provider == "google") "구글 로그인을 마쳤어요. 기기 기록은 자동 공유되지 않아요." else "이메일 인증과 로그인을 마쳤어요. 기기 기록은 자동 공유되지 않아요.")
         }
         clearPending()
     }
     suspend fun resetPassword(password: String) = action {
-        val verified = recoverySession ?: error("먼저 재설정 인증 번호를 확인해 주세요.")
+        val verified = recoverySession ?: error("먼저 재설정 메일의 링크나 인증 번호로 이메일을 확인해 주세요.")
         require(verified.expiresAt > now()) { "재설정 인증이 만료됐어요. 다시 인증해 주세요." }
         api.updatePassword(verified, password); save(verified); message("비밀번호를 변경했어요.")
     }

@@ -10,7 +10,7 @@ import java.net.URL
 class SupabaseAuthApi(
     private val baseUrl: String = BuildConfig.SUPABASE_URL,
     private val publishableKey: String = BuildConfig.SUPABASE_PUBLISHABLE_KEY,
-) : AuthLinkApi {
+) : OAuthAuthApi {
     override val configured: Boolean get() = baseUrl.isNotBlank() && publishableKey.isNotBlank()
     override suspend fun login(email: String, password: String): AuthSession {
         validateCredentials(email, password)
@@ -38,6 +38,12 @@ class SupabaseAuthApi(
         require(code.matches(Regex("[A-Za-z0-9._~-]{1,512}")) && verifier.matches(Regex("[A-Za-z0-9_-]{43}"))) { "인증 링크를 다시 요청해 주세요." }
         return parseSession(request("token?grant_type=pkce", JSONObject().put("auth_code", code).put("code_verifier", verifier)))
     }
+    override suspend fun googleAuthorizationUrl(flow: PendingAuthFlow): String {
+        // Check the real provider before launching a browser; do not pretend setup is done.
+        val settings = request("settings", method = "GET")
+        check(settings.optJSONObject("external")?.optBoolean("google") == true) { "구글 로그인 서버 설정이 아직 준비되지 않았어요. 이메일 로그인은 계속 사용할 수 있습니다." }
+        return GoogleOAuth.authorizationUrl(baseUrl, flow)
+    }
     private fun redirectPath(path: String, flow: PendingAuthFlow): String = "$path?redirect_to=${java.net.URLEncoder.encode(flow.callbackUri, "UTF-8")}"
     private fun challengeBody(flow: PendingAuthFlow) = JSONObject().put("code_challenge", flow.challenge).put("code_challenge_method", "s256")
     override suspend fun resendSignup(email: String) { validateCredentials(email); request("resend", JSONObject().put("email", email).put("type", "signup")) }
@@ -54,18 +60,18 @@ class SupabaseAuthApi(
     override suspend fun refresh(refreshToken: String): AuthSession = parseSession(request("token?grant_type=refresh_token", JSONObject().put("refresh_token", refreshToken)))
     override suspend fun logout(accessToken: String) { request("logout?scope=local", JSONObject(), token = accessToken) }
 
-    private suspend fun request(path: String, body: JSONObject, method: String = "POST", token: String? = null): JSONObject = withContext(Dispatchers.IO) {
+    private suspend fun request(path: String, body: JSONObject? = null, method: String = "POST", token: String? = null): JSONObject = withContext(Dispatchers.IO) {
         check(configured) { "로그인 서버가 아직 연결되지 않았어요. 앱 전용 Supabase 프로젝트 설정이 필요합니다." }
         val endpoint = URL("${baseUrl.trimEnd('/')}/auth/v1/$path")
         require(endpoint.protocol == "https" && endpoint.userInfo == null) { "로그인 서버는 HTTPS 주소만 사용할 수 있어요." }
         val connection = endpoint.openConnection() as HttpURLConnection
         try {
             connection.requestMethod = method; connection.connectTimeout = 15000; connection.readTimeout = 20000
-            connection.instanceFollowRedirects = false; connection.doOutput = true
+            connection.instanceFollowRedirects = false; connection.doOutput = body != null
             connection.setRequestProperty("Content-Type", "application/json")
             connection.setRequestProperty("apikey", publishableKey)
             if (token != null) connection.setRequestProperty("Authorization", "Bearer $token")
-            connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            if (body != null) connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
             val status = connection.responseCode
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream
             val text = stream?.use {
@@ -89,7 +95,7 @@ class SupabaseAuthApi(
                     code == "invalid_credentials" -> "이메일 또는 비밀번호가 올바르지 않아요."
                     code == "user_already_exists" -> "이미 등록된 계정입니다. 로그인해 주세요."
                     code == "email_address_not_authorized" -> "현재 무료 기본 메일은 서버 조직에 등록된 이메일로만 보낼 수 있어요. 본인용 이메일을 사용해 주세요."
-                    code in setOf("flow_state_expired", "flow_state_not_found", "bad_code_verifier") -> "인증 링크가 만료됐거나 다른 기기에서 요청됐어요. 이 앱에서 인증 메일을 다시 요청해 주세요."
+                    code in setOf("flow_state_expired", "flow_state_not_found", "bad_code_verifier") -> "인증이 만료됐거나 다른 기기에서 시작됐어요. 이 앱에서 인증을 다시 시작해 주세요."
                     status in 500..599 -> "로그인 서버가 잠시 응답하지 않아요."
                     else -> "인증 요청을 완료하지 못했어요. 입력 내용과 서버 설정을 확인해 주세요."
                 }
@@ -108,11 +114,17 @@ class SupabaseAuthApi(
             val user = response.getJSONObject("user")
             val id = user.getString("id").also { java.util.UUID.fromString(it) }
             val email = user.getString("email")
+            validateCredentials(email)
             val access = response.getString("access_token"); val refresh = response.getString("refresh_token")
             require(access.isNotBlank() && refresh.isNotBlank())
             val expires = if (response.has("expires_at")) response.getLong("expires_at") else now + response.getLong("expires_in")
             require(expires > now && expires - now <= 7 * 86400)
-            return AuthSession(SignedInUser(id, email), access, refresh, expires)
+            val providers = buildSet {
+                user.optJSONArray("identities")?.let { identities ->
+                    for (index in 0 until identities.length()) identities.optJSONObject(index)?.optString("provider")?.takeIf { it.isNotBlank() }?.let(::add)
+                }
+            }
+            return AuthSession(SignedInUser(id, email), access, refresh, expires, providers)
             } catch (_: Exception) {
                 // Parser diagnostics can contain the entire response, including tokens.
                 throw IllegalArgumentException("로그인 서버의 세션 응답을 확인하지 못했어요. 다시 시도해 주세요.")

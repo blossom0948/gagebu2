@@ -77,6 +77,10 @@ class FinanceIntegrationTest {
             assertFalse(String(bytes, Charsets.ISO_8859_1).contains(flow.verifier))
             assertEquals(flow.verifier, EncryptedPendingAuthStore(context).read()!!.verifier)
             assertTrue(EncryptedPendingAuthStore(context).read()!!.recovery)
+            val google = PendingAuthFlow.create("", false, 1000, "${context.packageName}://auth/callback", "google")
+            store.write(google)
+            val returned = EncryptedPendingAuthStore(context).read()!!
+            assertEquals("google", returned.provider); assertEquals(google.verifier, returned.verifier); assertFalse(returned.recovery)
         } finally { store.clear() }
         assertNull(store.read())
     }

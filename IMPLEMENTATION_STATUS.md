@@ -39,6 +39,7 @@
 - `관리 → 로그인·계정`에 이메일 로그인·회원가입·인증 번호 확인/재발송·비밀번호 재설정·로그아웃 화면과 Supabase Auth REST 클라이언트를 구현
 - 세션은 Android Keystore AES-GCM으로 암호화하고 OS 백업에서 제외. 비밀번호는 저장하지 않음. 토큰 갱신/만료/오프라인 실패/로그아웃 처리를 자동 테스트
 - v0.1.18: 모아씀 전용 Supabase Free 프로젝트 `moasseum`(서울) 생성, URL/publishable key 등록. 관리자 로그인과 앱 가입은 별개이며 다른 프로젝트 `tngodvudrk` 등은 수정하지 않음
+- v0.1.19: Google 공식 버튼·시스템 브라우저 OAuth·PKCE S256·암호화된 요청 복원·취소/만료/재사용 방어 추가. 모아씀 전용 Google OAuth 클라이언트를 Supabase Google 공급자에 연결하고 소유자 계정 하나만 Testing 허용 목록에 등록. 이메일 확인/nonce 검사는 유지하며 유료 전환하지 않음. 실제 Google 계정 로그인·동의·휴대폰 복귀는 미검증
 - 기본 무료 메일의 소유자/조직 이메일 제한과 시간당 2통을 화면에 설명. 가입·복구 링크는 PKCE S256/기기 내 암호화 검증값/요청 식별값으로 검증하며, 앱 재실행·재전송·만료·위조·다른 계정·재사용을 검사
 - 실제 서버 로그인·세션 갱신·앱 재시작 복구·로그아웃과 인증된 AI 호출을 합성 계정으로 검증. 실제 소유자 이메일의 가입/복구 메일 수신·링크 완료와 두 계정 RLS 격리 테스트는 미실행. 가짜 Auth API 단위 테스트를 메일 실수신 성공으로 간주하지 않음
 - 공동 장부·만료되는 초대 코드/QR·공동 목표·기기 간 오프라인 동기화는 미구현. 로그인만으로 기기 금융 기록을 서버에 올리거나 공유하지 않음
@@ -64,6 +65,7 @@
 - v0.1.16: 카드 이용기간·고정비 레이더·반복 규칙 수정·내역 필터/정렬 추가, 민트 표면 구분과 라이트 선택 글자 대비 보완. 단위 테스트 46개·lint·서명 Release 빌드 성공. 실기기 등록/수정/일시 중지/재실행/정렬/알림 확인. 상세 범위는 [QA_FEATURES_REPORT_2026-10-04.md](QA_FEATURES_REPORT_2026-10-04.md)
 - v0.1.17: 계좌·이체, 예산 이월/사용 속도, 전체 백업 복원, PDF·카메라와 로그인 코드 추가. 단위 76개와 별도 QA 앱의 Android 테스트 7개 통과, lint 오류 0, 서명 빌드 성공. 잠금 해제 후 홈 기존 기록/목표 유지와 신규 화면 확인. 최신 검증/배포 상태와 실제 서버 미연결 한계는 [QA_FEATURES_REPORT_2026-10-05.md](QA_FEATURES_REPORT_2026-10-05.md) 참고
 - v0.1.18: 로그인 서버·PKCE 이메일 링크·암호화된 인증 요청·인증된 AI API 연결. 단위 84개, Android 9개(실제 로그인/서버 AI 포함), Worker 10개(실제 Workerd 포함) 통과. Cloudflare 리다이렉트 옵션의 런타임 오류 수정과 회귀 테스트 추가. 상세 결과와 메일 검증 한계는 [QA_AUTH_REPORT_2026-10-05.md](QA_AUTH_REPORT_2026-10-05.md)
+- v0.1.19: 구글 로그인 구현/서버 설정, 단위 95개·lint 오류 0(기존 경고 22개)·서명 Release/Android 테스트 APK 빌드 성공. 실제 Supabase 설정과 본앱/QA 인증 시작의 Google 리다이렉트·클라이언트·반환 주소·기본 권한 범위 확인. 휴대폰 미연결로 Android 테스트 실행/설치/실제 Google 로그인은 미실행. [QA_GOOGLE_AUTH_REPORT_2026-10-07.md](QA_GOOGLE_AUTH_REPORT_2026-10-07.md)
 
 - `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` — 성공
 - `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` — 성공
@@ -85,7 +87,8 @@
 - 연결 Android 기기 — `R3CT80B80MN` / Galaxy Z Fold4 / Android 16(API 36)에서 최종 릴리스 설치·기능·알림·재연결·백그라운드 알림 검증 완료
 - 상세 실기기 오류 기록과 수정 결과 — [QA_TEST_REPORT_2026-10-04.md](QA_TEST_REPORT_2026-10-04.md)
 - Debug APK — `app/build/outputs/apk/debug/app-debug.apk`
-- 현재 공개/설치 APK — [v0.1.18](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.18), 56,905,458 bytes; SHA-256 `172d481f7915d9916a27c4d809d6618ce62ced3830c1c7722a3fed91e3a23521`. 무인증 latest·asset digest·공개 재다운로드·설치 APK 일치. 실제 로그인/AI 검증과 메일 수신 한계는 이번 로그인 QA 문서에 기록
+- 최신 빌드 APK — v0.1.19, 59,131,229 bytes; SHA-256 `d9dee61e2c9a954f916d9afa94b40267032d485262e380d419008909530d416c`. 공개 배포 확인은 구글 로그인 QA 문서에 별도로 기록
+- 마지막 휴대폰 설치 검증 APK — [v0.1.18](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.18), 56,905,458 bytes; SHA-256 `172d481f7915d9916a27c4d809d6618ce62ced3830c1c7722a3fed91e3a23521`. 2026-10-05 무인증 latest·asset digest·공개 재다운로드·설치 APK 일치. v0.1.19의 설치 성공으로 간주하지 않음
 
 ## 다음 작업/배포 안내
 

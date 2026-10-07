@@ -1,0 +1,8 @@
+Google Sign-in button G logo
+Source: https://developers.google.com/static/identity/images/g-logo.png
+Brand guidelines: https://developers.google.com/identity/branding-guidelines
+
+Used only for the Google sign-in action; not an app logo or endorsement.
+The official icon is unmodified. Google Sans is used only on this button;
+the app's global fonts, text sizes and mint theme are unchanged.
+Google Sans license: licenses/google_sans_OFL.txt (SIL OFL 1.1).

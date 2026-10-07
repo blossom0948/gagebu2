@@ -677,7 +677,7 @@ private fun MoasseumApp(
                 composable(ROUTE_MANAGE) {
                     ManageScreen(
                         onOpenAuth = { showAuth = true },
-                        accountStatus = authState.user?.let { "로그인됨 · ${it.email}" } ?: if (application.authRepository.configured) "이메일 로그인 · 회원가입 · 비밀번호 재설정" else "로그인 서버 연결 대기 중",
+                        accountStatus = authState.user?.let { "로그인됨 · ${it.email}" } ?: if (application.authRepository.configured) "구글 · 이메일 로그인 · 회원가입" else "로그인 서버 연결 대기 중",
                         aiLoginRequired = authState.user == null,
                         onSetBudgetRollover = viewModel::setBudgetRollover,
                         onExportBackup = { exportJsonLauncher.launch("moasseum-full-${java.time.LocalDate.now()}.json") },

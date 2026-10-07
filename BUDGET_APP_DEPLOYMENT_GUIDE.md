@@ -396,6 +396,31 @@ com.moasseum.app.qa://auth/callback?**
 
 로그인은 로컬 기록의 자동 동기화/공동 장부가 아니다. 이후 서버 테이블과 RLS, 사용자별 원장, outbox/충돌 처리, 1회 만료 초대, 선택 공유와 두 계정 격리 테스트를 구현·검증한 뒤 해당 기능을 노출한다. [RLS 공식 문서](https://supabase.com/docs/guides/database/postgres/row-level-security)
 
+### 구글 로그인 배포 (v0.1.19)
+
+현재 모아씀 전용 Google Cloud 프로젝트 `moasseum-ai`의 Web application OAuth 클라이언트를 새 Supabase `moasseum`에 연결했다. Google OAuth 클라이언트 생성·비밀 키 서버 저장·소유자 테스트 사용자 등록은 각각 사용자 승인 후 수행했다. 다른 프로젝트/기존 Gemini 키/요금제는 변경하지 않는다.
+
+1. Google Auth Platform의 Web application 클라이언트에는 아래 Supabase HTTPS 반환 주소 **한 곳만** 등록한다. Android 앱의 커스텀 스킴은 Google에 직접 등록하지 않는다.
+
+```text
+https://nbkedjtzbdtjlkkkxrta.supabase.co/auth/v1/callback
+```
+
+2. Client ID와 Client Secret을 **Supabase → Authentication → Providers → Google**에 저장하고 활성화한다. Client Secret은 APK·BuildConfig·GitHub·채팅·Worker 코드에 넣지 않는다. `Skip nonce checks`와 `Allow users without an email`은 끈 상태를 유지한다. 이메일 가입 확인도 켠 상태를 유지한다.
+3. Google 인증은 현재 External/Testing이며 승인받은 소유자 계정 하나만 테스트 사용자에 등록했다. 다른 사용자 추가·전체 공개·유료 전환은 별도 사용자 승인 없이 수행하지 않는다. APK 공개 다운로드와 Google 인증 앱의 전체 공개 전환은 서로 다른 작업이다.
+4. 앱은 PKCE S256과 요청 식별값을 사용해 시스템 브라우저에서 인증한 뒤 기존 본앱/QA 반환 주소로 돌아온다. 검증값은 기기에 암호화하여 저장하고 1시간 후 만료한다. 권한은 `openid email profile`뿐이며 Gmail/Drive/오프라인 Google 접근을 요청하지 않는다. Google 공급자의 별도 access/refresh token은 저장하지 않는다.
+5. 다음 검사는 실제 서버에서 공급자 활성화·이메일 확인 유지·두 패키지의 Google 리다이렉트/클라이언트/서버 반환 주소/권한 범위를 확인한다. 사용자 계정으로 로그인하거나 동의를 누르는 검사는 아니다.
+
+```bash
+node scripts/check-google-oauth.mjs
+./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest
+```
+
+6. 구글 버튼이 포함된 v0.1.19 이상을 기존과 같은 앱 ID/서명 키로 빌드하고 GitHub Release에 올린다. 이번에는 Worker 코드와 Room 스키마 변경이 없어 Worker 재배포/Migration은 필요하지 않다. 구글 로그인은 무료 이메일 가입 메일 발송을 거치지 않으며 별도 SMTP 구매를 하지 않았다.
+7. 휴대폰에서 업데이트 → `관리 → 로그인·계정 → Google로 계속하기` → 허용 계정 선택/사용자 동의 → 앱 복귀 → 로그인 표시 → 앱 재시작 → AI 호출 → 로그아웃을 검증한다. 계정 비밀번호/MFA는 사용자가 Google 화면에서 직접 처리한다. **2026-10-07에는 휴대폰 미연결로 실제 Google 로그인/복귀/설치를 실행하지 않았다.** 단위 테스트나 서버 리다이렉트 검사를 이 실기기 성공으로 대신 적지 않는다. [구글 로그인 QA](QA_GOOGLE_AUTH_REPORT_2026-10-07.md)
+
+공급자/클라이언트만 교체하는 후속 작업은 Google/Supabase 설정과 위 실제 반환 주소 검사가 필요하다. 앱의 공개 프로젝트 URL/키·콜백 패키지·UI 코드가 바뀌면 APK도 새로 배포한다. [Supabase Google 로그인](https://supabase.com/docs/guides/auth/social-login/auth-google), [Google 버튼 가이드](https://developers.google.com/identity/branding-guidelines)
+
 ### 다음 기능별 배포 판단
 
 | 변경 | 필요한 배포/검증 |
@@ -404,6 +429,7 @@ com.moasseum.app.qa://auth/callback?**
 | Room 필드/테이블 | Migration과 이전 데이터 보존 검사 후 APK |
 | AI 프롬프트/API/인증 검사 | Worker typecheck·배포, 계약/앱 설정이 바뀌면 APK도 배포 |
 | 로그인 프로젝트/공개 설정 | Supabase 이메일 설정·실제 인증 검사 후 새 설정 APK |
+| Google 로그인/반환 주소 | Google OAuth·Supabase 공급자/allowlist·PKCE 검사; 앱 코드/공개 설정 변경 시 APK, 실제 계정/휴대폰 복귀는 별도 검증 |
 | 동기화/공동 원장 | 서버 Migration·RLS 격리/두 기기 충돌 검사 + Worker/앱 배포 |
 
 현재 수동 GitHub Release 방식은 무료 개인 설치 경로이며, 관리→앱 업데이트에서 직접 다운로드한다. 무음 설치나 Android 보안 팝업 생략을 보장하지 않는다.

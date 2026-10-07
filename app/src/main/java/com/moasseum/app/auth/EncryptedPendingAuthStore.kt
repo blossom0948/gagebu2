@@ -34,10 +34,10 @@ class EncryptedPendingAuthStore(context: Context) : PendingAuthStore {
         val encrypted = ByteArray(buffer.remaining()).also { buffer.get(it) }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv)) }
         val data = JSONObject(String(cipher.doFinal(encrypted), Charsets.UTF_8))
-        return PendingAuthFlow(data.getString("email"), data.getString("verifier"), data.getString("flowId"), data.getBoolean("recovery"), data.getLong("createdAt"), data.getString("redirectUri"))
+        return PendingAuthFlow(data.getString("email"), data.getString("verifier"), data.getString("flowId"), data.getBoolean("recovery"), data.getLong("createdAt"), data.getString("redirectUri"), data.optString("provider").takeIf { it.isNotBlank() && it != "null" })
     }
     @Synchronized override fun write(flow: PendingAuthFlow) {
-        val text = JSONObject().put("email", flow.email).put("verifier", flow.verifier).put("flowId", flow.flowId).put("recovery", flow.recovery).put("createdAt", flow.createdAt).put("redirectUri", flow.redirectUri).toString()
+        val text = JSONObject().put("email", flow.email).put("verifier", flow.verifier).put("flowId", flow.flowId).put("recovery", flow.recovery).put("createdAt", flow.createdAt).put("redirectUri", flow.redirectUri).put("provider", flow.provider ?: JSONObject.NULL).toString()
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
         val encrypted = cipher.doFinal(text.toByteArray(Charsets.UTF_8))
         val bytes = ByteBuffer.allocate(1 + cipher.iv.size + encrypted.size).put(cipher.iv.size.toByte()).put(cipher.iv).put(encrypted).array()

@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -30,21 +31,41 @@ fun AuthDialog(repository: AuthRepository, onDismiss: () -> Unit) {
     var showLogout by rememberSaveable { mutableStateOf(false) }
     var showCode by rememberSaveable { mutableStateOf(false) }
     val colors = LocalFinanceColors.current
+    val context = LocalContext.current
     fun switch(value: String) { mode = value; password = ""; confirmation = ""; code = ""; localError = null; showCode = false }
     LaunchedEffect(state.recoveryEmail) {
         state.recoveryEmail?.let { email = it; switch("NEW_PASSWORD") }
     }
-    fun close() { if (!state.busy) scope.launch { repository.cancelRecovery(); onDismiss() } }
+    fun close() { if (!state.busy) scope.launch { repository.cancelRecovery(); repository.cancelGoogleLogin(); onDismiss() } }
     AlertDialog(onDismissRequest = { close() }, title = { Text("로그인·계정") }, text = {
         Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("로그인에는 이메일과 비밀번호가 Supabase 인증 서버로 전송돼요. 비밀번호는 기기에 저장하지 않으며, 로그인만으로 가계부가 업로드되거나 공유되지 않아요.", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
             if (!repository.configured) Text("로그인 서버 연결 대기 중입니다. 앱 전용 Supabase 프로젝트 설정 후 사용할 수 있어요. 기기 가계부는 지금도 이용할 수 있습니다.", style = MaterialTheme.typography.bodyMedium, color = colors.expense)
-            if (repository.configured) Text("현재 본인용 무료 메일 설정입니다. 인증 메일은 Supabase 조직에 등록된 이메일로만 발송되며 시간당 2회로 제한돼요.", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+            if (repository.configured) Text("이메일 가입은 현재 본인용 무료 메일 설정으로, Supabase 조직 등록 이메일·시간당 2회 제한이 있어요. 구글 로그인에는 별도 가입 인증 메일이 필요하지 않습니다.", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
             Text("AI 분석·질문·알림 판별은 로그인 후 이용해요. 로그인하지 않아도 기본 기록과 기기 내 알림 감지는 유지됩니다.", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
             state.user?.takeIf { mode != "NEW_PASSWORD" }?.let { user ->
                 Text("로그인됨 · ${user.email}", style = MaterialTheme.typography.titleSmall)
                 TextButton(enabled = !state.busy, onClick = { showLogout = true }) { Text("로그아웃") }
             } ?: run {
+                if (mode in listOf("LOGIN", "SIGNUP") && repository.supportsGoogleLogin) {
+                    GoogleSignInButton(enabled = repository.configured && !state.busy, onClick = {
+                        localError = null
+                        password = ""; confirmation = ""; code = ""
+                        scope.launch {
+                            repository.beginGoogleLogin().onSuccess { url ->
+                                try {
+                                    context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).addCategory(android.content.Intent.CATEGORY_BROWSABLE))
+                                } catch (_: android.content.ActivityNotFoundException) {
+                                    repository.cancelGoogleLogin(); localError = "로그인할 브라우저가 없어요. 브라우저를 설치하거나 이메일 로그인을 사용해 주세요."
+                                } catch (_: SecurityException) {
+                                    repository.cancelGoogleLogin(); localError = "브라우저를 열지 못했어요. 이메일 로그인을 사용해 주세요."
+                                }
+                            }
+                        }
+                    })
+                    Text("구글에는 이메일·기본 프로필만 요청해요. 메일 내용·Drive·가계부 기록 접근은 요청하지 않습니다.", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+                    HorizontalDivider(color = colors.textSecondary.copy(alpha = 0.15f))
+                }
                 if (mode != "NEW_PASSWORD") Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilterChip(mode == "LOGIN", { switch("LOGIN") }, enabled = !state.busy, label = { Text("로그인") })
                     FilterChip(mode == "SIGNUP", { switch("SIGNUP") }, enabled = !state.busy, label = { Text("회원가입") })
