@@ -24,7 +24,7 @@ interface FinanceDao {
             else require(row.destinationAccountId == null)
             val merchant = row.merchant.trim(); val memo = row.memo.trim()
             if (!transactionExists(row.type.name, row.amount, row.occurredAt, row.categoryKey, merchant, memo, row.paymentMethod, row.accountId, row.destinationAccountId)) {
-                insertTransaction(TransactionEntity(type = row.type.name, amount = row.amount, occurredAt = row.occurredAt, timezone = timezone,
+                insertTransaction(TransactionEntity(type = row.type.name, amount = row.amount, occurredAt = row.occurredAt, timezone = row.timezone ?: timezone,
                     categoryKey = row.categoryKey, merchant = merchant, memo = memo, paymentMethod = row.paymentMethod, source = row.source,
                     accountId = row.accountId, destinationAccountId = row.destinationAccountId, createdAt = now, updatedAt = now))
                 count++
@@ -89,17 +89,17 @@ interface FinanceDao {
         return insertTransaction(transaction)
     }
 
-    @Query("UPDATE transactions SET amount = :amount, occurredAt = :occurredAt, accountId = :fromId, destinationAccountId = :toId, merchant = :merchant, memo = :memo, updatedAt = :now WHERE id = :id AND type = 'TRANSFER' AND deletedAt IS NULL")
-    suspend fun updateTransferFields(id: Long, amount: Long, occurredAt: Long, fromId: String, toId: String, merchant: String, memo: String, now: Long)
+    @Query("UPDATE transactions SET amount = :amount, occurredAt = :occurredAt, timezone = :timezone, accountId = :fromId, destinationAccountId = :toId, merchant = :merchant, memo = :memo, updatedAt = :now WHERE id = :id AND type = 'TRANSFER' AND deletedAt IS NULL")
+    suspend fun updateTransferFields(id: Long, amount: Long, occurredAt: Long, fromId: String, toId: String, merchant: String, memo: String, now: Long, timezone: String)
 
     @Transaction
-    suspend fun saveTransferEdit(id: Long, amount: Long, occurredAt: Long, fromId: String, toId: String, memo: String, now: Long) {
+    suspend fun saveTransferEdit(id: Long, amount: Long, occurredAt: Long, fromId: String, toId: String, memo: String, now: Long, timezone: String = ZoneId.systemDefault().id) {
         require(amount in 1..1_000_000_000_000L && fromId != toId)
         val from = getAccount(fromId)
         val to = getAccount(toId)
         require(from?.archived == false && to?.archived == false) { "사용 중인 두 계좌를 선택해 주세요." }
         require(getTransaction(id)?.let { it.type == "TRANSFER" && it.deletedAt == null } == true)
-        updateTransferFields(id, amount, occurredAt, fromId, toId, "${from.name} → ${to.name}", memo, now)
+        updateTransferFields(id, amount, occurredAt, fromId, toId, "${from.name} → ${to.name}", memo, now, timezone)
     }
 
     @Transaction
@@ -177,7 +177,7 @@ interface FinanceDao {
         id: Long, amount: Long, type: String, merchant: String, categoryKey: String,
         memo: String, paymentMethod: String, dayOfMonth: Int, today: String, now: Long,
     ) {
-        val existing = getRecurringRule(id) ?: return
+        val existing = getRecurringRule(id) ?: error("반복 거래가 없어요. 목록을 다시 확인해 주세요.")
         val next = editedRecurringOccurrence(
             LocalDate.parse(existing.nextOccurrenceDate), existing.dayOfMonth, dayOfMonth, LocalDate.parse(today),
         )

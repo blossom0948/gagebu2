@@ -72,6 +72,7 @@ import com.moasseum.app.ui.components.AmountText
 import com.moasseum.app.ui.components.allCategorySpecs
 import com.moasseum.app.ui.components.EmptyState
 import com.moasseum.app.ui.components.FinanceCard
+import com.moasseum.app.ui.components.rememberSaveActionState
 import com.moasseum.app.ui.components.TransactionRow
 import com.moasseum.app.ui.components.categoryColor
 import com.moasseum.app.ui.components.categoryLabel
@@ -97,7 +98,7 @@ fun HistoryScreen(
     onSelectDate: (LocalDate) -> Unit,
     onSelectMonth: (YearMonth) -> Unit,
     onDeleteTransaction: (Long) -> Unit,
-    onUpdateTransaction: (Long, String, TransactionType, String, String, String, String, LocalDate) -> Boolean,
+    onUpdateTransaction: suspend (Long, String, TransactionType, String, String, String, String, LocalDate) -> Unit,
     onExportCsv: () -> Unit,
     onExportJson: () -> Unit,
     onImportCsv: () -> Unit,
@@ -297,9 +298,8 @@ fun HistoryScreen(
             paymentMethods = paymentMethods,
             onDismiss = { editingTransaction = null },
             onSave = { amount, type, merchant, categoryKey, memo, paymentMethod, date ->
-                val saved = onUpdateTransaction(transaction.id, amount, type, merchant, categoryKey, memo, paymentMethod, date)
-                if (saved) editingTransaction = null
-                saved
+                onUpdateTransaction(transaction.id, amount, type, merchant, categoryKey, memo, paymentMethod, date)
+                editingTransaction = null
             },
         )
     }
@@ -534,8 +534,9 @@ private fun TransactionEditDialog(
     transaction: Transaction,
     paymentMethods: List<String>,
     onDismiss: () -> Unit,
-    onSave: (String, TransactionType, String, String, String, String, LocalDate) -> Boolean,
+    onSave: suspend (String, TransactionType, String, String, String, String, LocalDate) -> Unit,
 ) {
+    val saving = rememberSaveActionState()
     if (transaction.type == TransactionType.TRANSFER) {
         AlertDialog(onDismissRequest = onDismiss, title = { Text("이체 기록 수정") },
             text = { Text("계좌 연결과 잔액을 함께 변경하려면 관리 → 계좌·지갑과 이체에서 수정해 주세요.") },
@@ -555,59 +556,63 @@ private fun TransactionEditDialog(
     val date = runCatching { LocalDate.parse(dateText) }.getOrNull()
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!saving.busy) onDismiss() },
         title = { Text("거래 수정", fontWeight = FontWeight.Bold) },
         text = {
             Column(modifier = Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(type == TransactionType.EXPENSE, { typeName = TransactionType.EXPENSE.name }, label = { Text("지출") })
-                    FilterChip(type == TransactionType.INCOME, { typeName = TransactionType.INCOME.name }, label = { Text("수입") })
+                    FilterChip(type == TransactionType.EXPENSE, { typeName = TransactionType.EXPENSE.name }, enabled = !saving.busy, label = { Text("지출") })
+                    FilterChip(type == TransactionType.INCOME, { typeName = TransactionType.INCOME.name }, enabled = !saving.busy, label = { Text("수입") })
                 }
                 OutlinedTextField(
                     value = amount,
-                    onValueChange = { amount = it.filter(Char::isDigit); showError = false },
+                    onValueChange = { amount = it.take(24); showError = false },
                     label = { Text("금액") },
                     suffix = { Text("원") },
                     singleLine = true,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
+                    enabled = !saving.busy,
                 )
-                OutlinedTextField(value = merchant, onValueChange = { merchant = it; showError = false }, label = { Text("가맹점") }, singleLine = true)
+                OutlinedTextField(value = merchant, onValueChange = { merchant = it; showError = false }, label = { Text("가맹점") }, singleLine = true, enabled = !saving.busy)
                 OutlinedTextField(
                     value = dateText,
                     onValueChange = { dateText = it; showError = false },
                     label = { Text("날짜 (YYYY-MM-DD)") },
                     singleLine = true,
                     isError = showError && date == null,
+                    enabled = !saving.busy,
                 )
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     allCategorySpecs().forEach { spec ->
                         FilterChip(
                             selected = categoryKey == spec.key,
                             onClick = { categoryKey = spec.key },
+                            enabled = !saving.busy,
                             label = { Text(categoryLabel(spec.key)) },
                         )
                     }
                 }
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     paymentMethods.forEach { method ->
-                        FilterChip(selected = paymentMethod == method, onClick = { paymentMethod = method }, label = { Text(method) })
+                        FilterChip(selected = paymentMethod == method, onClick = { paymentMethod = method }, enabled = !saving.busy, label = { Text(method) })
                     }
                 }
-                OutlinedTextField(value = memo, onValueChange = { memo = it }, label = { Text("메모") }, singleLine = true)
+                OutlinedTextField(value = memo, onValueChange = { memo = it }, label = { Text("메모") }, singleLine = true, enabled = !saving.busy)
                 if (showError) Text("금액, 가맹점, 날짜를 확인해 주세요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
+                saving.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium) }
             }
         },
         confirmButton = {
-            TextButton(onClick = {
+            TextButton(enabled = !saving.busy, onClick = {
                 val parsedDate = runCatching { LocalDate.parse(dateText) }.getOrNull()
-                if (parsedDate == null || amount.toLongOrNull()?.let { it > 0 } != true || merchant.isBlank()) {
+                if (parsedDate == null || com.moasseum.app.domain.parseAmount(amount) == null || merchant.isBlank()) {
                     showError = true
                 } else {
-                    if (!onSave(amount, type, merchant, categoryKey, memo, paymentMethod, parsedDate)) showError = true
+                    saving.save({ onSave(amount, type, merchant, categoryKey, memo, paymentMethod, parsedDate) })
                 }
             }) { Text("저장", color = colors.accent) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
+        dismissButton = { TextButton(enabled = !saving.busy, onClick = onDismiss) { Text("취소") } },
     )
 }
 

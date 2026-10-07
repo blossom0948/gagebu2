@@ -58,6 +58,9 @@
 
 ## 이번 작업 검증
 
+- v0.1.20 (2026-10-08): 관리·입력·알림·로그인 화면의 반복 설명 정리 및 사용하지 않는 문구 리소스 제거. 오늘/이번 주 집계와 월 경계, 실제 저장 완료 전에 성공 처리하던 폼, 저장 예외 누락, 오래된 월의 AI 응답 경합, 거래 시간대 손실, 잘못된 금액 붙여넣기, 카드/카테고리 설정 정합성, 반복 규칙 수정의 거짓 성공, 알림 진단 저장 실패가 감지를 막는 경로를 수정. 단위 114개·lint 오류 0·Debug/AndroidTest/Release APK 빌드 성공. lint 경고 21개는 기존 의존성 업데이트 안내 등이며 새 오류는 아님. Android instrumentation 10개는 컴파일만 확인했고 휴대폰 미연결로 실행/설치/Google 로그인/알림 실기기 동작은 미검증. 상세: [2026-10-08 앱 QA 보고서](QA_APP_AUDIT_REPORT_2026-10-08.md)
+- v0.1.20 APK: `com.moasseum.app`, versionCode 20, versionName 0.1.20, 59,130,809 bytes; SHA-256 `ec0b2aaf9f4c6df88fe241339c49af6231167b62a189d8bde9720472b79646c9`. 기존 Release 인증서 지문 유지. 공개 Release와 공개 다운로드 해시는 배포 후 확인해 아래에 기록.
+
 - v0.1.14: UI·애니메이션 정리, 대화 알림 제외, 알림 후보 확인 큐/중복 저장 방어. 상세 범위와 한계는 [QA_UI_REPORT_2026-10-04.md](QA_UI_REPORT_2026-10-04.md) 참고
 - v0.1.14: 단위 테스트 25개·lint·서명 Release 빌드 성공, Galaxy 기존 데이터 유지 설치와 설치 APK 해시 일치 확인
 - v0.1.14 APK: 56,741,406 bytes; SHA-256 `2b0799e42ee06e1ad8b94f5a2d08102f5ea3b238bbbbed177c7ba4502d2e2ca3`
@@ -87,7 +90,8 @@
 - 연결 Android 기기 — `R3CT80B80MN` / Galaxy Z Fold4 / Android 16(API 36)에서 최종 릴리스 설치·기능·알림·재연결·백그라운드 알림 검증 완료
 - 상세 실기기 오류 기록과 수정 결과 — [QA_TEST_REPORT_2026-10-04.md](QA_TEST_REPORT_2026-10-04.md)
 - Debug APK — `app/build/outputs/apk/debug/app-debug.apk`
-- 현재 공개 APK — [v0.1.19](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.19), 59,131,229 bytes; SHA-256 `d9dee61e2c9a954f916d9afa94b40267032d485262e380d419008909530d416c`. 무인증 latest·asset digest·공개 재다운로드와 로컬 서명 빌드 일치. 휴대폰 설치/실제 Google 로그인은 미실행. 상세 결과는 구글 로그인 QA 문서에 기록
+- 현재 공개 APK — 배포 후 v0.1.20 Release의 latest 태그·asset digest·공개 재다운로드를 검증하고 위 로컬 APK SHA-256/크기와 일치 여부를 이 항목에 기록한다. 휴대폰 설치/Google 로그인/알림 실기기 검증은 별도 수행 전까지 미검증.
+- 이전 공개 APK — [v0.1.19](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.19), 59,131,229 bytes; SHA-256 `d9dee61e2c9a954f916d9afa94b40267032d485262e380d419008909530d416c`. 당시 무인증 latest·asset digest·공개 재다운로드와 로컬 서명 빌드 일치. 휴대폰 설치/실제 Google 로그인은 미실행.
 - 마지막 휴대폰 설치 검증 APK — [v0.1.18](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.18), 56,905,458 bytes; SHA-256 `172d481f7915d9916a27c4d809d6618ce62ced3830c1c7722a3fed91e3a23521`. 2026-10-05 무인증 latest·asset digest·공개 재다운로드·설치 APK 일치. v0.1.19의 설치 성공으로 간주하지 않음
 
 ## 다음 작업/배포 안내

@@ -121,30 +121,28 @@ private fun AddMenu(onModeChange: (AddMode) -> Unit, onStartVoiceInput: () -> Un
         verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         Text("새 기록", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("남기는 방법을 골라주세요.", color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.height(2.dp))
         AddActionRow(
             icon = Icons.Rounded.TouchApp,
             title = "직접 입력",
-            message = "금액과 카테고리를 바로 선택해요.",
+            message = "",
             onClick = { onModeChange(AddMode.DIRECT) },
         )
         AddActionRow(
             icon = Icons.Rounded.AutoAwesome,
             title = "AI 문장으로 입력",
-            message = "‘어제 점심 8천원’처럼 적어요.",
+            message = "예: 점심 8천원",
             onClick = { onModeChange(AddMode.AI_INPUT) },
         )
         AddActionRow(
             icon = Icons.Rounded.KeyboardVoice,
             title = "음성으로 입력",
-            message = "말한 내용을 거래 후보로 만들어요.",
+            message = "",
             onClick = onStartVoiceInput,
         )
         AddActionRow(
             icon = Icons.Rounded.CameraAlt,
             title = "영수증 가져오기",
-            message = "촬영 후 금액을 직접 확인해요.",
+            message = "",
             onClick = { onModeChange(AddMode.RECEIPT_NOTICE) },
         )
     }
@@ -204,7 +202,7 @@ private fun AiInputForm(
             Text("AI로 빠르게 기록", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             TextButton(enabled = !saving, onClick = { onModeChange(AddMode.MENU) }) { Text("방법 바꾸기") }
         }
-        Text("문장을 보내면 거래 후보를 만들고, 확인한 뒤에만 저장해요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+        Text("입력 문장을 AI 서버로 전송합니다. 저장 전 확인할 수 있습니다.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         OutlinedTextField(
             value = input,
             onValueChange = { input = it; showConfirmError = false },
@@ -233,16 +231,7 @@ private fun AiInputForm(
             }
         }
         when (aiState) {
-            AiParseState.Idle -> {
-                Surface(color = colors.surfaceOverlay, shape = RoundedCornerShape(13.dp)) {
-                    Text(
-                        "예: 어제 점심 8천원, 오늘 월급 250만원. 연결이 어려울 때는 기기 안에서 해석해요.",
-                        color = colors.textSecondary,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(10.dp),
-                    )
-                }
-            }
+            AiParseState.Idle -> Unit
 
             AiParseState.Loading -> {
                 Text("거래 후보를 만드는 중이에요…", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
@@ -265,7 +254,7 @@ private fun AiInputForm(
                     type = TransactionType.valueOf(typeName),
                     paymentMethods = paymentMethods,
                     paymentMethod = paymentMethod,
-                    onAmountChange = { amount = it.filter(Char::isDigit); showConfirmError = false },
+                    onAmountChange = { amount = it.take(24); showConfirmError = false },
                     onMerchantChange = { merchant = it; showConfirmError = false },
                     onMemoChange = { memo = it },
                     onCategoryChange = { categoryKey = it },
@@ -413,7 +402,7 @@ private fun AddActionRow(
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                Text(message, color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                if (message.isNotBlank()) Text(message, color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
             }
             Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = colors.textSecondary)
         }
@@ -470,7 +459,7 @@ private fun DirectTransactionForm(
         }
         OutlinedTextField(
             value = amount,
-            onValueChange = { amount = it.filter(Char::isDigit); showError = false },
+            onValueChange = { amount = it.take(24); showError = false },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("금액") },
             placeholder = { Text("0") },
@@ -566,7 +555,7 @@ private fun ReceiptInputNotice(
             Icon(Icons.Rounded.CameraAlt, contentDescription = null, tint = colors.accent, modifier = Modifier.padding(14.dp).size(26.dp))
         }
         Text("영수증 사진으로 기록", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("한국어 OCR로 기기 안에서 글자를 읽어요. 사진 원본과 인식 내용은 서버로 전송하지 않습니다. 금액은 저장 전에 직접 확인할 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+        Text("사진은 기기에서만 처리됩니다.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         when (aiState) {
             AiParseState.Loading -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                 CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)

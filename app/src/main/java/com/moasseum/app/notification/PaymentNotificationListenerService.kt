@@ -30,7 +30,7 @@ class PaymentNotificationListenerService : NotificationListenerService() {
         Log.i(TAG, "notification listener connected")
         val financeApplication = application as? FinanceApplication
         if (financeApplication != null) {
-            serviceScope.launch { financeApplication.preferencesRepository.markNotificationServiceConnected() }
+            serviceScope.launch { updateDiagnostics { financeApplication.preferencesRepository.markNotificationServiceConnected() } }
         }
         runCatching { getActiveNotifications().orEmpty().forEach(::onNotificationPosted) }
     }
@@ -56,13 +56,19 @@ class PaymentNotificationListenerService : NotificationListenerService() {
             runCatching {
                 // Record that the listener really received an external notification even when
                 // the text is not a transaction. This makes the diagnostic state useful.
-                financeApplication.preferencesRepository.markNotificationSeen()
+                updateDiagnostics { financeApplication.preferencesRepository.markNotificationSeen() }
                 val content = runCatching { extractContent(sbn.notification) }
                     .onFailure { error -> Log.w(TAG, "notification text unavailable: ${error::class.java.simpleName}") }
                     .getOrDefault(NotificationContent("", ""))
                 if (content.title.isBlank() && content.body.isBlank()) return@runCatching
 
-                val aiEnabled = financeApplication.preferencesRepository.aiNotificationClassificationEnabled.first()
+                val aiEnabled = try {
+                    financeApplication.preferencesRepository.aiNotificationClassificationEnabled.first()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    false // Optional AI settings cannot stop local detection.
+                }
                 val localCandidate = PaymentNotificationParser.parse(
                     packageName = sbn.packageName,
                     title = content.title,
@@ -100,13 +106,12 @@ class PaymentNotificationListenerService : NotificationListenerService() {
                 }
                 val detectedCandidate = candidate ?: return@runCatching
                 val id = financeApplication.financeRepository.saveNotificationCandidate(detectedCandidate) ?: return@runCatching
-                financeApplication.preferencesRepository.markNotificationCandidateCreated()
                 val detected = detectedCandidate.copy(id = id).toDomain()
-                if (financeApplication.isActivityVisible) {
-                    financeApplication.publishNotificationCandidate(detected)
-                } else {
+                val deliveredInApp = financeApplication.isActivityVisible && financeApplication.publishNotificationCandidate(detected)
+                if (!deliveredInApp) {
                     PaymentNotificationNotifier.showCandidate(this@PaymentNotificationListenerService, detected)
                 }
+                updateDiagnostics { financeApplication.preferencesRepository.markNotificationCandidateCreated() }
             }.onFailure { error ->
                 if (error is CancellationException) throw error
                 Log.w(TAG, "notification processing failed: ${error::class.java.simpleName}")
@@ -118,7 +123,7 @@ class PaymentNotificationListenerService : NotificationListenerService() {
         super.onListenerDisconnected()
         Log.w(TAG, "notification listener disconnected; requesting rebind")
         (application as? FinanceApplication)?.let { financeApplication ->
-            serviceScope.launch { financeApplication.preferencesRepository.markNotificationServiceDisconnected() }
+            serviceScope.launch { updateDiagnostics { financeApplication.preferencesRepository.markNotificationServiceDisconnected() } }
         }
         // Android may disconnect a listener temporarily during a system settings
         // change or a One UI process restart. requestRebind is the only listener
@@ -140,6 +145,12 @@ class PaymentNotificationListenerService : NotificationListenerService() {
     override fun onDestroy() {
         serviceScope.cancel()
         super.onDestroy()
+    }
+
+    private suspend fun updateDiagnostics(block: suspend () -> Unit) {
+        try { block() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) { Log.w(TAG, "notification diagnostics unavailable: ${error::class.java.simpleName}") }
     }
 
     @Suppress("DEPRECATION")

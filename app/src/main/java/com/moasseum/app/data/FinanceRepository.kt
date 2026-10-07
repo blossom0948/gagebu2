@@ -96,6 +96,7 @@ class FinanceRepository(
     }
 
     suspend fun updateBudget(monthKey: String, amount: Long) {
+        require(amount in 1..1_000_000_000_000L)
         val previous = dao.getBudget(monthKey)
         dao.upsertBudget(
             BudgetEntity(
@@ -157,6 +158,7 @@ class FinanceRepository(
         memo: String,
         paymentMethod: String,
     ): Boolean {
+        require(type != TransactionType.TRANSFER && amount in 1..1_000_000_000_000L && merchant.isNotBlank())
         val updated = dao.updateTransaction(
             id = id,
             type = type.name,
@@ -177,14 +179,14 @@ class FinanceRepository(
     suspend fun saveNotificationCandidate(candidate: NotificationCandidateEntity): Long? =
         dao.insertNotificationCandidate(candidate).takeIf { it > 0L }
 
-    suspend fun acceptNotificationCandidate(id: Long) {
-        val candidate = dao.getNotificationCandidate(id) ?: return
-        if (NotificationSourcePolicy.isExcluded(candidate.packageName)) return
+    suspend fun acceptNotificationCandidate(id: Long): Boolean {
+        val candidate = dao.getNotificationCandidate(id) ?: return false
+        if (NotificationSourcePolicy.isExcluded(candidate.packageName)) return false
         val now = System.currentTimeMillis()
         val occurredAt = java.time.Instant.ofEpochMilli(candidate.postedAt)
             .atZone(ZoneId.systemDefault()).toLocalDate()
             .atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        dao.acceptCandidateTransaction(
+        return dao.acceptCandidateTransaction(
             id,
             TransactionEntity(
                 amount = candidate.amount,
@@ -225,7 +227,7 @@ class FinanceRepository(
         paymentMethod: String,
         dayOfMonth: Int,
     ) {
-        require(amount > 0L && merchant.isNotBlank() && dayOfMonth in 1..31)
+        require(type != TransactionType.TRANSFER && amount in 1..1_000_000_000_000L && merchant.isNotBlank() && dayOfMonth in 1..31)
         val today = LocalDate.now()
         val nextOccurrence = firstRecurringOccurrence(today, dayOfMonth)
         val now = System.currentTimeMillis()
@@ -255,7 +257,7 @@ class FinanceRepository(
         id: Long, amount: Long, type: TransactionType, merchant: String, categoryKey: String,
         memo: String, paymentMethod: String, dayOfMonth: Int,
     ) {
-        require(amount > 0L && merchant.isNotBlank() && dayOfMonth in 1..31)
+        require(type != TransactionType.TRANSFER && amount in 1..1_000_000_000_000L && merchant.isNotBlank() && dayOfMonth in 1..31)
         dao.editRecurringRule(
             id, amount, type.name, merchant.trim(), categoryKey, memo.trim(), paymentMethod,
             dayOfMonth, LocalDate.now().toString(), System.currentTimeMillis(),
@@ -287,6 +289,7 @@ private fun TransactionEntity.toDomain(): Transaction =
         source = source,
         accountId = accountId,
         destinationAccountId = destinationAccountId,
+        timezone = timezone,
     )
 
 private fun RecurringTransactionEntity.toDomain(): RecurringRule =

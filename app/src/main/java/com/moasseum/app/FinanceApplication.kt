@@ -65,7 +65,6 @@ class FinanceApplication : Application() {
         RecurringTransactionWorker.schedule(this)
     }
 
-    fun publishNotificationCandidate(candidate: NotificationCandidate) {
-        notificationCandidateEventsChannel.trySend(candidate)
-    }
+    fun publishNotificationCandidate(candidate: NotificationCandidate): Boolean =
+        notificationCandidateEventsChannel.trySend(candidate).isSuccess
 }

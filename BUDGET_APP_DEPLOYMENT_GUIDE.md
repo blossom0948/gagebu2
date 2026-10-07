@@ -421,6 +421,20 @@ node scripts/check-google-oauth.mjs
 
 공급자/클라이언트만 교체하는 후속 작업은 Google/Supabase 설정과 위 실제 반환 주소 검사가 필요하다. 앱의 공개 프로젝트 URL/키·콜백 패키지·UI 코드가 바뀌면 APK도 새로 배포한다. [Supabase Google 로그인](https://supabase.com/docs/guides/auth/social-login/auth-google), [Google 버튼 가이드](https://developers.google.com/identity/branding-guidelines)
 
+### v0.1.20 앱 오류 수정 릴리스
+
+v0.1.20은 Android 앱 코드와 문구 리소스만 바꿨다. Worker/API 계약, Supabase 설정, Room Entity/스키마, 앱 ID, 기존 서명 키는 바뀌지 않아 Worker 재배포·Supabase 변경·Room Migration은 하지 않는다.
+
+다음 유사 수정 때는 아래 순서로 진행한다.
+
+1. `gradle.properties`에서 `VERSION_CODE`를 올리고 `VERSION_NAME`을 정한다.
+2. `:app:testDebugUnitTest`, `:app:lintDebug`, `:app:assembleDebugAndroidTest`, `:app:assembleRelease`를 실행한다. 계정·기기·OS 의존 동작은 연결 기기에서 별도 검증하고, 미실행은 보고서에 명확히 남긴다.
+3. Release APK의 패키지/versionCode/versionName과 서명 인증서 지문을 확인하고 SHA-256/파일 크기를 기록한다. 기존 개인 설치본 업데이트를 위해 앱 ID와 릴리스 키를 유지한다.
+4. 범위가 앱 코드만이면 같은 소스 커밋을 `main`에 push하고, Release tag를 해당 커밋에 붙여 `app-release.apk`와 같은 버전 릴리스 노트를 GitHub Release에 게시한다. AI Worker 코드가 바뀐 경우에는 위 Worker 절차로 별도 테스트·배포한다.
+5. 공개 Release API의 latest 태그와 asset digest를 확인하고, 공개 URL에서 APK를 다시 내려받아 로컬 SHA-256/크기와 비교한다. 그런 뒤 앱의 `관리 → 앱 업데이트` 경로와 실제 폰 설치는 각각 구분해 검증한다.
+
+v0.1.20 빌드는 unit 114개 통과, lint 오류 0(경고 21개), Release APK 성공이다. Android instrumentation 10개는 APK에 컴파일됐으나 연결 기기가 없어 테스트 실행은 하지 않았다. 공개 배포/재다운로드 결과는 [2026-10-08 QA 보고서](QA_APP_AUDIT_REPORT_2026-10-08.md)에 기록한다.
+
 ### 다음 기능별 배포 판단
 
 | 변경 | 필요한 배포/검증 |

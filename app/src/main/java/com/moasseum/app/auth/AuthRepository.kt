@@ -38,7 +38,7 @@ class AuthRepository(private val api: AuthApi, private val store: SessionStore, 
         finally { mutableState.value = mutableState.value.copy(busy = false, initialized = true) }
     }
     suspend fun login(email: String, password: String) = action {
-        save(api.login(email.trim(), password)); clearPending(); message("로그인했어요. 기기 기록은 자동 공유되지 않아요.")
+        save(api.login(email.trim(), password)); clearPending(); message("로그인했어요.")
     }
     suspend fun beginGoogleLogin(): Result<String> {
         var url: String? = null
@@ -114,7 +114,7 @@ class AuthRepository(private val api: AuthApi, private val store: SessionStore, 
             mutableState.value = mutableState.value.copy(recoveryEmail = verified.user.email)
             message("이메일 인증을 마쳤어요. 새 비밀번호를 입력해 주세요.")
         } else {
-            save(verified); message(if (pending.provider == "google") "구글 로그인을 마쳤어요. 기기 기록은 자동 공유되지 않아요." else "이메일 인증과 로그인을 마쳤어요. 기기 기록은 자동 공유되지 않아요.")
+            save(verified); message(if (pending.provider == "google") "구글 로그인 완료" else "이메일 인증·로그인 완료")
         }
         clearPending()
     }

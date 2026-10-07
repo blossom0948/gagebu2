@@ -158,6 +158,8 @@ class UserPreferencesRepository(
         val encoded = PaymentCardSettings.encode(cards.distinctBy(PaymentCard::id))
         context.settingsDataStore.edit { preferences ->
             preferences[PAYMENT_CARDS] = encoded
+            val methods = preferences[PAYMENT_METHODS]?.split('\n') ?: DEFAULT_PAYMENT_METHODS
+            preferences[PAYMENT_METHODS] = (methods + cards.map { it.paymentMethod }).map(String::trim).filter(String::isNotBlank).distinct().take(36).joinToString("\n")
         }
     }
 
@@ -187,6 +189,8 @@ class UserPreferencesRepository(
         }
         context.settingsDataStore.edit { preferences ->
             preferences[CATEGORY_LABELS] = normalized.entries.joinToString("\n") { (key, value) -> "$key=$value" }
+            preferences[CATEGORY_BUDGETS] = preferences[CATEGORY_BUDGETS].orEmpty().lineSequence()
+                .filter { it.substringBefore('=') in normalized }.joinToString("\n")
         }
     }
 

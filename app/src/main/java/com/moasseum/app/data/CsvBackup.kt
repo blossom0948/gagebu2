@@ -15,12 +15,13 @@ data class ImportedTransaction(
     val source: String,
     val accountId: String? = null,
     val destinationAccountId: String? = null,
+    val timezone: String? = null,
 )
 
 object CsvBackup {
     private val headers = listOf(
         "id", "type", "amount", "occurredAt", "categoryKey", "merchant", "memo", "paymentMethod", "source",
-        "accountId", "destinationAccountId",
+        "accountId", "destinationAccountId", "timezone",
     )
 
     fun encode(transactions: List<Transaction>): String = buildString {
@@ -40,6 +41,7 @@ object CsvBackup {
                 transaction.source,
                 transaction.accountId.orEmpty(),
                 transaction.destinationAccountId.orEmpty(),
+                transaction.timezone,
             ).joinTo(this, separator = ",", transform = ::escape)
             append("\r\n")
         }
@@ -69,6 +71,9 @@ object CsvBackup {
                 ?: throw IllegalArgumentException("${lineNumber}번째 줄의 가맹점이 비어 있어요.")
             val accountId = value("accountId").takeIf(String::isNotBlank)
             val destination = value("destinationAccountId").takeIf(String::isNotBlank)
+            val timezone = value("timezone").takeIf(String::isNotBlank)?.also {
+                require(runCatching { java.time.ZoneId.of(it) }.isSuccess) { "${lineNumber}번째 줄의 시간대를 확인해 주세요." }
+            }
             if (type == TransactionType.TRANSFER) require(accountId != null && destination != null && accountId != destination) { "${lineNumber}번째 줄의 이체 계좌를 확인해 주세요. 계좌까지 복원하려면 JSON 전체 백업을 사용하세요." }
             else require(destination == null)
             ImportedTransaction(
@@ -82,6 +87,7 @@ object CsvBackup {
                 source = value("source").ifBlank { "IMPORT" },
                 accountId = accountId,
                 destinationAccountId = destination,
+                timezone = timezone,
             )
         }
     }

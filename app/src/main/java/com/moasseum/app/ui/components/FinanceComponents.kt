@@ -424,7 +424,7 @@ fun EmptyState(
             Icon(Icons.Rounded.AccountBalanceWallet, contentDescription = null, tint = colors.accent)
         }
         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-        Text(
+        if (message.isNotBlank()) Text(
             message,
             style = MaterialTheme.typography.bodyMedium,
             color = colors.textSecondary,

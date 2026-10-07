@@ -64,6 +64,7 @@ import com.moasseum.app.domain.formatMonth
 import com.moasseum.app.domain.formatWon
 import com.moasseum.app.domain.cardUsage
 import com.moasseum.app.ui.components.FinanceCard
+import com.moasseum.app.ui.components.rememberSaveActionState
 import com.moasseum.app.ui.components.CategorySpecs
 import com.moasseum.app.ui.components.LocalCategoryLabels
 import com.moasseum.app.ui.components.allCategorySpecs
@@ -79,23 +80,23 @@ fun ManageScreen(
     uiState: LedgerUiState,
     paymentMethods: List<String>,
     paymentCards: List<PaymentCard>,
-    onSavePaymentCards: (List<PaymentCard>) -> Unit,
+    onSavePaymentCards: suspend (List<PaymentCard>) -> Unit,
     categoryBudgets: Map<String, Long>,
-    onSaveCategoryBudgets: (Map<String, Long>) -> Unit,
-    onSavePaymentMethods: (List<String>) -> Unit,
-    onSaveCategoryLabels: (Map<String, String>) -> Unit,
-    onDeleteCustomCategory: (String, Map<String, String>) -> Unit,
+    onSaveCategoryBudgets: suspend (Map<String, Long>) -> Unit,
+    onSavePaymentMethods: suspend (List<String>) -> Unit,
+    onSaveCategoryLabels: suspend (Map<String, String>) -> Unit,
+    onDeleteCustomCategory: suspend (String, Map<String, String>) -> Unit,
     onClearLocalData: () -> Unit,
     recurringRules: List<RecurringRule>,
-    onAddRecurringRule: (String, TransactionType, String, String, String, String, String) -> Boolean,
-    onEditRecurringRule: (Long, String, TransactionType, String, String, String, String, String) -> Boolean,
+    onAddRecurringRule: suspend (String, TransactionType, String, String, String, String, String) -> Unit,
+    onEditRecurringRule: suspend (Long, String, TransactionType, String, String, String, String, String) -> Unit,
     onSetRecurringRuleActive: (Long, Boolean) -> Unit,
     onDeleteRecurringRule: (Long) -> Unit,
     darkTheme: Boolean,
     reduceMotion: Boolean,
     onDarkThemeChanged: (Boolean) -> Unit,
     onReduceMotionChanged: (Boolean) -> Unit,
-    onUpdateBudget: (String) -> Boolean,
+    onUpdateBudget: suspend (String) -> Unit,
     notificationAccessEnabled: Boolean,
     pendingCandidates: List<NotificationCandidate>,
     notificationServiceConnectedAt: Long?,
@@ -154,7 +155,6 @@ fun ManageScreen(
                         Spacer(Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text("${formatMonth(uiState.month)} 목표 지출", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            Text("홈 화면의 진행률에 반영돼요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                         }
                         Icon(Icons.Rounded.ChevronRight, contentDescription = null, modifier = Modifier.size(24.dp))
                     }
@@ -163,19 +163,19 @@ fun ManageScreen(
             }
         }
         item {
-            FinanceCard { SettingSwitchRow(Icons.Rounded.Wallet, "남은 예산 다음 달 이월", "지출 후 남은 예산을 다음 달 목표에 더해요.", uiState.budgetRollover, onSetBudgetRollover) }
+            FinanceCard { SettingSwitchRow(Icons.Rounded.Wallet, "남은 예산 다음 달 이월", "", uiState.budgetRollover, onSetBudgetRollover) }
         }
         item { ManageSectionTitle("가계부 구성") }
         item {
             FinanceCard {
-                ManageRow(Icons.Rounded.AccountBalance, "계좌·지갑과 이체", "잔액 관리 · 계좌 간 이체 · 거래 연결", onClick = onOpenAccounts)
+                ManageRow(Icons.Rounded.AccountBalance, "계좌·지갑과 이체", "", onClick = onOpenAccounts)
                 HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                ManageRow(Icons.Rounded.Category, "카테고리", "기본 7개 이름 변경 · 내 카테고리 추가", onClick = { showCategoryDialog = true })
+                ManageRow(Icons.Rounded.Category, "카테고리", "", onClick = { showCategoryDialog = true })
                 HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                 ManageRow(
                     Icons.Rounded.Category,
                     "카테고리별 예산",
-                    if (categoryBudgets.isEmpty()) "카테고리별 한도를 설정해요" else "${categoryBudgets.size}개 카테고리 한도 설정됨",
+                    if (categoryBudgets.isEmpty()) "미설정" else "${categoryBudgets.size}개 설정",
                     onClick = { showCategoryBudgetsDialog = true },
                 )
                 HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
@@ -188,22 +188,22 @@ fun ManageScreen(
                 ManageRow(
                     Icons.Rounded.CalendarMonth,
                     "결제일 기준 보기",
-                    if (paymentCards.isEmpty()) "카드별 이용기간과 사용액 확인" else "${formatMonth(uiState.month)} 결제 · 기록 ${formatWon(paymentCards.sumOf { cardUsage(it, uiState.month, uiState.transactions).total })}",
+                    if (paymentCards.isEmpty()) "등록된 카드 없음" else "${formatMonth(uiState.month)} · ${formatWon(paymentCards.sumOf { cardUsage(it, uiState.month, uiState.transactions).total })}",
                     onClick = { showCardUsageDialog = true },
                 )
                 HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                 ManageRow(
                     Icons.Rounded.CreditCard,
                     "카드·결제일",
-                    if (paymentCards.isEmpty()) "카드를 등록하면 결제일 순으로 보여요" else "${paymentCards.size}장 · ${paymentCards.minOf { it.dueDay }}일 기준",
+                    if (paymentCards.isEmpty()) "" else "${paymentCards.size}장",
                     onClick = { showPaymentCardsDialog = true },
                 )
                 HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                ManageRow(Icons.Rounded.Repeat, "반복 거래 관리", "매월 자동 기록 · ${recurringRules.count { it.isActive }}개 사용 중", onClick = { showRecurringDialog = true })
+                ManageRow(Icons.Rounded.Repeat, "반복 거래 관리", "${recurringRules.count { it.isActive }}개 사용 중", onClick = { showRecurringDialog = true })
                 HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                 ManageRow(
                     Icons.Rounded.Wallet, "구독·고정비 레이더",
-                    "월 예정 ${formatWon(recurringRules.filter { it.isActive && it.type == TransactionType.EXPENSE }.sumOf { it.amount })} · 다가오는 지출 확인",
+                    "월 예정 ${formatWon(recurringRules.filter { it.isActive && it.type == TransactionType.EXPENSE }.sumOf { it.amount })}",
                     onClick = { showFixedRadarDialog = true },
                 )
             }
@@ -211,10 +211,10 @@ fun ManageScreen(
         item { ManageSectionTitle("앱 설정") }
         item {
             FinanceCard {
-                ManageRow(Icons.Rounded.Wallet, "JSON 전체 백업", "거래·계좌·예산·반복 규칙·앱 설정", onClick = onExportBackup)
-                ManageRow(Icons.Rounded.Wallet, "백업 복원", "미리보기 후 복원 · 복원 전 데이터 안전 저장", onClick = onRestoreBackup)
-                ManageRow(Icons.Rounded.Wallet, "복원 전 안전 백업 내보내기", "마지막 복원 이전 상태 보관", onClick = onExportSafetyBackup)
-                ManageRow(Icons.Rounded.CalendarMonth, "월별 PDF 리포트", "선택한 달의 요약과 전체 거래 내역", onClick = onExportPdf)
+                ManageRow(Icons.Rounded.Wallet, "전체 백업 내보내기", "", onClick = onExportBackup)
+                ManageRow(Icons.Rounded.Wallet, "백업 복원", "", onClick = onRestoreBackup)
+                ManageRow(Icons.Rounded.Wallet, "복원 전 백업 내보내기", "", onClick = onExportSafetyBackup)
+                ManageRow(Icons.Rounded.CalendarMonth, "월별 PDF 리포트", formatMonth(uiState.month), onClick = onExportPdf)
             }
         }
         item {
@@ -222,7 +222,7 @@ fun ManageScreen(
                 SettingSwitchRow(
                     icon = Icons.Rounded.DarkMode,
                     title = "다크 모드",
-                    message = "차분한 어두운 화면을 사용해요.",
+                    message = "",
                     checked = darkTheme,
                     onCheckedChange = onDarkThemeChanged,
                 )
@@ -230,7 +230,7 @@ fun ManageScreen(
                 SettingSwitchRow(
                     icon = Icons.Rounded.Palette,
                     title = "모션 줄이기",
-                    message = "전환과 강조 움직임을 줄여요.",
+                    message = "",
                     checked = reduceMotion,
                     onCheckedChange = onReduceMotionChanged,
                 )
@@ -251,14 +251,14 @@ fun ManageScreen(
                 ManageRow(
                     Icons.Rounded.NotificationsActive,
                     "인식 알림 표시",
-                    if (appNotificationsEnabled) "허용됨 · 감지 결과를 바로 알려드려요" else "앱 알림 권한을 켜야 감지 즉시 알려드려요",
+                    if (appNotificationsEnabled) "허용됨" else "알림 권한 필요",
                     onClick = onOpenAppNotificationSettings,
                 )
                 HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                 SettingSwitchRow(
                     icon = Icons.Rounded.Security,
                     title = "AI 알림 오탐 줄이기",
-                    message = if (aiLoginRequired) "로그인 후 AI 판별 · 기본 알림 감지는 유지돼요." else if (aiNotificationClassificationEnabled) "금융 단서가 있는 알림을 AI가 판별해요." else "선택 알림의 금융 거래 여부를 AI가 판별해요.",
+                    message = if (aiLoginRequired) "AI 판별은 로그인 필요" else "",
                     checked = aiNotificationClassificationEnabled,
                     onCheckedChange = { enabled ->
                         if (enabled) showAiNotificationConsent = true
@@ -266,12 +266,12 @@ fun ManageScreen(
                     },
                 )
                 HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                ManageRow(Icons.Rounded.Security, "개인정보와 데이터", "기기 저장 · AI 전송 안내 · 데이터 삭제", onClick = { showPrivacyDialog = true })
+                ManageRow(Icons.Rounded.Security, "개인정보와 데이터", "", onClick = { showPrivacyDialog = true })
             }
         }
         item {
             FinanceCard {
-                ManageRow(Icons.Rounded.NotificationsActive, "알림 후보함", "확인 대기 ${pendingCandidates.size}건 · 대화 알림 제외", onClick = onOpenCandidates)
+                ManageRow(Icons.Rounded.NotificationsActive, "알림 후보함", "확인 대기 ${pendingCandidates.size}건", onClick = onOpenCandidates)
             }
         }
         item {
@@ -284,7 +284,7 @@ fun ManageScreen(
         }
         item {
             Text(
-                "모아씀 ${com.moasseum.app.BuildConfig.VERSION_NAME} · 현재는 기기 안에만 저장돼요",
+                "모아씀 ${com.moasseum.app.BuildConfig.VERSION_NAME}",
                 color = colors.textSecondary,
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 5.dp),
@@ -298,9 +298,8 @@ fun ManageScreen(
             initialValue = uiState.baseBudgetAmount?.toString().orEmpty(),
             onDismiss = { showBudgetDialog = false },
             onSave = { input ->
-                val saved = onUpdateBudget(input)
-                if (saved) showBudgetDialog = false
-                saved
+                onUpdateBudget(input)
+                showBudgetDialog = false
             },
         )
     }
@@ -362,7 +361,7 @@ fun ManageScreen(
             onDismissRequest = { showPrivacyDialog = false },
             title = { Text("개인정보와 데이터") },
             text = {
-                Text("거래와 예산은 이 기기의 로컬 데이터베이스에 저장돼요. 자연어 입력을 해석하거나 AI 분석을 누를 때만 입력 문장 또는 합계·카테고리 통계가 AI Worker로 전송됩니다. 영수증 사진은 기기 안에서 OCR 처리하며 서버로 보내지 않아요.")
+                Text("가계부는 기기에 저장됩니다. AI 입력은 문장, 소비 분석·질문은 집계와 질문, AI 알림 판별은 선별된 알림 내용을 외부 AI 서버로 전송합니다. 영수증 사진은 기기에서만 처리합니다. 로그인만으로 기록이 공유되지는 않습니다.")
             },
             confirmButton = { TextButton(onClick = { showPrivacyDialog = false }) { Text("닫기") } },
             dismissButton = {
@@ -429,13 +428,10 @@ fun ManageScreen(
             paymentMethods = (paymentMethods + recurringRules.map { it.paymentMethod }).distinct(),
             onDismiss = { showCreateRecurringDialog = false },
             onSave = { amount, type, merchant, categoryKey, memo, paymentMethod, day ->
-                val saved = editingRecurringId?.let { id -> onEditRecurringRule(id, amount, type, merchant, categoryKey, memo, paymentMethod, day) }
+                editingRecurringId?.let { id -> onEditRecurringRule(id, amount, type, merchant, categoryKey, memo, paymentMethod, day) }
                     ?: onAddRecurringRule(amount, type, merchant, categoryKey, memo, paymentMethod, day)
-                if (saved) {
-                    showCreateRecurringDialog = false
-                    showRecurringDialog = true
-                }
-                saved
+                showCreateRecurringDialog = false
+                showRecurringDialog = true
             },
         )
     }
@@ -444,9 +440,10 @@ fun ManageScreen(
 @Composable
 private fun CategoryNamesDialog(
     onDismiss: () -> Unit,
-    onSave: (Map<String, String>) -> Unit,
-    onRemove: (String, Map<String, String>) -> Unit,
+    onSave: suspend (Map<String, String>) -> Unit,
+    onRemove: suspend (String, Map<String, String>) -> Unit,
 ) {
+    val saving = rememberSaveActionState()
     val currentLabels = LocalCategoryLabels.current
     val colors = LocalFinanceColors.current
     val initialNames = currentLabels
@@ -455,7 +452,7 @@ private fun CategoryNamesDialog(
     var categoryToRemove by remember { mutableStateOf<String?>(null) }
     var errorMessage by rememberSaveable { mutableStateOf<String?>(null) }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!saving.busy) onDismiss() },
         title = { Text("카테고리 관리") },
         text = {
             Column(
@@ -470,6 +467,7 @@ private fun CategoryNamesDialog(
                         label = { Text("기본 ${categoryLabel(spec.key)}") },
                         leadingIcon = { Icon(spec.icon, contentDescription = null, tint = spec.color) },
                         singleLine = true,
+                        enabled = !saving.busy,
                     )
                 }
                 if (names.keys.any { it.startsWith("CUSTOM_") }) {
@@ -483,8 +481,9 @@ private fun CategoryNamesDialog(
                                 label = { Text("카테고리 이름") },
                                 leadingIcon = { Icon(Icons.Rounded.Category, contentDescription = null, tint = colors.accent) },
                                 singleLine = true,
+                                enabled = !saving.busy,
                             )
-                            IconButton(onClick = { categoryToRemove = key }) {
+                            IconButton(enabled = !saving.busy, onClick = { categoryToRemove = key }) {
                                 Icon(Icons.Rounded.DeleteOutline, contentDescription = "${label} 삭제", tint = colors.expense)
                             }
                         }
@@ -497,8 +496,9 @@ private fun CategoryNamesDialog(
                         modifier = Modifier.weight(1f),
                         label = { Text("새 카테고리") },
                         singleLine = true,
+                        enabled = !saving.busy,
                     )
-                    TextButton(onClick = {
+                    TextButton(enabled = !saving.busy, onClick = {
                         val label = newCategoryName.trim()
                         when {
                             label.isBlank() -> errorMessage = "이름을 입력해 주세요."
@@ -514,31 +514,36 @@ private fun CategoryNamesDialog(
                     }) { Text("추가", color = colors.accent) }
                 }
                 errorMessage?.let { Text(it, color = colors.expense, style = MaterialTheme.typography.labelMedium) }
+                saving.error?.let { Text(it, color = colors.expense, style = MaterialTheme.typography.labelMedium) }
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(names) },
-                enabled = names.values.all(String::isNotBlank) && names.values.map { it.lowercase(Locale.ROOT) }.distinct().size == names.size,
+                onClick = { saving.save({ onSave(names) }) },
+                enabled = !saving.busy && names.values.all(String::isNotBlank) && names.values.map { it.trim().lowercase(Locale.ROOT) }.distinct().size == names.size,
             ) { Text("저장") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
+        dismissButton = { TextButton(enabled = !saving.busy, onClick = onDismiss) { Text("취소") } },
     )
     categoryToRemove?.let { key ->
         val label = names[key].orEmpty()
         AlertDialog(
-            onDismissRequest = { categoryToRemove = null },
+            onDismissRequest = { if (!saving.busy) categoryToRemove = null },
             title = { Text("‘$label’ 카테고리를 삭제할까요?") },
-            text = { Text("기존 거래, 반복 규칙, 알림 후보는 ‘기타’로 옮겨져요.") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("기존 거래, 반복 규칙, 알림 후보는 ‘기타’로 옮겨져요.")
+                saving.error?.let { Text(it, color = colors.expense, style = MaterialTheme.typography.labelMedium) }
+            } },
             confirmButton = {
-                TextButton(onClick = {
+                TextButton(enabled = !saving.busy, onClick = {
                     val updated = names - key
-                    names = updated
-                    categoryToRemove = null
-                    onRemove(key, updated)
+                    saving.save({ onRemove(key, updated) }) {
+                        names = updated
+                        categoryToRemove = null
+                    }
                 }) { Text("삭제", color = colors.expense) }
             },
-            dismissButton = { TextButton(onClick = { categoryToRemove = null }) { Text("취소") } },
+            dismissButton = { TextButton(enabled = !saving.busy, onClick = { categoryToRemove = null }) { Text("취소") } },
         )
     }
 }
@@ -547,26 +552,27 @@ private fun CategoryNamesDialog(
 private fun CategoryBudgetsDialog(
     budgets: Map<String, Long>,
     onDismiss: () -> Unit,
-    onSave: (Map<String, Long>) -> Unit,
+    onSave: suspend (Map<String, Long>) -> Unit,
 ) {
+    val saving = rememberSaveActionState()
     val colors = LocalFinanceColors.current
     val specs = allCategorySpecs()
     var draft by remember(budgets) { mutableStateOf(budgets.mapValues { (_, amount) -> amount.toString() }) }
     var errorMessage by rememberSaveable { mutableStateOf<String?>(null) }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!saving.busy) onDismiss() },
         title = { Text("카테고리별 예산") },
         text = {
             Column(
                 modifier = Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(7.dp),
             ) {
-                Text("비워 두면 해당 카테고리 한도를 해제해요. 홈 카테고리 현황에도 사용률을 표시합니다.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                Text("비워 두면 한도를 해제합니다.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                 specs.forEach { spec ->
                     OutlinedTextField(
                         value = draft[spec.key].orEmpty(),
                         onValueChange = { value ->
-                            draft = draft + (spec.key to value.filter(Char::isDigit).take(13))
+                            draft = draft + (spec.key to value.take(24))
                             errorMessage = null
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -574,24 +580,27 @@ private fun CategoryBudgetsDialog(
                         trailingIcon = { Text("원", color = colors.textSecondary) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
+                        enabled = !saving.busy,
                     )
                 }
                 errorMessage?.let { Text(it, color = colors.expense, style = MaterialTheme.typography.labelMedium) }
+                saving.error?.let { Text(it, color = colors.expense, style = MaterialTheme.typography.labelMedium) }
             }
         },
         confirmButton = {
-            TextButton(onClick = {
+            TextButton(enabled = !saving.busy, onClick = {
                 val invalid = draft.values.any { value ->
                     value.isNotBlank() && (value.toLongOrNull() == null || value.toLong() !in 1..1_000_000_000_000L)
                 }
                 if (invalid) {
                     errorMessage = "비워 두거나 1원 이상 금액을 입력해 주세요."
                 } else {
-                    onSave(draft.mapNotNull { (key, value) -> value.toLongOrNull()?.takeIf { it > 0L }?.let { key to it } }.toMap())
+                    val submitted = draft.mapNotNull { (key, value) -> value.toLongOrNull()?.takeIf { it > 0L }?.let { key to it } }.toMap()
+                    saving.save({ onSave(submitted) })
                 }
             }) { Text("저장", color = colors.accent) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
+        dismissButton = { TextButton(enabled = !saving.busy, onClick = onDismiss) { Text("취소") } },
     )
 }
 
@@ -599,20 +608,21 @@ private fun CategoryBudgetsDialog(
 private fun PaymentMethodsDialog(
     methods: List<String>,
     onDismiss: () -> Unit,
-    onSave: (List<String>) -> Unit,
+    onSave: suspend (List<String>) -> Unit,
 ) {
+    val saving = rememberSaveActionState()
     var draft by remember(methods) { mutableStateOf(methods) }
     var newMethod by rememberSaveable { mutableStateOf("") }
     var error by rememberSaveable { mutableStateOf(false) }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!saving.busy) onDismiss() },
         title = { Text("결제수단 관리") },
         text = {
             Column(modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                Text("항목을 눌러 제거하거나 새 결제수단을 추가하세요. 이미 저장된 거래의 값은 바뀌지 않아요.", color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                Text("목록에서 제거해도 기존 거래는 유지됩니다.", color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.labelMedium)
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     draft.forEach { method ->
-                        FilterChip(selected = true, onClick = { draft = draft - method }, label = { Text("$method  ×") })
+                        FilterChip(selected = true, onClick = { draft = draft - method }, enabled = !saving.busy, label = { Text("$method  ×") })
                     }
                 }
                 OutlinedTextField(
@@ -622,8 +632,9 @@ private fun PaymentMethodsDialog(
                     label = { Text("새 결제수단") },
                     singleLine = true,
                     isError = error,
+                    enabled = !saving.busy,
                 )
-                TextButton(onClick = {
+                TextButton(enabled = !saving.busy, onClick = {
                     val value = newMethod.trim()
                     if (value.isBlank() || value in draft || draft.size >= 36) {
                         error = true
@@ -635,10 +646,11 @@ private fun PaymentMethodsDialog(
                 }) { Text("추가") }
                 if (error) Text("중복되지 않은 이름을 입력해 주세요. 최대 36개까지 설정할 수 있어요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
                 if (draft.isEmpty()) Text("결제수단을 하나 이상 남겨주세요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
+                saving.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium) }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(draft) }, enabled = draft.isNotEmpty()) { Text("저장") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
+        confirmButton = { TextButton(onClick = { saving.save({ onSave(draft) }) }, enabled = !saving.busy && draft.isNotEmpty()) { Text("저장") } },
+        dismissButton = { TextButton(enabled = !saving.busy, onClick = onDismiss) { Text("취소") } },
     )
 }
 
@@ -647,8 +659,9 @@ private fun PaymentCardsDialog(
     cards: List<PaymentCard>,
     paymentMethods: List<String>,
     onDismiss: () -> Unit,
-    onSave: (List<PaymentCard>) -> Unit,
+    onSave: suspend (List<PaymentCard>) -> Unit,
 ) {
+    val saving = rememberSaveActionState()
     val colors = LocalFinanceColors.current
     var draft by remember(cards) { mutableStateOf(cards) }
     var showEditor by rememberSaveable { mutableStateOf(false) }
@@ -656,19 +669,15 @@ private fun PaymentCardsDialog(
     var errorMessage by rememberSaveable { mutableStateOf<String?>(null) }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!saving.busy) onDismiss() },
         title = { Text("카드·결제일 관리") },
         text = {
             Column(
                 modifier = Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Rounded.CalendarMonth, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
-                    Text("결제일·이용기간·연결 결제수단을 설정하면 카드별 사용액을 확인할 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
-                }
                 if (draft.isEmpty()) {
-                    Text("카드번호 없이 이름과 날짜만 저장해요. 거래에 기록된 결제수단을 연결해 주세요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                    Text("등록된 카드가 없습니다.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                 }
                 draft.sortedWith(compareBy<PaymentCard> { it.dueDay }.thenBy { it.name }).forEach { card ->
                     FinanceCard {
@@ -683,11 +692,11 @@ private fun PaymentCardsDialog(
                                 Text("매월 ${card.dueDay}일 결제", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                                 Text("${card.paymentMethod} · ${card.periodEndDay}일 마감", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                             }
-                            TextButton(onClick = {
+                            TextButton(enabled = !saving.busy, onClick = {
                                 editingCard = card
                                 showEditor = true
                             }) { Text("수정", color = colors.accent) }
-                            IconButton(onClick = { draft = draft - card }) {
+                            IconButton(enabled = !saving.busy, onClick = { draft = draft - card }) {
                                 Icon(Icons.Rounded.DeleteOutline, contentDescription = "${card.name} 삭제", tint = colors.expense)
                             }
                         }
@@ -699,14 +708,15 @@ private fun PaymentCardsDialog(
                         errorMessage = null
                         showEditor = true
                     },
-                    enabled = draft.size < 12,
+                    enabled = !saving.busy && draft.size < 12,
                 ) { Text("+ 카드 추가", color = colors.accent) }
                 if (draft.size >= 12) Text("카드는 최대 12장까지 등록할 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                 errorMessage?.let { Text(it, color = colors.expense, style = MaterialTheme.typography.labelMedium) }
+                saving.error?.let { Text(it, color = colors.expense, style = MaterialTheme.typography.labelMedium) }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(draft) }) { Text("저장", color = colors.accent) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
+        confirmButton = { TextButton(enabled = !saving.busy, onClick = { saving.save({ onSave(draft) }) }) { Text("저장", color = colors.accent) } },
+        dismissButton = { TextButton(enabled = !saving.busy, onClick = onDismiss) { Text("취소") } },
     )
 
     if (showEditor) {
@@ -760,7 +770,7 @@ private fun PaymentCardEditorDialog(
                 )
                 OutlinedTextField(
                     value = dueDay,
-                    onValueChange = { dueDay = it.filter(Char::isDigit).take(2); showError = false },
+                    onValueChange = { dueDay = it.take(3); showError = false },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("결제일 (1~31일)") },
                     suffix = { Text("일") },
@@ -770,7 +780,7 @@ private fun PaymentCardEditorDialog(
                 )
                 OutlinedTextField(
                     value = periodEndDay,
-                    onValueChange = { periodEndDay = it.filter(Char::isDigit).take(2); showError = false },
+                    onValueChange = { periodEndDay = it.take(3); showError = false },
                     modifier = Modifier.fillMaxWidth(), label = { Text("이용기간 종료일 (1~31일)") },
                     singleLine = true, isError = showError, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
@@ -787,7 +797,7 @@ private fun PaymentCardEditorDialog(
                         FilterChip(linkedMethod == method, { linkedMethod = method }, label = { Text(method) })
                     }
                 }
-                Text("예: 25일 결제·지난달 31일 마감이면 지난달 1일~말일 지출을 합산해요. 짧은 달의 31일은 말일로 계산합니다.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                Text("해당 날짜가 없는 달은 말일로 계산합니다.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                 if (showError) Text("이름·연결 결제수단의 중복과 날짜를 확인해 주세요. 이번 달 마감일은 결제일 이후일 수 없어요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
             }
         },
@@ -834,9 +844,8 @@ private fun RecurringRulesDialog(
                 modifier = Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("매월 지정한 날짜에 거래를 자동으로 추가해요. 앱을 열 때 놓친 회차도 한 번씩 보충합니다.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                 if (rules.isEmpty()) {
-                    Text("아직 반복 거래가 없어요. 월세나 정기 구독을 등록해 보세요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                    Text("등록된 반복 거래가 없습니다.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                 }
                 rules.forEach { rule ->
                     FinanceCard {
@@ -866,8 +875,9 @@ private fun RecurringRuleDialog(
     initialRule: RecurringRule?,
     paymentMethods: List<String>,
     onDismiss: () -> Unit,
-    onSave: (String, TransactionType, String, String, String, String, String) -> Boolean,
+    onSave: suspend (String, TransactionType, String, String, String, String, String) -> Unit,
 ) {
+    val saving = rememberSaveActionState()
     val colors = LocalFinanceColors.current
     var amount by rememberSaveable(initialRule?.id) { mutableStateOf(initialRule?.amount?.toString().orEmpty()) }
     var merchant by rememberSaveable(initialRule?.id) { mutableStateOf(initialRule?.merchant.orEmpty()) }
@@ -879,7 +889,7 @@ private fun RecurringRuleDialog(
     var showError by rememberSaveable { mutableStateOf(false) }
     val type = TransactionType.valueOf(typeName)
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!saving.busy) onDismiss() },
         title = { Text(if (initialRule == null) "매월 반복 거래 추가" else "반복 거래 수정") },
         text = {
             Column(
@@ -887,34 +897,37 @@ private fun RecurringRuleDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    FilterChip(type == TransactionType.EXPENSE, { typeName = TransactionType.EXPENSE.name }, label = { Text("지출") })
-                    FilterChip(type == TransactionType.INCOME, { typeName = TransactionType.INCOME.name }, label = { Text("수입") })
+                    FilterChip(type == TransactionType.EXPENSE, { typeName = TransactionType.EXPENSE.name }, enabled = !saving.busy, label = { Text("지출") })
+                    FilterChip(type == TransactionType.INCOME, { typeName = TransactionType.INCOME.name }, enabled = !saving.busy, label = { Text("수입") })
                 }
-                OutlinedTextField(value = amount, onValueChange = { amount = it.filter(Char::isDigit); showError = false }, label = { Text("금액") }, suffix = { Text("원") }, singleLine = true)
-                OutlinedTextField(value = merchant, onValueChange = { merchant = it; showError = false }, label = { Text("가맹점 또는 이름") }, singleLine = true)
-                OutlinedTextField(value = day, onValueChange = { day = it.filter(Char::isDigit).take(2); showError = false }, label = { Text("매월 며칠 (1~31)") }, suffix = { Text("일") }, singleLine = true)
+                OutlinedTextField(value = amount, onValueChange = { amount = it.take(24); showError = false }, label = { Text("금액") }, suffix = { Text("원") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), enabled = !saving.busy)
+                OutlinedTextField(value = merchant, onValueChange = { merchant = it; showError = false }, label = { Text("가맹점 또는 이름") }, singleLine = true, enabled = !saving.busy)
+                OutlinedTextField(value = day, onValueChange = { day = it.take(3); showError = false }, label = { Text("매월 며칠 (1~31)") }, suffix = { Text("일") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), enabled = !saving.busy)
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     allCategorySpecs().forEach { spec ->
-                        FilterChip(categoryKey == spec.key, { categoryKey = spec.key }, label = { Text(categoryLabel(spec.key)) })
+                        FilterChip(categoryKey == spec.key, { categoryKey = spec.key }, enabled = !saving.busy, label = { Text(categoryLabel(spec.key)) })
                     }
                 }
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     paymentMethods.forEach { method ->
-                        FilterChip(paymentMethod == method, { paymentMethod = method }, label = { Text(method) })
+                        FilterChip(paymentMethod == method, { paymentMethod = method }, enabled = !saving.busy, label = { Text(method) })
                     }
                 }
-                OutlinedTextField(value = memo, onValueChange = { memo = it }, label = { Text("메모 (선택)") }, singleLine = true)
+                OutlinedTextField(value = memo, onValueChange = { memo = it }, label = { Text("메모 (선택)") }, singleLine = true, enabled = !saving.busy)
                 if (showError) Text("금액, 이름, 반복 날짜를 확인해 주세요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
-                Text("예: 매월 31일은 2월에는 마지막 날에 기록돼요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-                if (initialRule != null) Text("수정은 이후 기록에만 적용돼요. 이미 기록된 거래는 바꾸지 않고, 처리한 달에 중복 기록하지 않아요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                saving.error?.let { Text(it, color = colors.expense, style = MaterialTheme.typography.labelMedium) }
+                if (initialRule != null) Text("변경은 다음 기록부터 적용됩니다.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             }
         },
         confirmButton = {
-            TextButton(onClick = { if (!onSave(amount, type, merchant, categoryKey, memo, paymentMethod, day)) showError = true }) {
+            TextButton(enabled = !saving.busy, onClick = {
+                if (com.moasseum.app.domain.parseAmount(amount) == null || merchant.isBlank() || day.toIntOrNull() !in 1..31) showError = true
+                else saving.save({ onSave(amount, type, merchant, categoryKey, memo, paymentMethod, day) })
+            }) {
                 Text("저장", color = colors.accent)
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
+        dismissButton = { TextButton(enabled = !saving.busy, onClick = onDismiss) { Text("취소") } },
     )
 }
 
@@ -935,11 +948,11 @@ private fun AppUpdateCard(
                     Text("앱 업데이트", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(
                         when (updateState) {
-                            UpdateCheckState.Idle -> "새 버전을 확인하고 앱 안에서 내려받아요."
-                            UpdateCheckState.Checking -> "새 버전을 확인하고 있어요…"
-                            UpdateCheckState.UpToDate -> "현재 최신 버전이에요."
-                            is UpdateCheckState.Available -> "${updateState.release.tagName} 업데이트가 있어요."
-                            is UpdateCheckState.Downloading -> "앱 안에서 APK 다운로드 중 · ${updateState.progressPercent}%"
+                            UpdateCheckState.Idle -> "현재 ${com.moasseum.app.BuildConfig.VERSION_NAME}"
+                            UpdateCheckState.Checking -> "확인 중…"
+                            UpdateCheckState.UpToDate -> "최신 버전"
+                            is UpdateCheckState.Available -> "${updateState.release.tagName} 사용 가능"
+                            is UpdateCheckState.Downloading -> "다운로드 ${updateState.progressPercent}%"
                             UpdateCheckState.WaitingForInstallPermission -> "이 앱의 ‘알 수 없는 앱 설치’를 허용하고 돌아오면 이어집니다."
                             UpdateCheckState.OpeningInstaller -> "Android 설치 확인 화면을 여는 중…"
                             UpdateCheckState.InstallerOpened -> "Android 설치 화면에서 업데이트를 승인해 주세요."
@@ -958,7 +971,7 @@ private fun AppUpdateCard(
                 is UpdateCheckState.Available -> {
                     val release = updateState.release
                     TextButton(onClick = { onInstallUpdate(release) }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                        Text("앱에서 다운로드·설치", color = colors.accent)
+                        Text("업데이트", color = colors.accent)
                     }
                 }
                 UpdateCheckState.WaitingForInstallPermission -> {
@@ -1030,7 +1043,7 @@ private fun ManageRow(
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-            Text(message, color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            if (message.isNotBlank()) Text(message, color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         }
         Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(20.dp))
     }
@@ -1053,7 +1066,7 @@ private fun SettingSwitchRow(
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-            Text(message, color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            if (message.isNotBlank()) Text(message, color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
@@ -1064,30 +1077,36 @@ private fun BudgetDialog(
     month: java.time.YearMonth,
     initialValue: String,
     onDismiss: () -> Unit,
-    onSave: (String) -> Boolean,
+    onSave: suspend (String) -> Unit,
 ) {
+    val saving = rememberSaveActionState()
     var input by rememberSaveable(initialValue) { mutableStateOf(initialValue) }
     var showError by rememberSaveable { mutableStateOf(false) }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!saving.busy) onDismiss() },
         title = { Text("한 달 목표 지출 수정", fontWeight = FontWeight.Bold) },
         text = {
             Column(modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("${formatMonth(month)} 기준 목표", color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.bodyMedium)
                 OutlinedTextField(
                     value = input,
-                    onValueChange = { input = it.filter(Char::isDigit); showError = false },
+                    onValueChange = { input = it.take(24); showError = false },
                     label = { Text("금액") },
                     suffix = { Text("원") },
                     singleLine = true,
                     isError = showError,
+                    enabled = !saving.busy,
                 )
                 if (showError) Text("1원 이상 입력해 주세요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
+                saving.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium) }
             }
         },
         confirmButton = {
-            TextButton(onClick = { if (!onSave(input)) showError = true }) { Text("저장") }
+            TextButton(enabled = !saving.busy, onClick = {
+                if (com.moasseum.app.domain.parseAmount(input) == null) showError = true
+                else saving.save({ onSave(input) })
+            }) { Text("저장") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
+        dismissButton = { TextButton(enabled = !saving.busy, onClick = onDismiss) { Text("취소") } },
     )
 }

@@ -117,7 +117,6 @@ fun HomeScreen(
             HomeTab.SUMMARY -> {
                 item { MonthlySummaryCard(uiState, onOpenManage) }
                 item { TodayAndWeekCard(uiState) }
-                item { DailyInsightCard(uiState) }
                 item { CategorySpendingCard(uiState, categoryBudgets, onOpenHistory = onOpenHistory) }
             }
 
@@ -163,7 +162,7 @@ private fun HomeHeader(
         Spacer(Modifier.width(9.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "좋은 하루예요",
+                text = "모아씀",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
@@ -343,8 +342,6 @@ private fun MonthlySummaryCard(
                     textAlign = TextAlign.End,
                 )
             }
-        } else {
-            Text("한 달 목표 지출을 설정하면 사용량을 보여드려요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         }
         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
             val pace = com.moasseum.app.domain.budgetPace(uiState)
@@ -358,8 +355,6 @@ private fun MonthlySummaryCard(
                     color = if (change > 0) colors.expense else colors.success,
                     style = MaterialTheme.typography.labelMedium,
                 )
-            } else {
-                Text("비교할 지난달 기록이 없어요", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             }
             if (uiState.incomeTotal > 0) {
                 Text("수입 ${formatWon(uiState.incomeTotal)}", color = colors.income, style = MaterialTheme.typography.labelMedium)
@@ -372,13 +367,13 @@ private fun MonthlySummaryCard(
 private fun TodayAndWeekCard(uiState: LedgerUiState) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         MiniSpendCard(
-            label = "오늘",
+            label = "오늘 지출",
             amount = uiState.todayExpenseTotal,
             count = uiState.todayTransactionCount,
             modifier = Modifier.weight(1f),
         )
         MiniSpendCard(
-            label = "이번 주",
+            label = "이번 주 지출",
             amount = uiState.weekExpenseTotal,
             count = uiState.weekTransactionCount,
             modifier = Modifier.weight(1f),
@@ -404,37 +399,12 @@ private fun MiniSpendCard(
 }
 
 @Composable
-private fun DailyInsightCard(uiState: LedgerUiState) {
-    val colors = LocalFinanceColors.current
-    val message = when {
-        uiState.todayExpenseTotal == 0L -> "오늘 소비가 없네요"
-        uiState.todayExpenseTotal <= 10_000L -> "오늘은 가볍게 잘 보내고 있어요"
-        else -> "오늘 ${formatWon(uiState.todayExpenseTotal)}를 기록했어요"
-    }
-    FinanceCard(modifier = Modifier.fillMaxWidth(), highlighted = true) {
-        Row(modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(8.dp))
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(message, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(
-                    if (uiState.todayExpenseTotal == 0L) "좋은 하루 보내세요" else "기록은 쌓이고, 흐름은 선명해져요",
-                    color = colors.accent,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun CategorySpendingCard(uiState: LedgerUiState, categoryBudgets: Map<String, Long>, onOpenHistory: () -> Unit) {
     val colors = LocalFinanceColors.current
     Column(modifier = Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 Text("카테고리 TOP", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("이번 달 지출 기준", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             }
             Surface(onClick = onOpenHistory, color = Color.Transparent, contentColor = colors.accent) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -444,7 +414,7 @@ private fun CategorySpendingCard(uiState: LedgerUiState, categoryBudgets: Map<St
             }
         }
         if (uiState.categoryTotals.isEmpty()) {
-            Text("거래를 기록하면 카테고리별 흐름이 보여요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+            Text("기록된 지출 없음", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
         } else {
             val maxValue = uiState.categoryTotals.maxOf { it.total }.coerceAtLeast(1L)
             uiState.categoryTotals.take(2).forEach { total ->
@@ -511,13 +481,12 @@ private fun InsightsContent(uiState: LedgerUiState) {
                     Text("숫자로 보는 이번 달", color = colors.accent, style = MaterialTheme.typography.labelLarge)
                 }
                 val message = when {
-                    uiState.expenseTotal == 0L -> "아직 기록이 없어요. 오늘의 첫 소비를 남겨보면 흐름을 읽을 수 있어요."
-                    uiState.budgetAmount != null && uiState.expenseTotal > uiState.budgetAmount -> "이번 달 예산을 넘겼어요. 다음 기록부터는 고정비와 변동비를 나눠 살펴보세요."
-                    uiState.categoryTotals.isNotEmpty() -> "${categoryLabel(uiState.categoryTotals.first().key)}가 이번 달 지출의 가장 큰 비중을 차지하고 있어요."
-                    else -> "거래가 조금 더 쌓이면 소비 흐름을 더 선명하게 보여드릴게요."
+                    uiState.expenseTotal == 0L -> "기록된 지출 없음"
+                    uiState.budgetAmount != null && uiState.expenseTotal > uiState.budgetAmount -> "예산 ${formatWon(uiState.expenseTotal - uiState.budgetAmount)} 초과"
+                    uiState.categoryTotals.isNotEmpty() -> "최다 지출 · ${categoryLabel(uiState.categoryTotals.first().key)}"
+                    else -> "기록된 지출 없음"
                 }
                 Text(message, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("AI가 임의로 계산하지 않고, 저장된 거래만으로 만든 요약이에요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
             }
         }
         FinanceCard {
@@ -569,14 +538,12 @@ private fun ReportContent(uiState: LedgerUiState, onExportCsv: () -> Unit) {
                     }
                 }
                 if (uiState.categoryTotals.isEmpty()) {
-                    Text("거래를 기록하면 리포트가 자동으로 채워져요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                    Text("기록된 지출 없음", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
         FinanceCard {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text("내보내기", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("거래 내역 CSV 파일을 기기에 저장할 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                 OutlinedButton(onClick = onExportCsv, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Rounded.FileDownload, contentDescription = null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(7.dp))
@@ -613,7 +580,7 @@ private fun AiAnalysisContent(
                 Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(26.dp))
                 Text("${com.moasseum.app.domain.formatMonth(uiState.month)} AI 소비 분석", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(
-                    "분석을 누르면 월 합계와 예산, 카테고리별 합계만 AI 서버로 전송돼요. 가맹점 이름·메모·영수증 사진은 보내지 않습니다.",
+                    "월 합계·예산·카테고리 통계만 AI 서버로 전송합니다.",
                     color = colors.textSecondary,
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -624,7 +591,7 @@ private fun AiAnalysisContent(
                     }
                     SpendingAnalysisState.Loading -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                        Text("집계된 소비 데이터를 분석하고 있어요…", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                        Text("분석 중…", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                     }
                     is SpendingAnalysisState.Error -> {
                         Text(state.message, color = colors.expense, style = MaterialTheme.typography.bodyMedium)
@@ -672,17 +639,12 @@ private fun SpendingQuestionCard(
                 Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
                 Text("내 소비에 물어보기", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
-            Text(
-                "${com.moasseum.app.domain.formatMonth(uiState.month)}의 합계와 카테고리 통계만 근거로 답해요.",
-                color = colors.textSecondary,
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            Text("질문과 월별 집계를 AI 서버로 전송합니다.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             OutlinedTextField(
                 value = question,
                 onValueChange = { question = it.take(200) },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("예: 이번 달 예산이 얼마나 남았어?") },
-                supportingText = { Text("예: 가장 많이 쓴 카테고리? 지난달보다 얼마나 달라?") },
                 maxLines = 3,
             )
             if (uiState.monthTransactions.isEmpty()) {
@@ -692,7 +654,7 @@ private fun SpendingQuestionCard(
                 SpendingQuestionState.Idle -> Unit
                 SpendingQuestionState.Loading -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    Text("집계된 데이터를 바탕으로 답을 만들고 있어요…", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                    Text("답변 중…", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                 }
                 is SpendingQuestionState.Error -> Text(state.message, color = colors.expense, style = MaterialTheme.typography.bodyMedium)
                 is SpendingQuestionState.Success -> {

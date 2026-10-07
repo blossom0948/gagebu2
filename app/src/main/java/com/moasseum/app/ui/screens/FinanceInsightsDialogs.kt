@@ -76,7 +76,7 @@ fun CardUsageDialog(
                         Icon(Icons.Rounded.ChevronRight, "다음 결제월")
                     }
                 }
-                Text("등록한 이용기간과 결제수단에 해당하는 지출만 합산해요. 할부·수수료 등을 반영한 카드사 청구액은 아닙니다.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                Text("기록된 사용액이며 카드사 청구액과 다를 수 있습니다.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                 if (cards.isEmpty()) {
                     Text("카드를 추가하고 결제일·이용기간을 설정해 주세요.", style = MaterialTheme.typography.bodyMedium)
                 } else {
@@ -140,7 +140,7 @@ fun FixedExpenseRadarDialog(
                 modifier = Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text("활성 반복 지출 ${active.size}개 · 일시 중지와 반복 수입은 제외", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                Text("사용 중인 반복 지출 ${active.size}개", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                 FinanceCard(highlighted = true) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         InsightMetric("매월 예정 고정비", active.sumOf { it.amount })
@@ -155,7 +155,7 @@ fun FixedExpenseRadarDialog(
                     }
                 }
                 Text("앞으로 30일", style = MaterialTheme.typography.titleMedium)
-                if (upcoming.isEmpty()) Text("예정된 고정비가 없어요. 반복 거래 관리에서 월세·구독 등을 추가할 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                if (upcoming.isEmpty()) Text("예정된 고정비 없음", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                 upcoming.forEach { item ->
                     FinanceCard {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -165,7 +165,7 @@ fun FixedExpenseRadarDialog(
                         }
                     }
                 }
-                Text("예정액은 실제 지출에 미리 더하지 않아요. 반복 거래가 기록되는 시점은 Android 백그라운드 정책에 따라 달라질 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                Text("예정액은 지출 합계에 포함되지 않습니다.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             }
         },
         confirmButton = { TextButton(onClick = onManageRules) { Text("반복 거래 관리") } },

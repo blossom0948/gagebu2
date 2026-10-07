@@ -20,6 +20,55 @@ import java.time.YearMonth
 class FinanceIntegrationTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     @Before fun requireIsolatedQaApp() { check(context.packageName.endsWith(".qa")) { "Tests must never run against the user's production ledger." } }
+    @Test fun csvTimezoneAndEditedTransferDateArePreservedInRoom() = runBlocking {
+        val database = Room.inMemoryDatabaseBuilder(context, FinanceDatabase::class.java).build()
+        try {
+            val dao = database.financeDao()
+            val repo = FinanceRepository(dao)
+            val timestamp = LocalDate.parse("2026-10-01").atStartOfDay(java.time.ZoneId.of("Asia/Seoul")).toInstant().toEpochMilli()
+            repo.importTransactions(listOf(ImportedTransaction(TransactionType.EXPENSE, 1000, timestamp, "FOOD", "QA", "", "카드", "IMPORT", timezone = "Asia/Seoul")))
+            assertEquals(LocalDate.parse("2026-10-01"), repo.observeTransactions().first().single().occurredDate)
+            assertEquals("Asia/Seoul", dao.allTransactionsForBackup().single().timezone)
+            repo.saveAccount(null, "QA_A", 10000); repo.saveAccount(null, "QA_B", 0)
+            val accounts = repo.observeAccounts().first()
+            repo.saveTransfer(null, 1000, accounts[0].id, accounts[1].id, LocalDate.now(), "")
+            val transfer = repo.observeTransactions().first().first { it.type == TransactionType.TRANSFER }
+            val utc = LocalDate.parse("2026-10-02").atStartOfDay(java.time.ZoneId.of("UTC")).toInstant().toEpochMilli()
+            dao.saveTransferEdit(transfer.id, 1000, utc, accounts[0].id, accounts[1].id, "", 10, "UTC")
+            assertEquals("UTC", dao.getTransaction(transfer.id)!!.timezone)
+            assertEquals(LocalDate.parse("2026-10-02"), repo.observeTransactions().first().first { it.id == transfer.id }.occurredDate)
+        } finally { database.close() }
+    }
+
+    @Test fun missingRuleAndInvalidFinancialWritesAreRejected() = runBlocking {
+        val database = Room.inMemoryDatabaseBuilder(context, FinanceDatabase::class.java).build()
+        try {
+            val repo = FinanceRepository(database.financeDao())
+            assertTrue(runCatching { repo.editRecurringRule(999, 1000, TransactionType.EXPENSE, "QA", "OTHER", "", "카드", 1) }.isFailure)
+            assertTrue(runCatching { repo.addRecurringRule(1_000_000_000_001L, TransactionType.EXPENSE, "QA", "OTHER", "", "카드", 1) }.isFailure)
+            assertTrue(runCatching { repo.addRecurringRule(1000, TransactionType.TRANSFER, "QA", "OTHER", "", "카드", 1) }.isFailure)
+            assertTrue(runCatching { repo.updateBudget("2026-10", 0) }.isFailure)
+            assertFalse(repo.acceptNotificationCandidate(999))
+            assertTrue(repo.observeTransactions().first().isEmpty())
+        } finally { database.close() }
+    }
+
+    @Test fun cardMethodsAndRemovedCategoryBudgetsStayConsistent() = runBlocking {
+        val prefs = UserPreferencesRepository(context)
+        val before = prefs.backupSettings()
+        try {
+            val card = PaymentCard("CARD_QA", "QA 카드", 25, "QA 결제수단")
+            prefs.savePaymentCards(listOf(card))
+            assertTrue(prefs.paymentMethods.first().contains(card.paymentMethod))
+            val key = "CUSTOM_ABCDEF123456"
+            prefs.saveCategoryLabels(DEFAULT_CATEGORY_LABELS + (key to "QA 카테고리"))
+            prefs.saveCategoryBudgets(mapOf(key to 10000L, "FOOD" to 5000L))
+            prefs.saveCategoryLabels(DEFAULT_CATEGORY_LABELS)
+            assertFalse(prefs.categoryBudgets.first().containsKey(key))
+            assertEquals(5000L, prefs.categoryBudgets.first()["FOOD"])
+        } finally { prefs.restoreSettings(before) }
+    }
+
     @Test fun accountTransferEditingDeletionAndInvalidInputAreAtomic() = runBlocking {
         val database = Room.inMemoryDatabaseBuilder(context, FinanceDatabase::class.java).build()
         try {

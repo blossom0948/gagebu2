@@ -52,9 +52,10 @@ data class Transaction(
     val source: String,
     val accountId: String? = null,
     val destinationAccountId: String? = null,
+    val timezone: String = ZoneId.systemDefault().id,
 ) {
     val occurredDate: LocalDate
-        get() = Instant.ofEpochMilli(occurredAt).atZone(ZoneId.systemDefault()).toLocalDate()
+        get() = Instant.ofEpochMilli(occurredAt).atZone(ZoneId.of(timezone)).toLocalDate()
 }
 
 data class RecurringRule(
@@ -147,33 +148,29 @@ data class LedgerUiState(
             compareByDescending<Transaction> { it.occurredAt }.thenByDescending { it.id },
         )
 
-    val todayExpenseTotal: Long
-        get() = monthTransactions.filter { it.type == TransactionType.EXPENSE && it.occurredDate == LocalDate.now() }.sumOf(Transaction::amount)
+    private val todaySpending: ExpensePeriod
+        get() = LocalDate.now().let { expensePeriod(transactions, it, it) }
+    private val weekSpending: ExpensePeriod
+        get() = LocalDate.now().let { expensePeriod(transactions, it.with(DayOfWeek.MONDAY), it) }
+    val todayExpenseTotal: Long get() = todaySpending.amount
+    val weekExpenseTotal: Long get() = weekSpending.amount
+    val todayTransactionCount: Int get() = todaySpending.count
+    val weekTransactionCount: Int get() = weekSpending.count
+}
 
-    val weekExpenseTotal: Long
-        get() {
-            val today = LocalDate.now()
-            val weekStart = today.with(DayOfWeek.MONDAY)
-            return monthTransactions
-                .filter { it.type == TransactionType.EXPENSE && it.occurredDate in weekStart..today }
-                .sumOf(Transaction::amount)
-        }
+data class ExpensePeriod(val amount: Long, val count: Int)
 
-    val todayTransactionCount: Int
-        get() = monthTransactions.count { it.occurredDate == LocalDate.now() }
-
-    val weekTransactionCount: Int
-        get() {
-            val today = LocalDate.now()
-            val weekStart = today.with(DayOfWeek.MONDAY)
-            return monthTransactions.count { it.occurredDate in weekStart..today }
-        }
+fun expensePeriod(transactions: List<Transaction>, from: LocalDate, through: LocalDate): ExpensePeriod {
+    require(!through.isBefore(from))
+    val expenses = transactions.filter { it.type == TransactionType.EXPENSE && it.occurredDate in from..through }
+    return ExpensePeriod(expenses.sumOf(Transaction::amount), expenses.size)
 }
 
 fun parseAmount(input: String): Long? =
     input
-        .filter(Char::isDigit)
-        .takeIf(String::isNotEmpty)
+        .takeIf { value -> value.all { it in '0'..'9' || it.isWhitespace() || it in ",₩원" } }
+        ?.filter { it in '0'..'9' }
+        ?.takeIf(String::isNotEmpty)
         ?.toLongOrNull()
         ?.takeIf { it in 1..1_000_000_000_000L }
 

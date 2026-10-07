@@ -44,12 +44,9 @@ fun NotificationsScreen(
                 TextButton(onClick = onOpenSettings) { Text("감지 설정") }
             }
         }
-        item {
-            Text("카드·은행·문자의 거래 알림만 확인해요. 카카오톡 등 대화 알림은 제외하며, 직접 확인하기 전에는 기록하지 않아요.", style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
-        }
         if (candidates.isEmpty()) item {
             FinanceCard {
-                EmptyState("새로 감지된 거래가 없어요", "거래 알림을 받으면 ‘추가할까요?’라고 알려드려요.", modifier = Modifier.padding(14.dp))
+                EmptyState("대기 중인 거래 없음", "", modifier = Modifier.padding(14.dp))
             }
         }
         items(candidates, key = { it.id }) { candidate ->

@@ -20,6 +20,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -141,26 +144,21 @@ class MainActivity : ComponentActivity() {
                         application = application,
                         paymentMethods = (paymentMethods + paymentCards.map { it.paymentMethod }).distinct(),
                         onSavePaymentMethods = { methods ->
-                            lifecycleScope.launch { application.preferencesRepository.savePaymentMethods(methods) }
+                            application.preferencesRepository.savePaymentMethods(methods)
                         },
                         paymentCards = paymentCards,
                         onSavePaymentCards = { cards ->
-                            lifecycleScope.launch {
-                                application.preferencesRepository.savePaymentCards(cards)
-                                application.preferencesRepository.savePaymentMethods(
-                                    (paymentMethods + cards.map { it.paymentMethod }).distinct(),
-                                )
-                            }
+                            application.preferencesRepository.savePaymentCards(cards)
                         },
                         categoryBudgets = categoryBudgets,
                         onSaveCategoryBudgets = { budgets ->
-                            lifecycleScope.launch { application.preferencesRepository.saveCategoryBudgets(budgets) }
+                            application.preferencesRepository.saveCategoryBudgets(budgets)
                         },
                         onSaveCategoryLabels = { labels ->
-                            lifecycleScope.launch { application.preferencesRepository.saveCategoryLabels(labels) }
+                            application.preferencesRepository.saveCategoryLabels(labels)
                         },
                         onSetAiNotificationClassificationEnabled = { enabled ->
-                            lifecycleScope.launch { application.preferencesRepository.setAiNotificationClassificationEnabled(enabled) }
+                            viewModel.performOperation("AI 알림 설정을 저장하지 못했어요.") { application.preferencesRepository.setAiNotificationClassificationEnabled(enabled) }
                         },
                         notificationServiceConnectedAt = notificationServiceConnectedAt,
                         notificationServiceDisconnectedAt = notificationServiceDisconnectedAt,
@@ -169,14 +167,14 @@ class MainActivity : ComponentActivity() {
                         darkTheme = darkTheme,
                         reduceMotion = reduceMotion,
                         onDarkThemeChanged = { enabled ->
-                            lifecycleScope.launch { application.preferencesRepository.setDarkTheme(enabled) }
+                            viewModel.performOperation("화면 설정을 저장하지 못했어요.") { application.preferencesRepository.setDarkTheme(enabled) }
                         },
                         onReduceMotionChanged = { enabled ->
-                            lifecycleScope.launch { application.preferencesRepository.setReduceMotion(enabled) }
+                            viewModel.performOperation("모션 설정을 저장하지 못했어요.") { application.preferencesRepository.setReduceMotion(enabled) }
                         },
                         notificationPostPermissionPromptShown = postNotificationPermissionPromptShown,
                         onMarkNotificationPostPermissionPromptShown = {
-                            lifecycleScope.launch { application.preferencesRepository.setNotificationPostPermissionPromptShown() }
+                            viewModel.performOperation("알림 안내 설정을 저장하지 못했어요.") { application.preferencesRepository.setNotificationPostPermissionPromptShown() }
                         },
                         aiNotificationClassificationEnabled = aiNotificationClassificationEnabled,
                         incomingNotificationCandidateId = candidateIdFromNotification,
@@ -228,12 +226,12 @@ private fun MoasseumApp(
     viewModel: LedgerViewModel,
     application: FinanceApplication,
     paymentMethods: List<String>,
-    onSavePaymentMethods: (List<String>) -> Unit,
+    onSavePaymentMethods: suspend (List<String>) -> Unit,
     paymentCards: List<com.moasseum.app.domain.PaymentCard>,
-    onSavePaymentCards: (List<com.moasseum.app.domain.PaymentCard>) -> Unit,
+    onSavePaymentCards: suspend (List<com.moasseum.app.domain.PaymentCard>) -> Unit,
     categoryBudgets: Map<String, Long>,
-    onSaveCategoryBudgets: (Map<String, Long>) -> Unit,
-    onSaveCategoryLabels: (Map<String, String>) -> Unit,
+    onSaveCategoryBudgets: suspend (Map<String, Long>) -> Unit,
+    onSaveCategoryLabels: suspend (Map<String, String>) -> Unit,
     onSetAiNotificationClassificationEnabled: (Boolean) -> Unit,
     darkTheme: Boolean,
     reduceMotion: Boolean,
@@ -322,6 +320,14 @@ private fun MoasseumApp(
         onIncomingNotificationCandidateConsumed(id)
     }
     val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(viewModel, lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            viewModel.operationErrors.collect { snackbarHostState.showSnackbar(it) }
+        }
+    }
+    val analysisRequests = remember { com.moasseum.app.domain.LatestRequestGate() }
+    val questionRequests = remember { com.moasseum.app.domain.LatestRequestGate() }
+    val notificationSaving = com.moasseum.app.ui.components.rememberSaveActionState()
     val coroutineScope = rememberCoroutineScope()
     val aiClient = remember { application.aiClient }
     val accounts by application.financeRepository.observeAccounts().collectAsStateWithLifecycle(initialValue = emptyList())
@@ -501,11 +507,14 @@ private fun MoasseumApp(
 
     fun generateSpendingAnalysis() {
         if (uiState.expenseCount == 0) return
+        val requestedState = uiState
+        val request = analysisRequests.start()
         aiAnalysisState = SpendingAnalysisState.Loading
         coroutineScope.launch {
-            val result = aiClient.analyzeSpending(uiState)
+            val result = aiClient.analyzeSpending(requestedState)
+            if (!analysisRequests.isCurrent(request) || requestedState.month != uiState.month) return@launch
             aiAnalysisState = result.fold(
-                onSuccess = { analysis -> SpendingAnalysisState.Success(uiState.month, analysis) },
+                onSuccess = { analysis -> SpendingAnalysisState.Success(requestedState.month, analysis) },
                 onFailure = { error -> SpendingAnalysisState.Error(error.message ?: "AI 분석에 실패했어요. 잠시 후 다시 시도해 주세요.") },
             )
         }
@@ -513,17 +522,22 @@ private fun MoasseumApp(
 
     fun askSpendingQuestion(question: String) {
         if (question.isBlank() || uiState.monthTransactions.isEmpty()) return
+        val requestedState = uiState
+        val request = questionRequests.start()
         aiQuestionState = SpendingQuestionState.Loading
         coroutineScope.launch {
-            val result = aiClient.askSpending(question.trim(), uiState)
+            val result = aiClient.askSpending(question.trim(), requestedState)
+            if (!questionRequests.isCurrent(request) || requestedState.month != uiState.month) return@launch
             aiQuestionState = result.fold(
-                onSuccess = { answer -> SpendingQuestionState.Success(uiState.month, question.trim(), answer) },
+                onSuccess = { answer -> SpendingQuestionState.Success(requestedState.month, question.trim(), answer) },
                 onFailure = { error -> SpendingQuestionState.Error(error.message ?: "AI 답변을 만들지 못했어요. 잠시 후 다시 시도해 주세요.") },
             )
         }
     }
 
     LaunchedEffect(uiState.month) {
+        analysisRequests.invalidate()
+        questionRequests.invalidate()
         aiAnalysisState = SpendingAnalysisState.Idle
         aiQuestionState = SpendingQuestionState.Idle
     }
@@ -677,7 +691,7 @@ private fun MoasseumApp(
                 composable(ROUTE_MANAGE) {
                     ManageScreen(
                         onOpenAuth = { showAuth = true },
-                        accountStatus = authState.user?.let { "로그인됨 · ${it.email}" } ?: if (application.authRepository.configured) "구글 · 이메일 로그인 · 회원가입" else "로그인 서버 연결 대기 중",
+                        accountStatus = authState.user?.email ?: if (application.authRepository.configured) "로그인 안 됨" else "서버 연결 필요",
                         aiLoginRequired = authState.user == null,
                         onSetBudgetRollover = viewModel::setBudgetRollover,
                         onExportBackup = { exportJsonLauncher.launch("moasseum-full-${java.time.LocalDate.now()}.json") },
@@ -694,14 +708,10 @@ private fun MoasseumApp(
                         onSavePaymentMethods = onSavePaymentMethods,
                         onSaveCategoryLabels = onSaveCategoryLabels,
                         onDeleteCustomCategory = { key, labels ->
-                            coroutineScope.launch {
-                                runCatching {
-                                    application.financeRepository.reassignDeletedCustomCategory(key)
-                                    application.preferencesRepository.saveCategoryLabels(labels)
-                                }.onFailure { error ->
-                                    snackbarHostState.showSnackbar(error.message ?: "카테고리를 삭제하지 못했어요.")
-                                }
-                            }
+                            require(labels.values.all { it.isNotBlank() })
+                            require(labels.values.map { it.trim().lowercase(java.util.Locale.ROOT) }.distinct().size == labels.size)
+                            application.financeRepository.reassignDeletedCustomCategory(key)
+                            application.preferencesRepository.saveCategoryLabels(labels)
                         },
                         recurringRules = recurringRules,
                         onAddRecurringRule = viewModel::addRecurringRule,
@@ -850,34 +860,36 @@ private fun MoasseumApp(
             onDismissRequest = { showHelpDialog = false },
             title = { Text("모아씀 사용 안내") },
             text = {
-                Text("중앙 + 버튼에서 직접 입력·AI 문장·음성·영수증으로 거래를 기록할 수 있어요.\n\n카드·은행 알림을 자동으로 읽으려면 관리 → 결제 알림 감지에서 알림 접근을 허용하세요. 감지된 거래는 바로 저장하지 않고 ‘추가할까요?’ 확인 뒤에만 가계부에 들어갑니다. 관리 화면에서 연결됨·마지막 수신·후보 생성 상태를 확인할 수 있어요.\n\n예산과 카테고리는 관리에서 설정하고, 소비내역에서는 달력·검색·필터·CSV·JSON 백업을 사용할 수 있어요. AI 분석 화면에서는 월간 소비 질문도 할 수 있습니다.")
+                Text("+ 거래 기록\n내역: 검색·달력·필터\n관리: 예산·계좌·백업·알림 설정\n\n결제 알림은 확인 후 저장됩니다.")
             },
             confirmButton = { TextButton(onClick = { showHelpDialog = false }) { Text("확인") } },
         )
     }
 
     notificationPromptIds.firstNotNullOfOrNull { id -> pendingCandidates.firstOrNull { it.id == id } }?.let { candidate ->
+        val saving = notificationSaving
         val direction = if (candidate.type == com.moasseum.app.domain.TransactionType.INCOME) "입금" else "지출"
         AlertDialog(
-            onDismissRequest = { notificationPromptIds = notificationPromptIds.filterNot { it == candidate.id } },
+            onDismissRequest = { if (!saving.busy) notificationPromptIds = notificationPromptIds.filterNot { it == candidate.id } },
             title = { Text("거래를 인식했어요. 추가할까요?") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("$direction · ${com.moasseum.app.domain.formatWon(candidate.amount)}", style = MaterialTheme.typography.titleLarge)
                     Text(candidate.merchant)
-                    Text("확인한 거래만 가계부에 저장해요.", style = MaterialTheme.typography.bodySmall)
+                    saving.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    notificationPromptIds = notificationPromptIds.filterNot { it == candidate.id }
-                    viewModel.acceptNotificationCandidate(candidate.id)
-                    PaymentNotificationNotifier.cancel(context, candidate.id)
-                    coroutineScope.launch { snackbarHostState.showSnackbar("인식한 거래를 추가했어요") }
+                TextButton(enabled = !saving.busy, onClick = {
+                    saving.save({ viewModel.acceptNotificationCandidate(candidate.id) }) {
+                        notificationPromptIds = notificationPromptIds.filterNot { it == candidate.id }
+                        PaymentNotificationNotifier.cancel(context, candidate.id)
+                        coroutineScope.launch { snackbarHostState.showSnackbar("거래를 추가했어요") }
+                    }
                 }) { Text("추가") }
             },
             dismissButton = {
-                TextButton(onClick = { notificationPromptIds = notificationPromptIds.filterNot { it == candidate.id } }) { Text("나중에") }
+                TextButton(enabled = !saving.busy, onClick = { notificationPromptIds = notificationPromptIds.filterNot { it == candidate.id } }) { Text("나중에") }
             },
         )
     }
@@ -929,13 +941,12 @@ private fun NotificationSetupDialog(
                 )
             }
         },
-        title = { Text("알림 자동 기록 준비") },
+        title = { Text("결제 알림 설정") },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text("카드·은행 알림을 읽어 지출·입금을 후보로 알려드려요. 아래 두 권한을 켜면 바로 사용할 수 있어요.")
                 NotificationSetupStep(
                     icon = Icons.Rounded.NotificationsActive,
                     title = "알림 읽기",
@@ -964,9 +975,9 @@ private fun NotificationSetupDialog(
                             Text("AI 알림 오탐 줄이기", fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
                             Text(
                                 if (aiNotificationClassificationEnabled) {
-                                    "켜짐 · 금융 거래인지 한 번 더 판별해요."
+                                    "켜짐"
                                 } else {
-                                    "꺼짐 · 관리 → 앱 설정에서 동의 후 켜면 광고·숫자 알림을 더 잘 걸러요."
+                                    "꺼짐 · 관리에서 동의 후 사용 가능"
                                 },
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodySmall,
@@ -974,7 +985,7 @@ private fun NotificationSetupDialog(
                         }
                     }
                 }
-                Text("거래는 자동 저장하지 않고, ‘추가할까요?’ 확인 후에만 기록해요.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Text("감지된 거래는 확인 후 저장됩니다.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = {

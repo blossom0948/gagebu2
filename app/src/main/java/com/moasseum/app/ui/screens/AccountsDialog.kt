@@ -16,6 +16,7 @@ import com.moasseum.app.domain.*
 import com.moasseum.app.ui.components.FinanceTextField
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import java.time.LocalDate
 
 @Composable
@@ -47,13 +48,15 @@ fun AccountsDialog(accounts: List<Account>, transactions: List<Transaction>, rep
         if (busy) return
         busy = true; error = null
         scope.launch {
-            runCatching { block() }.onSuccess { onSuccess() }.onFailure { error = it.message ?: "저장하지 못했어요." }
-            busy = false
+            try { block(); onSuccess() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { error = "저장하지 못했어요. 입력 내용을 확인해 주세요." }
+            finally { busy = false }
         }
     }
     AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, title = { Text("계좌·지갑과 이체") }, text = {
         Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            Text("실제 은행 연결 없이 잔액을 관리해요. 시작 잔액에 연결된 거래를 합산하며, 이체는 지출·수입에 포함하지 않아요.", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+            Text("수동 기록이며 실제 은행 송금은 하지 않습니다.", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
             Text("총 잔액 ${formatWon(accounts.sumOf { accountBalance(it, transactions) })}", style = MaterialTheme.typography.titleMedium)
             if (!accountForm && !transferForm) accounts.forEach { account ->
                 OutlinedCard(Modifier.fillMaxWidth()) {
@@ -68,16 +71,16 @@ fun AccountsDialog(accounts: List<Account>, transactions: List<Transaction>, rep
                 }
             }
             if (accountForm) {
-                FinanceTextField(name, { name = it.take(30) }, label = { Text("계좌·지갑 이름") }, singleLine = true)
-                FinanceTextField(opening, { opening = it }, label = { Text("시작 잔액 · 음수 가능") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                Text("수정 시 현재 잔액이 아닌 거래 기록 이전의 시작 잔액을 입력하세요.", style = MaterialTheme.typography.labelSmall)
+                FinanceTextField(name, { name = it.take(30) }, label = { Text("계좌·지갑 이름") }, singleLine = true, enabled = !busy)
+                FinanceTextField(opening, { opening = it }, label = { Text("시작 잔액 · 음수 가능") }, singleLine = true, enabled = !busy)
+                if (editingAccount != null) Text("현재 잔액이 아닌 시작 잔액을 입력하세요.", style = MaterialTheme.typography.labelSmall)
                 Row {
                     TextButton(enabled = !busy, onClick = {
                         val balance = opening.toLongOrNull()
                         if (balance == null) error = "잔액을 숫자로 입력해 주세요."
                         else perform({ repository.saveAccount(editingAccount, name, balance) }) { accountForm = false }
                     }) { Text("계좌 저장") }
-                    TextButton(onClick = { accountForm = false }) { Text("취소") }
+                    TextButton(enabled = !busy, onClick = { accountForm = false }) { Text("취소") }
                 }
             } else if (!transferForm) TextButton(enabled = !busy, onClick = { editingAccount = null; name = ""; opening = "0"; accountForm = true }) { Text("+ 계좌·지갑 추가") }
             HorizontalDivider()
@@ -85,16 +88,16 @@ fun AccountsDialog(accounts: List<Account>, transactions: List<Transaction>, rep
                 Text(if (editingTransfer == null) "이체 기록" else "이체 수정", style = MaterialTheme.typography.titleSmall)
                 AccountChips("보내는 계좌", active, fromId) { fromId = it.orEmpty() }
                 AccountChips("받는 계좌", active, toId) { toId = it.orEmpty() }
-                FinanceTextField(amount, { amount = it.filter(Char::isDigit) }, label = { Text("금액") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                FinanceTextField(date, { date = it }, label = { Text("날짜 (YYYY-MM-DD)") }, singleLine = true)
-                FinanceTextField(memo, { memo = it }, label = { Text("메모") }, singleLine = true)
+                FinanceTextField(amount, { amount = it.take(24) }, label = { Text("금액") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), enabled = !busy)
+                FinanceTextField(date, { date = it }, label = { Text("날짜 (YYYY-MM-DD)") }, singleLine = true, enabled = !busy)
+                FinanceTextField(memo, { memo = it }, label = { Text("메모") }, singleLine = true, enabled = !busy)
                 Row {
                     TextButton(enabled = !busy, onClick = {
                         val value = parseAmount(amount); val day = runCatching { LocalDate.parse(date) }.getOrNull()
                         if (value == null || day == null || fromId.isBlank() || toId.isBlank() || fromId == toId) error = "금액·날짜와 서로 다른 계좌를 확인해 주세요."
                         else perform({ repository.saveTransfer(editingTransfer, value, fromId, toId, day, memo) }) { transferForm = false }
                     }) { Text("이체 저장") }
-                    TextButton(onClick = { transferForm = false }) { Text("취소") }
+                    TextButton(enabled = !busy, onClick = { transferForm = false }) { Text("취소") }
                 }
             } else if (!accountForm) TextButton(enabled = !busy && active.size >= 2, onClick = { editingTransfer = null; fromId = active[0].id; toId = active[1].id; amount = ""; memo = ""; date = LocalDate.now().toString(); transferForm = true }) { Text("+ 계좌 간 이체 기록") }
             if (!accountForm && active.size < 2) Text("이체하려면 사용 중인 계좌 두 개가 필요해요.", style = MaterialTheme.typography.labelMedium)

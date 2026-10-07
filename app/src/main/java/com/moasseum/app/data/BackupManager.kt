@@ -13,7 +13,7 @@ class BackupManager(private val context: Context, private val repository: Financ
     suspend fun restore(backup: FullBackup): Int = mutex.withLock {
         if (backup.legacy) {
             return@withLock repository.importTransactions(backup.transactions.map {
-                ImportedTransaction(com.moasseum.app.domain.TransactionType.valueOf(it.type), it.amount, it.occurredAt, it.categoryKey, it.merchant, it.memo, it.paymentMethod, it.source, it.accountId, it.destinationAccountId)
+                ImportedTransaction(com.moasseum.app.domain.TransactionType.valueOf(it.type), it.amount, it.occurredAt, it.categoryKey, it.merchant, it.memo, it.paymentMethod, it.source, it.accountId, it.destinationAccountId, it.timezone)
             })
         }
         val validated = FullBackupCodec.decode(FullBackupCodec.encode(backup))
