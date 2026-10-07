@@ -48,7 +48,11 @@ v0.1.18에서 실행한 Android 9개·Worker 10개 테스트와 합성 계정 �
 - 크기: 59,131,229 bytes
 - SHA-256: `d9dee61e2c9a954f916d9afa94b40267032d485262e380d419008909530d416c`
 - 기존 서명 인증서 SHA-256: `669674a2114fb59d85c56bba774b89fec9ce7f7ee79825769826130362a091c9`
-- 공개 게시/latest/asset digest/재다운로드 확인 결과는 게시 후 아래에 기록한다. 빌드 성공만으로 공개 배포 성공으로 간주하지 않는다.
+- [v0.1.19 공개 릴리스](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.19) / [APK 직접 다운로드](https://github.com/blossom0948/gagebu2/releases/download/v0.1.19/app-release.apk)
+- 릴리스 소스 커밋: `0e6218fc931669bca337777204f36c03fade566f`
+- 무인증 GitHub `releases/latest`에서 v0.1.19, draft=false, prerelease=false, 소스 커밋·APK 크기·asset digest 일치 확인
+- 무인증 공개 APK 재다운로드의 크기/SHA-256이 로컬 서명 Release와 정확히 일치. 앱의 기존 latest 조회/직접 다운로드 경로와 호환되는 게시 형식 확인
+- 휴대폰 설치 APK 비교는 미실행. 마지막 실기기 설치 검증은 v0.1.18이며 v0.1.19 설치/로그인 성공으로 기록하지 않음
 
 ## 남은 확인
 
