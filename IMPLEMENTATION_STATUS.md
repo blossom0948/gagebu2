@@ -90,7 +90,7 @@
 - 연결 Android 기기 — `R3CT80B80MN` / Galaxy Z Fold4 / Android 16(API 36)에서 최종 릴리스 설치·기능·알림·재연결·백그라운드 알림 검증 완료
 - 상세 실기기 오류 기록과 수정 결과 — [QA_TEST_REPORT_2026-10-04.md](QA_TEST_REPORT_2026-10-04.md)
 - Debug APK — `app/build/outputs/apk/debug/app-debug.apk`
-- 현재 공개 APK — 배포 후 v0.1.20 Release의 latest 태그·asset digest·공개 재다운로드를 검증하고 위 로컬 APK SHA-256/크기와 일치 여부를 이 항목에 기록한다. 휴대폰 설치/Google 로그인/알림 실기기 검증은 별도 수행 전까지 미검증.
+- 현재 공개 APK — [v0.1.20](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.20), 59,130,809 bytes; SHA-256 `ec0b2aaf9f4c6df88fe241339c49af6231167b62a189d8bde9720472b79646c9`. GitHub latest 태그·asset digest·익명 공개 재다운로드가 로컬 Release APK와 바이트 단위 일치하며, tag commit은 `30c688df10987698eeb6a5ab2a5ab6cabbc8c0ac`. 휴대폰 설치/Google 로그인/알림 실기기 검증은 미실행.
 - 이전 공개 APK — [v0.1.19](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.19), 59,131,229 bytes; SHA-256 `d9dee61e2c9a954f916d9afa94b40267032d485262e380d419008909530d416c`. 당시 무인증 latest·asset digest·공개 재다운로드와 로컬 서명 빌드 일치. 휴대폰 설치/실제 Google 로그인은 미실행.
 - 마지막 휴대폰 설치 검증 APK — [v0.1.18](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.18), 56,905,458 bytes; SHA-256 `172d481f7915d9916a27c4d809d6618ce62ced3830c1c7722a3fed91e3a23521`. 2026-10-05 무인증 latest·asset digest·공개 재다운로드·설치 APK 일치. v0.1.19의 설치 성공으로 간주하지 않음
 

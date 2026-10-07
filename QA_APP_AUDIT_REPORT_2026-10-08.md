@@ -35,7 +35,7 @@
 - APK 크기: 59,130,809 bytes
 - SHA-256: `ec0b2aaf9f4c6df88fe241339c49af6231167b62a189d8bde9720472b79646c9`
 - Release 서명 인증서 SHA-256: `669674a2114fb59d85c56bba774b89fec9ce7f7ee79825769826130362a091c9` (기존 개인 앱 업데이트 키와 일치)
-- 공개 GitHub Release/latest, asset digest, 익명 재다운로드 해시는 게시 후 확인해 이 문단에 결과를 기록한다.
+- GitHub [v0.1.20 Release](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.20)는 공개 latest이며 draft/prerelease가 아니다. Release asset digest와 인증 없이 공개 URL에서 다시 받은 APK의 SHA-256은 위 로컬 APK와 일치하고, 파일 비교도 동일하다. Tag commit: `30c688df10987698eeb6a5ab2a5ab6cabbc8c0ac`.
 - 실제 휴대폰 설치 및 업데이트는 실행하지 않았다. 기존 데이터가 보존되는 실기기 설치는 사용자 기기에서 별도 확인이 필요하다.
 
 ## 알려진 제한
