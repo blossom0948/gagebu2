@@ -87,6 +87,9 @@ class UserPreferencesRepository(
     val notificationPostPermissionPromptShown: Flow<Boolean> =
         context.settingsDataStore.data.map { preferences -> preferences[NOTIFICATION_POST_PERMISSION_PROMPT_SHOWN] ?: false }
 
+    val firstRunGuideCompleted: Flow<Boolean> =
+        context.settingsDataStore.data.map { preferences -> preferences[FIRST_RUN_GUIDE_COMPLETED] ?: false }
+
     val aiNotificationClassificationEnabled: Flow<Boolean> =
         context.settingsDataStore.data.map { preferences -> preferences[AI_NOTIFICATION_CLASSIFICATION_ENABLED] ?: false }
 
@@ -240,6 +243,10 @@ class UserPreferencesRepository(
         context.settingsDataStore.edit { preferences -> preferences[NOTIFICATION_POST_PERMISSION_PROMPT_SHOWN] = true }
     }
 
+    suspend fun setFirstRunGuideCompleted() {
+        context.settingsDataStore.edit { preferences -> preferences[FIRST_RUN_GUIDE_COMPLETED] = true }
+    }
+
     suspend fun setAiNotificationClassificationEnabled(enabled: Boolean) {
         context.settingsDataStore.edit { preferences -> preferences[AI_NOTIFICATION_CLASSIFICATION_ENABLED] = enabled }
     }
@@ -361,6 +368,7 @@ class UserPreferencesRepository(
         val REDUCE_MOTION = booleanPreferencesKey("reduce_motion")
         val NOTIFICATION_ACCESS_PROMPT_SHOWN = booleanPreferencesKey("notification_access_prompt_shown")
         val NOTIFICATION_POST_PERMISSION_PROMPT_SHOWN = booleanPreferencesKey("notification_post_permission_prompt_shown")
+        val FIRST_RUN_GUIDE_COMPLETED = booleanPreferencesKey("first_run_guide_completed")
         val AI_NOTIFICATION_CLASSIFICATION_ENABLED = booleanPreferencesKey("ai_notification_classification_enabled")
         val APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled")
         val FINANCE_REMINDERS_ENABLED = booleanPreferencesKey("finance_reminders_enabled")

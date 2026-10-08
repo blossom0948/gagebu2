@@ -61,13 +61,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.core.view.WindowCompat
@@ -97,6 +95,7 @@ import com.moasseum.app.ui.components.ROUTE_TOGETHER
 import com.moasseum.app.ui.components.ROUTE_LEGACY_TOGETHER
 import com.moasseum.app.ui.screens.HistoryScreen
 import com.moasseum.app.ui.screens.HomeScreen
+import com.moasseum.app.ui.screens.FirstRunGuide
 import com.moasseum.app.ui.screens.ManageScreen
 import com.moasseum.app.ui.screens.NotificationsScreen
 import com.moasseum.app.ui.screens.TogetherScreen
@@ -197,7 +196,7 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        applyImmersiveSystemBars()
+        applySystemBars()
         incomingNotificationCandidateId.value = intentCandidateId(intent)
         incomingSharedContent.value = extractShare(intent)
         val application = application as FinanceApplication
@@ -217,6 +216,7 @@ class MainActivity : FragmentActivity() {
             val homeDashboardCards by application.preferencesRepository.homeDashboardCards.collectAsStateWithLifecycle(initialValue = HomeDashboardCards.defaults)
             val noSpendChallenge by application.preferencesRepository.noSpendChallenge.collectAsStateWithLifecycle(initialValue = NoSpendChallengeSettings())
             val postNotificationPermissionPromptShown by application.preferencesRepository.notificationPostPermissionPromptShown.collectAsStateWithLifecycle(initialValue = false)
+            val firstRunGuideCompleted by application.preferencesRepository.firstRunGuideCompleted.collectAsStateWithLifecycle(initialValue = true)
             val aiNotificationClassificationEnabled by application.preferencesRepository.aiNotificationClassificationEnabled.collectAsStateWithLifecycle(initialValue = false)
             val notificationServiceConnectedAt by application.preferencesRepository.notificationServiceConnectedAt.collectAsStateWithLifecycle(initialValue = null)
             val notificationServiceDisconnectedAt by application.preferencesRepository.notificationServiceDisconnectedAt.collectAsStateWithLifecycle(initialValue = null)
@@ -275,6 +275,10 @@ class MainActivity : FragmentActivity() {
                             viewModel.performOperation("모션 설정을 저장하지 못했어요.") { application.preferencesRepository.setReduceMotion(enabled) }
                         },
                         notificationPostPermissionPromptShown = postNotificationPermissionPromptShown,
+                        firstRunGuideCompleted = firstRunGuideCompleted,
+                        onMarkFirstRunGuideCompleted = {
+                            viewModel.performOperation("기능 안내를 저장하지 못했어요.") { application.preferencesRepository.setFirstRunGuideCompleted() }
+                        },
                         onMarkNotificationPostPermissionPromptShown = {
                             viewModel.performOperation("알림 안내 설정을 저장하지 못했어요.") { application.preferencesRepository.setNotificationPostPermissionPromptShown() }
                         },
@@ -305,13 +309,12 @@ class MainActivity : FragmentActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) applyImmersiveSystemBars()
+        if (hasFocus) applySystemBars()
     }
 
-    private fun applyImmersiveSystemBars() {
+    private fun applySystemBars() {
         WindowInsetsControllerCompat(window, window.decorView).apply {
-            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            hide(WindowInsetsCompat.Type.statusBars())
+            show(WindowInsetsCompat.Type.statusBars())
         }
     }
 
@@ -395,6 +398,8 @@ private fun MoasseumApp(
     onReduceMotionChanged: (Boolean) -> Unit,
     notificationPostPermissionPromptShown: Boolean,
     onMarkNotificationPostPermissionPromptShown: () -> Unit,
+    firstRunGuideCompleted: Boolean,
+    onMarkFirstRunGuideCompleted: () -> Unit,
     aiNotificationClassificationEnabled: Boolean,
     notificationServiceConnectedAt: Long?,
     notificationServiceDisconnectedAt: Long?,
@@ -429,6 +434,14 @@ private fun MoasseumApp(
     var notificationSettingsInProgress by rememberSaveable { mutableStateOf(false) }
     var notificationPromptIds by rememberSaveable { mutableStateOf(emptyList<Long>()) }
     var postNotificationPermissionRequestStarted by rememberSaveable { mutableStateOf(false) }
+    var guideDismissedThisSession by rememberSaveable { mutableStateOf(false) }
+    var guideOpenedManually by rememberSaveable { mutableStateOf(false) }
+    val showFirstRunGuide = guideOpenedManually || (!firstRunGuideCompleted && !guideDismissedThisSession)
+    fun closeFirstRunGuide() {
+        guideOpenedManually = false
+        guideDismissedThisSession = true
+        onMarkFirstRunGuideCompleted()
+    }
     val postNotificationPermissionMissing = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
     val appNotificationsReady = appNotificationsEnabled && !postNotificationPermissionMissing
@@ -449,9 +462,9 @@ private fun MoasseumApp(
             NotificationAccess.requestRebindWithRetry(context)
         }
     }
-    LaunchedEffect(notificationAccessEnabled, appNotificationsReady, notificationSetupDismissedThisSession) {
+    LaunchedEffect(notificationAccessEnabled, appNotificationsReady, notificationSetupDismissedThisSession, showFirstRunGuide) {
         val needsNotificationSetup = !notificationAccessEnabled || !appNotificationsReady
-        showNotificationAccessPrompt = needsNotificationSetup && !notificationSetupDismissedThisSession
+        showNotificationAccessPrompt = needsNotificationSetup && !notificationSetupDismissedThisSession && !showFirstRunGuide
     }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         appNotificationsEnabled = NotificationAccess.areAppNotificationsEnabled(context)
@@ -463,10 +476,11 @@ private fun MoasseumApp(
         notificationSetupDismissedThisSession,
         notificationSettingsInProgress,
         showNotificationAccessPrompt,
+        showFirstRunGuide,
     ) {
         if (notificationAccessEnabled && postNotificationPermissionMissing && !notificationPostPermissionPromptShown &&
             !postNotificationPermissionRequestStarted && notificationSetupDismissedThisSession &&
-            !notificationSettingsInProgress && !showNotificationAccessPrompt
+            !notificationSettingsInProgress && !showNotificationAccessPrompt && !showFirstRunGuide
         ) {
             postNotificationPermissionRequestStarted = true
             onMarkNotificationPostPermissionPromptShown()
@@ -553,7 +567,6 @@ private fun MoasseumApp(
     var addModeName by rememberSaveable { mutableStateOf(AddMode.MENU.name) }
     var sharedPrefillText by rememberSaveable { mutableStateOf<String?>(null) }
     var sharedPrefillKey by rememberSaveable { mutableStateOf("") }
-    var showHelpDialog by rememberSaveable { mutableStateOf(false) }
     var updateState by remember { mutableStateOf<UpdateCheckState>(UpdateCheckState.Idle) }
     var downloadedUpdatePath by rememberSaveable { mutableStateOf<String?>(null) }
     var waitingForInstallPermission by rememberSaveable { mutableStateOf(false) }
@@ -954,7 +967,7 @@ private fun MoasseumApp(
                             }
                             navigateTo(navController, ROUTE_HISTORY)
                         },
-                        onOpenHelp = { showHelpDialog = true },
+                        onOpenHelp = { guideOpenedManually = true },
                         onOpenNotifications = { navigateTo(navController, ROUTE_NOTIFICATIONS) },
                         onStartVoiceInput = ::startVoiceInput,
                         onPickReceipt = ::pickReceiptPhoto,
@@ -1083,6 +1096,7 @@ private fun MoasseumApp(
                 composable(ROUTE_MANAGE) {
                     ManageScreen(
                         onOpenAuth = { showAuth = true },
+                        onOpenGuide = { guideOpenedManually = true },
                         accountStatus = authState.user?.email ?: if (application.authRepository.configured) "로그인 안 됨" else "서버 연결 필요",
                         aiLoginRequired = authState.user == null,
                         onSetBudgetRollover = viewModel::setBudgetRollover,
@@ -1190,15 +1204,6 @@ private fun MoasseumApp(
             containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background,
             tonalElevation = 0.dp,
         ) {
-            val sheetWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
-            SideEffect {
-                sheetWindow?.let { window ->
-                    WindowInsetsControllerCompat(window, window.decorView).apply {
-                        systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                        hide(WindowInsetsCompat.Type.statusBars())
-                    }
-                }
-            }
             AddTransactionSheet(
                 mode = addMode,
                 onModeChange = { if (!savingTransaction) addModeName = it.name },
@@ -1313,14 +1318,19 @@ private fun MoasseumApp(
                 }
             }) { Text("복원") } }, dismissButton = { TextButton(enabled = !restoringBackup, onClick = { backupToRestore = null }) { Text("취소") } })
     }
-    if (showHelpDialog) {
-        AlertDialog(
-            onDismissRequest = { showHelpDialog = false },
-            title = { Text("모아씀 사용 안내") },
-            text = {
-                Text("+ 거래 기록\n내역: 검색·달력·필터\n관리: 예산·계좌·백업·알림 설정\n\n결제 알림은 확인 후 저장됩니다.")
+    if (showFirstRunGuide) {
+        FirstRunGuide(
+            notificationAccessEnabled = notificationAccessEnabled,
+            appNotificationsEnabled = appNotificationsReady,
+            onOpenNotificationSettings = {
+                notificationSettingsInProgress = true
+                NotificationAccess.openSettings(context)
             },
-            confirmButton = { TextButton(onClick = { showHelpDialog = false }) { Text("확인") } },
+            onOpenAppNotificationSettings = {
+                notificationSettingsInProgress = true
+                NotificationAccess.openAppNotificationSettings(context)
+            },
+            onFinish = ::closeFirstRunGuide,
         )
     }
 

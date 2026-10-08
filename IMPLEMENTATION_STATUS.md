@@ -2,6 +2,14 @@
 
 기준 문서: `WEEPLE_INSPIRED_BUDGET_APP_MASTER_PLAN.md`
 
+## 최신 배포 — v0.1.22 (2026-10-09)
+
+- 첫 실행 4단계 안내를 추가했습니다. 무료 가계부·목표 지출·빠른 입력·결제 알림·AI 기능과 개인정보 전송 범위를 안내하며, 홈 도움말 또는 `관리 → 기능 안내`에서 다시 열 수 있습니다.
+- 시스템 상태 표시줄을 계속 보이게 하고, 홈·알림 안내·입력 시트가 상단/하단 시스템 영역과 겹치지 않는지 Galaxy Z Fold4(Android 16)에서 확인했습니다. 알림 설정 진입과 설정 후 복귀, 안내 종료 뒤 권한 현황 안내도 확인했습니다. OS 알림 접근 권한 자체는 테스트 중 변경하지 않았습니다.
+- `:app:testDebugUnitTest` 137개 통과, `:app:lintDebug` 오류 0, Debug/AndroidTest/Release APK 빌드 성공. 실기기에서는 QA 패키지(`com.moasseum.app.qa`)를 사용했습니다.
+- 공개 APK: `com.moasseum.app`, versionCode 22, versionName 0.1.22, 59,527,161 bytes, SHA-256 `8cd403c3b8ba37dbe2776a493726171043b4bea5fc9333da3113b9300093d5df`. 서명 지문은 기존 공개 v0.1.21과 같은 `669674a2114fb59d85c56bba774b89fec9ce7f7ee79825769826130362a091c9`입니다.
+- 앱 UI/안내만 바뀌어 Worker·Supabase·Room 스키마는 변경하지 않았습니다. 공동 목표 진행액/공동 재정 저장 migration 상태는 이전 버전과 같습니다.
+
 ## 구현된 개인용 기능
 
 - Kotlin + Jetpack Compose, Room, DataStore 기반 Android 앱과 홈·내역·알림 후보함·관리 화면
@@ -104,7 +112,8 @@
 - 연결 Android 기기 — `R3CT80B80MN` / Galaxy Z Fold4 / Android 16(API 36)에서 최종 릴리스 설치·기능·알림·재연결·백그라운드 알림 검증 완료
 - 상세 실기기 오류 기록과 수정 결과 — [QA_TEST_REPORT_2026-10-04.md](QA_TEST_REPORT_2026-10-04.md)
 - Debug APK — `app/build/outputs/apk/debug/app-debug.apk`
-- 현재 공개 APK — [v0.1.21](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.21), 59,510,773 bytes; SHA-256 `f69638449384a0ae4f6d5d7cf72b44f6fbd345b220a323fa1115ce90b307c59f`. GitHub latest tag와 asset digest 확인, 공개 APK 익명 재다운로드/로컬 APK 바이트 일치 확인. Android 16 에뮬레이터에서 v0.1.20 위에 v0.1.21 업데이트 설치 후 실행 성공. 앱 내 다운로드 버튼 경로와 실제 휴대폰 설치/Google 로그인/알림은 미검증.
+- 현재 공개 APK — [v0.1.22](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.22), 59,527,161 bytes; SHA-256 `8cd403c3b8ba37dbe2776a493726171043b4bea5fc9333da3113b9300093d5df`. 기존 공개 인증서 지문과 일치. Galaxy Z Fold4(Android 16)에서 QA 빌드의 안내·설정 이동·홈·입력 시트와 시스템 바 여백을 수동 확인.
+- 이전 공개 APK — [v0.1.21](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.21), 59,510,773 bytes; SHA-256 `f69638449384a0ae4f6d5d7cf72b44f6fbd345b220a323fa1115ce90b307c59f`. GitHub asset digest/공개 재다운로드 기록은 해당 릴리스 검증 시점의 상태를 참고.
 - 이전 공개 APK — [v0.1.19](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.19), 59,131,229 bytes; SHA-256 `d9dee61e2c9a954f916d9afa94b40267032d485262e380d419008909530d416c`. 당시 무인증 latest·asset digest·공개 재다운로드와 로컬 서명 빌드 일치. 휴대폰 설치/실제 Google 로그인은 미실행.
 - 마지막 휴대폰 설치 검증 APK — [v0.1.18](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.18), 56,905,458 bytes; SHA-256 `172d481f7915d9916a27c4d809d6618ce62ced3830c1c7722a3fed91e3a23521`. 2026-10-05 무인증 latest·asset digest·공개 재다운로드·설치 APK 일치. v0.1.19의 설치 성공으로 간주하지 않음
 

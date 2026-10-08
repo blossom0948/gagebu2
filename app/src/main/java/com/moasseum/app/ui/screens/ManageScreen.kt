@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.AccountBalance
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Category
@@ -144,6 +145,7 @@ fun ManageScreen(
     onExportYearTransactions: (Int) -> Unit,
     onSetBudgetRollover: (Boolean) -> Unit,
     onOpenAuth: () -> Unit,
+    onOpenGuide: () -> Unit,
     accountStatus: String,
 ) {
     var showBudgetDialog by rememberSaveable { mutableStateOf(false) }
@@ -311,6 +313,8 @@ fun ManageScreen(
                 ManageRow(Icons.Rounded.CalendarMonth, "월별 PDF 리포트", formatMonth(uiState.month), onClick = onExportPdf)
                 HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                 ManageRow(Icons.Rounded.Security, "로그인·계정", accountStatus, onClick = onOpenAuth)
+                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                ManageRow(Icons.AutoMirrored.Rounded.HelpOutline, "기능 안내", "처음 보는 기능 다시 보기", onClick = onOpenGuide)
             }
         }
         item {

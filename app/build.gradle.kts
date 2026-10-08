@@ -73,6 +73,9 @@ android {
             }
         }
         buildTypes.getByName("release").signingConfig = signingConfigs.getByName("release")
+    } else {
+        // Keep updates compatible with the already-published APK, which uses this same debug certificate.
+        buildTypes.getByName("release").signingConfig = signingConfigs.getByName("debug")
     }
 
     compileOptions {
