@@ -68,7 +68,7 @@
 - 2026-10-08 공동 장부 첫 구현: `shared_*` 기본 테이블 5개와 RLS는 전용 Supabase에 적용. 증분 migration 002/003은 미적용. DB 사용자 데이터 업로드/초대 생성은 하지 않음
 - 2026-10-08 v0.1.21 Release: 단위 테스트·lint·AndroidTest APK 빌드·서명 Release 빌드 성공. lint 오류 0/경고 24개. 에뮬레이터 instrumentation 12개 통과, 실제 Supabase 계정 테스트 1개는 자격 증명 미제공으로 skip. 작은/큰 화면 UI를 확인했으나 실제 Galaxy에서의 설치·로그인·알림 및 Room 5→6 이전은 미검증
 - 문장 일괄 추가·수정·삭제는 로컬 제한형 파서로 추가. 임의 자유형 AI 명령, 일괄 추가 후보별 세부 편집, 일괄 기능 실기기 조작은 미검증
-- 공동 재정 모드와 5종 항목의 앱/UI/API/마이그레이션 코드는 추가했지만, 새 Supabase migration 적용과 두 계정 동기화 검증 전까지 완료/배포 상태가 아님
+- 공동 재정 모드와 5종 항목의 앱/UI/API 코드는 v0.1.21로 공개했지만, 새 Supabase migration 적용 전에는 목표 진행액·공동 재정 서버 저장이 준비되지 않음. 두 계정 동기화/격리는 미검증
 - Weeple 화면 기능 대조 작업(2026-10-08): 홈 월 이동, 빠른 카메라/사진 입력, 최근 내역, PDF 리포트 진입을 추가. 관리 화면의 순서를 Weeple 캡처 흐름으로 재배치하고 카테고리 사용 막대·미설정 목록 접기/펼치기·저장되는 카테고리 순서·월별 수입 목표를 추가. 캡처에 보이는 기본 19개 카테고리를 거래 입력·내역 필터·예산에 추가하고, 이전 7개 설정/백업은 기존 이름과 순서를 보존해 확장. 자연어·영수증·결제 알림·Worker 카테고리 키도 동기화. 화면 제목을 줄이고 상단 상태 표시줄만 숨겨 캡처의 화면 밀도에 가깝게 조정. 전체 시스템 바를 숨기는 안은 Android 전체 화면 경고와 하단 탭 잘림 때문에 제외. 홈도 밀도를 낮추고 오늘 소비 인사이트를 반영했으며, 거래가 없을 때 빈 최근 내역 카드를 숨겨 초기 화면 스크롤을 줄임. 내역은 CSV 가져오기 위치·달력 확장·카테고리 칩·한 줄 합계/정렬을 캡처에 맞춤. 함께 연결 전 미리보기와 초대/참여 화면을 보강. 함께 화면에 공유 월 합산·카테고리·공동 저축 목표 진행/수정/삭제·공동 AI 분석/Q&A·공동 PDF를 연결. `202610080002_shared_goal_collaboration.sql`로 current_amount와 공동 멤버 편집 정책 준비. DB 적용·두 계정/실기기 사용성 검증·전체 Weeple 잔여 기능 대조는 미완료. 자세한 범위는 [Weeple 기능 대조 진행 보고서](WEEPLE_PARITY_PROGRESS_2026-10-08.md)
 - 검증: unit/lint/서명 Release APK 빌드 성공, Worker typecheck 및 테스트 10개 통과. v0.1.21의 최신 연결 instrumentation은 12개 통과/1개 skip. 인증 없는 Worker 요청은 401, `/health`는 200 반환. 단위 테스트 최종 수와 전체 lint 경고 목록은 Gradle 보고서를 참고. 로그인된 초대/수락·실제 휴대폰 동작·새 migration 적용은 미검증
 - Google 가입 범위 확인: `node scripts/check-google-oauth.mjs`에서 실제 서버 Google/email 활성화, 이메일 확인 유지, 앱/QA PKCE redirect와 `openid email profile`만 요청 확인. 실제 두 번째 Google 계정 로그인/앱 복귀는 미검증. Google 기본 신원 scope 예외에 따라 별도 테스트 사용자 등록이 필수가 아닐 수 있음
@@ -104,7 +104,7 @@
 - 연결 Android 기기 — `R3CT80B80MN` / Galaxy Z Fold4 / Android 16(API 36)에서 최종 릴리스 설치·기능·알림·재연결·백그라운드 알림 검증 완료
 - 상세 실기기 오류 기록과 수정 결과 — [QA_TEST_REPORT_2026-10-04.md](QA_TEST_REPORT_2026-10-04.md)
 - Debug APK — `app/build/outputs/apk/debug/app-debug.apk`
-- 현재 공개 APK — [v0.1.21](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.21), 59,510,773 bytes; SHA-256 `f69638449384a0ae4f6d5d7cf72b44f6fbd345b220a323fa1115ce90b307c59f`. Release digest/공개 재다운로드와 앱 내 업데이트 경로는 게시 후 확인한다. 실제 휴대폰 설치/Google 로그인/알림은 미검증.
+- 현재 공개 APK — [v0.1.21](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.21), 59,510,773 bytes; SHA-256 `f69638449384a0ae4f6d5d7cf72b44f6fbd345b220a323fa1115ce90b307c59f`. GitHub latest tag와 asset digest 확인, 공개 APK 익명 재다운로드/로컬 APK 바이트 일치 확인. Android 16 에뮬레이터에서 v0.1.20 위에 v0.1.21 업데이트 설치 후 실행 성공. 앱 내 다운로드 버튼 경로와 실제 휴대폰 설치/Google 로그인/알림은 미검증.
 - 이전 공개 APK — [v0.1.19](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.19), 59,131,229 bytes; SHA-256 `d9dee61e2c9a954f916d9afa94b40267032d485262e380d419008909530d416c`. 당시 무인증 latest·asset digest·공개 재다운로드와 로컬 서명 빌드 일치. 휴대폰 설치/실제 Google 로그인은 미실행.
 - 마지막 휴대폰 설치 검증 APK — [v0.1.18](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.18), 56,905,458 bytes; SHA-256 `172d481f7915d9916a27c4d809d6618ce62ced3830c1c7722a3fed91e3a23521`. 2026-10-05 무인증 latest·asset digest·공개 재다운로드·설치 APK 일치. v0.1.19의 설치 성공으로 간주하지 않음
 
