@@ -37,4 +37,11 @@ class AiClientTest {
         assertEquals(8_000L, candidate.amount)
         assertEquals(AiCandidateSource.LOCAL, candidate.source)
     }
+
+    @Test
+    fun `local parser distinguishes cafe from food`() = runBlocking {
+        val candidate = AiClient(baseUrl = "").parseTransaction("오늘 스타벅스 커피 5500원").getOrThrow()
+
+        assertEquals("CAFE", candidate.categoryKey)
+    }
 }

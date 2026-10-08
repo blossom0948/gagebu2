@@ -5,7 +5,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.moasseum.app.data.ImportedTransaction
 import com.moasseum.app.data.FinanceRepository
+import com.moasseum.app.data.BatchEditValues
 import com.moasseum.app.domain.LedgerUiState
+import com.moasseum.app.domain.AiTransactionCandidate
 import com.moasseum.app.domain.NotificationCandidate
 import com.moasseum.app.domain.RecurringRule
 import com.moasseum.app.domain.TransactionType
@@ -129,6 +131,16 @@ class LedgerViewModel(
         return true
     }
 
+    suspend fun addBatchTransactions(candidates: List<AiTransactionCandidate>, paymentMethod: String): Int =
+        repository.addBatchTransactions(candidates, paymentMethod)
+
+    suspend fun deleteBatchTransactions(ids: List<Long>): Int = repository.applyBatchDelete(ids)
+
+    suspend fun editBatchTransactions(ids: List<Long>, values: BatchEditValues): Int =
+        repository.applyBatchEdit(ids, values)
+
+    suspend fun restoreBatchTransactions(ids: List<Long>): Int = repository.restoreBatch(ids)
+
     fun deleteTransaction(id: Long, onDeleted: () -> Unit = {}) {
         performOperation("거래를 삭제하지 못했어요.") {
             repository.softDeleteTransaction(id)
@@ -180,6 +192,15 @@ class LedgerViewModel(
         val dayOfMonth = requireNotNull(dayOfMonthInput.toIntOrNull()?.takeIf { it in 1..31 })
         require(merchant.isNotBlank())
         repository.addRecurringRule(amount, type, merchant, categoryKey, memo, paymentMethod, dayOfMonth)
+    }
+
+    suspend fun addInstallmentPlan(
+        total: Long, count: Int, firstChargeDate: java.time.LocalDate,
+        categoryKey: String, merchant: String, memo: String, paymentMethod: String,
+    ) = repository.addInstallmentPlan(total, count, firstChargeDate, categoryKey, merchant, memo, paymentMethod)
+
+    fun deleteInstallmentPlan(groupId: String) {
+        performOperation("할부 내역을 삭제하지 못했어요.") { repository.deleteInstallmentPlan(groupId) }
     }
 
     fun setRecurringRuleActive(id: Long, active: Boolean) {

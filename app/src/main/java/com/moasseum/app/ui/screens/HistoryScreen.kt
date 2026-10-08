@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -102,6 +103,8 @@ fun HistoryScreen(
     onExportCsv: () -> Unit,
     onExportJson: () -> Unit,
     onImportCsv: () -> Unit,
+    initialTransactionId: Long? = null,
+    onInitialTransactionHandled: () -> Unit = {},
 ) {
     var filterName by rememberSaveable { mutableStateOf(HistoryFilter.ALL.name) }
     var categoryFilterKey by rememberSaveable { mutableStateOf("ALL") }
@@ -135,24 +138,20 @@ fun HistoryScreen(
     val availableMethods = (paymentMethods + uiState.transactions.map { it.paymentMethod }).distinct().sorted()
     val detailTransaction = detailId?.let { id -> uiState.transactions.firstOrNull { it.id == id } }
 
+    LaunchedEffect(initialTransactionId, uiState.transactions) {
+        val id = initialTransactionId ?: return@LaunchedEffect
+        if (uiState.transactions.any { it.id == id }) {
+            detailId = id
+            onInitialTransactionHandled()
+        }
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("소비내역", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-                Box {
-                    IconButton(onClick = { backupMenuOpen = true }) { Icon(Icons.Rounded.FileDownload, contentDescription = "백업·가져오기") }
-                    DropdownMenu(expanded = backupMenuOpen, onDismissRequest = { backupMenuOpen = false }) {
-                        DropdownMenuItem(text = { Text("CSV 내보내기") }, onClick = { backupMenuOpen = false; onExportCsv() })
-                        DropdownMenuItem(text = { Text("CSV 가져오기") }, onClick = { backupMenuOpen = false; onImportCsv() })
-                        DropdownMenuItem(text = { Text("JSON 전체 백업") }, onClick = { backupMenuOpen = false; onExportJson() })
-                    }
-                }
-            }
-        }
+        item { Text("소비내역", style = MaterialTheme.typography.headlineSmall) }
         item {
             CalendarCard(
                 month = uiState.month,
@@ -162,6 +161,24 @@ fun HistoryScreen(
                 onPrevious = { dateFilter = null; onSelectMonth(uiState.month.minusMonths(1)) },
                 onNext = { dateFilter = null; onSelectMonth(uiState.month.plusMonths(1)) },
             )
+        }
+        item {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = onImportCsv, modifier = Modifier.align(Alignment.Center)) {
+                    Icon(Icons.Rounded.FileDownload, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("CSV 가져오기")
+                }
+                Box(modifier = Modifier.align(Alignment.CenterEnd)) {
+                    IconButton(onClick = { backupMenuOpen = true }) {
+                        Icon(Icons.Rounded.FileDownload, contentDescription = "내보내기·백업")
+                    }
+                    DropdownMenu(expanded = backupMenuOpen, onDismissRequest = { backupMenuOpen = false }) {
+                        DropdownMenuItem(text = { Text("CSV 내보내기") }, onClick = { backupMenuOpen = false; onExportCsv() })
+                        DropdownMenuItem(text = { Text("JSON 전체 백업") }, onClick = { backupMenuOpen = false; onExportJson() })
+                    }
+                }
+            }
         }
         item {
             HistoryFilterBar(
@@ -189,11 +206,7 @@ fun HistoryScreen(
                         contentColor = if (categoryFilterKey == spec.key) MaterialTheme.colorScheme.onPrimary else LocalFinanceColors.current.textSecondary,
                         shape = RoundedCornerShape(11.dp),
                     ) {
-                        Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(spec.icon, contentDescription = null, tint = if (categoryFilterKey == spec.key) MaterialTheme.colorScheme.onPrimary else spec.color, modifier = Modifier.size(15.dp))
-                            Spacer(Modifier.width(5.dp))
-                            Text(categoryLabel(spec.key), style = MaterialTheme.typography.labelLarge)
-                        }
+                        Text(categoryLabel(spec.key), modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp), style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }
@@ -202,7 +215,7 @@ fun HistoryScreen(
             OutlinedTextField(
                 value = search,
                 onValueChange = { search = it },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
                 trailingIcon = {
@@ -218,9 +231,10 @@ fun HistoryScreen(
         }
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.weight(1f)) {
+                Box {
                     TextButton(onClick = { paymentMenuOpen = true }) {
-                        Text(paymentFilter ?: "모든 결제수단", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(paymentFilter ?: "결제수단", modifier = Modifier.widthIn(max = 62.dp), maxLines = 1,
+                            overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
                         Icon(Icons.Rounded.ChevronRight, null, modifier = Modifier.size(16.dp))
                     }
                     DropdownMenu(paymentMenuOpen, { paymentMenuOpen = false }) {
@@ -230,9 +244,30 @@ fun HistoryScreen(
                         }
                     }
                 }
+                Text("${filteredTransactions.size}건", color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.labelMedium)
+                Text(
+                    "지출 ${formatWon(filteredTransactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount })}",
+                    color = LocalFinanceColors.current.expense,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    "수입 ${formatWon(filteredTransactions.filter { it.type == TransactionType.INCOME }.sumOf { it.amount })}",
+                    color = LocalFinanceColors.current.income,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.End,
+                )
                 Box {
                     TextButton(onClick = { sortMenuOpen = true }) {
-                        Text(sort.label)
+                        Text(sort.label, style = MaterialTheme.typography.labelSmall)
                         Icon(Icons.Rounded.ChevronRight, null, modifier = Modifier.size(16.dp))
                     }
                     DropdownMenu(sortMenuOpen, { sortMenuOpen = false }) {
@@ -242,7 +277,6 @@ fun HistoryScreen(
                     }
                 }
             }
-            HistorySummaryLine(filteredTransactions)
         }
         if (dateFilter != null) item {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -335,18 +369,6 @@ private fun HistoryFilterBar(
 }
 
 @Composable
-private fun HistorySummaryLine(transactions: List<Transaction>) {
-    val colors = LocalFinanceColors.current
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("현재 조건 ${transactions.size}건", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("지출 ${formatWon(transactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount })}", color = colors.expense, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            Text("수입 ${formatWon(transactions.filter { it.type == TransactionType.INCOME }.sumOf { it.amount })}", color = colors.income, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
-        }
-    }
-}
-
-@Composable
 private fun CalendarCard(
     month: YearMonth,
     selectedDate: LocalDate,
@@ -380,9 +402,6 @@ private fun CalendarCard(
                     Icon(Icons.Rounded.ChevronRight, contentDescription = "다음 달", tint = colors.accent)
                 }
             }
-            TextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth()) {
-                Text(if (expanded) "달력 접기" else "월 전체 달력 보기", style = MaterialTheme.typography.labelMedium)
-            }
             Row {
                 listOf(
                     DayOfWeek.SUNDAY,
@@ -414,6 +433,9 @@ private fun CalendarCard(
                         )
                     }
                 }
+            }
+            TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.Start)) {
+                Text(if (expanded) "달력 접기" else "전체 보기", style = MaterialTheme.typography.labelMedium)
             }
         }
     }

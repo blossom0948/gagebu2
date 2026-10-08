@@ -114,8 +114,8 @@ private val MoasseumTypography = Typography(
     headlineSmall = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Bold,
-        fontSize = 24.sp,
-        lineHeight = 30.sp,
+        fontSize = 20.sp,
+        lineHeight = 26.sp,
         letterSpacing = (-0.3).sp,
     ),
     titleLarge = TextStyle(

@@ -2,6 +2,7 @@ package com.moasseum.app.domain
 
 import java.time.LocalDate
 import java.time.YearMonth
+import java.util.Locale
 
 data class CardUsage(
     val card: PaymentCard,
@@ -33,6 +34,57 @@ fun cardUsage(card: PaymentCard, dueMonth: YearMonth, transactions: List<Transac
 }
 
 data class UpcomingFixedExpense(val rule: RecurringRule, val date: LocalDate)
+
+data class RecurringExpensePattern(
+    val merchant: String,
+    val averageAmount: Long,
+    val categoryKey: String,
+    val paymentMethod: String,
+    val usualDay: Int,
+    val monthsSeen: Int,
+)
+
+/** Suggests, but never auto-creates, likely monthly expenses from at least three consecutive months. */
+fun detectRecurringExpensePatterns(
+    transactions: List<Transaction>,
+    existingRules: List<RecurringRule>,
+    throughMonth: YearMonth,
+    monthWindow: Int = 6,
+): List<RecurringExpensePattern> {
+    require(monthWindow in 3..24)
+    val firstMonth = throughMonth.minusMonths((monthWindow - 1).toLong())
+    val known = existingRules.filter { it.isActive && it.type == TransactionType.EXPENSE }
+        .mapTo(mutableSetOf()) { normalizedMerchant(it.merchant) }
+    return transactions.asSequence()
+        .filter { it.type == TransactionType.EXPENSE && it.source !in setOf("INSTALLMENT", "RECURRING") }
+        .filter { YearMonth.from(it.occurredDate) in firstMonth..throughMonth }
+        .groupBy { normalizedMerchant(it.merchant) }
+        .filter { (merchantKey, rows) -> merchantKey.length >= 3 && merchantKey !in known && rows.map { YearMonth.from(it.occurredDate) }.distinct().size >= 3 }
+        .mapNotNull { (_, rows) ->
+            val perMonth = rows.groupBy { YearMonth.from(it.occurredDate) }
+                .mapValues { (_, monthRows) -> monthRows.minByOrNull { it.occurredAt }!! }
+                .toSortedMap()
+            val lastThree = (0L..2L).map { throughMonth.minusMonths(it) }
+            val seenConsecutive = lastThree.all(perMonth::containsKey)
+            if (!seenConsecutive) return@mapNotNull null
+            val samples = lastThree.map(perMonth::getValue)
+            val amounts = samples.map { it.amount }
+            val average = amounts.sum() / amounts.size
+            if (average <= 0 || amounts.any { it < average * 0.8 || it > average * 1.2 }) return@mapNotNull null
+            val displayName = rows.firstOrNull()?.merchant?.take(80) ?: return@mapNotNull null
+            RecurringExpensePattern(
+                merchant = displayName,
+                averageAmount = average,
+                categoryKey = samples.groupingBy { it.categoryKey }.eachCount().maxByOrNull { it.value }?.key ?: "OTHER",
+                paymentMethod = samples.groupingBy { it.paymentMethod }.eachCount().maxByOrNull { it.value }?.key ?: "카드",
+                usualDay = samples.map { it.occurredDate.dayOfMonth }.sorted()[1],
+                monthsSeen = perMonth.size,
+            )
+        }
+        .sortedByDescending { it.averageAmount }
+}
+
+private fun normalizedMerchant(value: String): String = value.lowercase(Locale.ROOT).filter(Char::isLetterOrDigit)
 
 fun upcomingFixedExpenses(
     rules: List<RecurringRule>,

@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [TransactionEntity::class, BudgetEntity::class, NotificationCandidateEntity::class, RecurringTransactionEntity::class, AccountEntity::class],
-    version = 4,
+    version = 6,
     exportSchema = false,
 )
 abstract class FinanceDatabase : RoomDatabase() {
@@ -21,7 +21,7 @@ abstract class FinanceDatabase : RoomDatabase() {
                 context,
                 FinanceDatabase::class.java,
                 name,
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build()
     }
 }
 
@@ -30,6 +30,22 @@ internal val MIGRATION_3_4 = object : Migration(3, 4) {
         database.execSQL("ALTER TABLE transactions ADD COLUMN accountId TEXT")
         database.execSQL("ALTER TABLE transactions ADD COLUMN destinationAccountId TEXT")
         database.execSQL("CREATE TABLE IF NOT EXISTS accounts (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, openingBalance INTEGER NOT NULL, archived INTEGER NOT NULL, updatedAt INTEGER NOT NULL)")
+    }
+}
+
+internal val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE transactions ADD COLUMN cloudId TEXT")
+        database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_transactions_cloudId ON transactions(cloudId)")
+    }
+}
+
+internal val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE transactions ADD COLUMN installmentGroupId TEXT")
+        database.execSQL("ALTER TABLE transactions ADD COLUMN installmentNumber INTEGER")
+        database.execSQL("ALTER TABLE transactions ADD COLUMN installmentCount INTEGER")
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_transactions_installmentGroupId ON transactions(installmentGroupId)")
     }
 }
 

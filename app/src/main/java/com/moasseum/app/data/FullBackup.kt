@@ -2,6 +2,7 @@ package com.moasseum.app.data
 
 import com.moasseum.app.data.local.*
 import com.moasseum.app.domain.PaymentCard
+import com.moasseum.app.domain.HomeDashboardCards
 import com.moasseum.app.domain.TransactionType
 import com.moasseum.app.domain.validateAccount
 import org.json.JSONArray
@@ -18,6 +19,11 @@ data class BackupSettings(
     val paymentCards: List<PaymentCard>,
     val categoryLabels: Map<String, String>,
     val categoryBudgets: Map<String, Long>,
+    val categoryOrder: List<String> = categoryLabels.keys.toList(),
+    val monthlyIncomeTargets: Map<String, Long> = emptyMap(),
+    val homeDashboardCards: Set<String> = HomeDashboardCards.defaults,
+    val noSpendChallengeGoalDays: Int = 7,
+    val noSpendChallengeStartDate: LocalDate? = null,
 )
 
 data class FullBackup(
@@ -55,6 +61,9 @@ object FullBackupCodec {
             put("memo", t.memo); put("paymentMethod", t.paymentMethod); put("source", t.source)
             put("createdAt", t.createdAt); put("updatedAt", t.updatedAt); put("deletedAt", t.deletedAt ?: JSONObject.NULL)
             put("accountId", t.accountId ?: JSONObject.NULL); put("destinationAccountId", t.destinationAccountId ?: JSONObject.NULL)
+            put("installmentGroupId", t.installmentGroupId ?: JSONObject.NULL)
+            put("installmentNumber", t.installmentNumber ?: JSONObject.NULL)
+            put("installmentCount", t.installmentCount ?: JSONObject.NULL)
         } })
         put("accounts", array(backup.accounts) { a -> JSONObject().apply {
             put("id", a.id); put("name", a.name); put("openingBalance", a.openingBalance); put("archived", a.archived); put("updatedAt", a.updatedAt)
@@ -70,6 +79,11 @@ object FullBackupCodec {
         backup.settings?.let { s -> put("settings", JSONObject().apply {
             put("darkTheme", s.darkTheme); put("reduceMotion", s.reduceMotion); put("paymentMethods", JSONArray(s.paymentMethods))
             put("paymentCards", PaymentCardSettings.encode(s.paymentCards)); put("categoryLabels", JSONObject(s.categoryLabels)); put("categoryBudgets", JSONObject(s.categoryBudgets))
+            put("categoryOrder", JSONArray(s.categoryOrder))
+            put("monthlyIncomeTargets", JSONObject(s.monthlyIncomeTargets))
+            put("homeDashboardCards", JSONArray(s.homeDashboardCards.sorted()))
+            put("noSpendChallengeGoalDays", s.noSpendChallengeGoalDays)
+            put("noSpendChallengeStartDate", s.noSpendChallengeStartDate?.toString() ?: JSONObject.NULL)
         }) }
     }.toString(2)
 
@@ -95,12 +109,24 @@ object FullBackupCodec {
             val timestamp = t.getLong("occurredAt")
             val zone = t.optString("timezone", ZoneId.systemDefault().id).also { ZoneId.of(it) }
             require(timestamp in 0..32_503_680_000_000L)
+            val installmentGroupId = t.nullableString("installmentGroupId")?.also { java.util.UUID.fromString(it) }
+            val installmentNumber = t.optInt("installmentNumber", -1).takeIf { it > 0 }
+            val installmentCount = t.optInt("installmentCount", -1).takeIf { it > 0 }
+            require((installmentGroupId == null && installmentNumber == null && installmentCount == null) ||
+                (type == TransactionType.EXPENSE && installmentGroupId != null && installmentNumber != null && installmentCount != null && installmentCount in 2..60 && installmentNumber <= installmentCount)) {
+                "할부 연결 정보가 올바르지 않은 백업이에요."
+            }
             TransactionEntity(id = t.getLong("id").also { require(it > 0) }, type = type.name, amount = amount(t), occurredAt = timestamp,
                 timezone = zone, categoryKey = field(t, "categoryKey", 64), merchant = field(t, "merchant", 300), memo = field(t, "memo", 4000, true),
                 paymentMethod = field(t, "paymentMethod", 100), source = field(t, "source", 40), createdAt = t.optLong("createdAt", now),
-                updatedAt = t.optLong("updatedAt", now), deletedAt = if (t.isNull("deletedAt") || !t.has("deletedAt")) null else t.getLong("deletedAt"), accountId = from, destinationAccountId = to)
+                updatedAt = t.optLong("updatedAt", now), deletedAt = if (t.isNull("deletedAt") || !t.has("deletedAt")) null else t.getLong("deletedAt"), accountId = from, destinationAccountId = to,
+                installmentGroupId = installmentGroupId, installmentNumber = installmentNumber, installmentCount = installmentCount)
         }
         require(transactions.map { it.id }.distinct().size == transactions.size) { "중복 거래 ID가 있어요." }
+        require(transactions.filter { it.installmentGroupId != null }.groupBy { it.installmentGroupId }.values.all { rows ->
+            val count = rows.first().installmentCount
+            rows.size == count && rows.mapNotNull { it.installmentNumber }.toSet() == (1..requireNotNull(count)).toSet() && rows.all { it.installmentCount == count }
+        }) { "할부 회차가 빠졌거나 중복된 백업이에요." }
         val budgets = if (version == 1) emptyList() else objects(root, "budgets").map { b ->
             BudgetEntity(b.getString("monthKey").also { YearMonth.parse(it) }, amount(b), b.getBoolean("rollover"), b.getLong("updatedAt"))
         }
@@ -115,16 +141,62 @@ object FullBackupCodec {
         val settings = root.optJSONObject("settings")?.let { s ->
             val methods = s.getJSONArray("paymentMethods").let { values -> (0 until values.length()).map { values.getString(it) } }
             require(methods.size in 1..36 && methods.distinct().size == methods.size && methods.all { it.length in 1..100 && '\n' !in it && '\r' !in it })
-            val labels = s.getJSONObject("categoryLabels").let { labels -> labels.keys().asSequence().associateWith { labels.getString(it) } }
-            require(labels.size in 7..27 && labels.keys.all { it in DEFAULT_CATEGORY_LABELS || it.matches(Regex("CUSTOM_[A-F0-9]{12}")) })
-            require(labels.keys.containsAll(DEFAULT_CATEGORY_LABELS.keys) && labels.values.all { it.length in 1..16 && !it.contains('\n') && !it.contains('\r') })
+            val importedLabels = s.getJSONObject("categoryLabels").let { labels -> labels.keys().asSequence().associateWith { labels.getString(it) } }
+            val legacyBuiltInKeys = setOf("FOOD", "TRANSPORT", "SHOPPING", "LIVING", "HEALTH", "LEISURE", "OTHER")
+            require(importedLabels.size in legacyBuiltInKeys.size..(DEFAULT_CATEGORY_LABELS.size + 20) &&
+                importedLabels.keys.all { it in DEFAULT_CATEGORY_LABELS || it.matches(Regex("CUSTOM_[A-F0-9]{12}")) })
+            require(importedLabels.keys.containsAll(legacyBuiltInKeys) &&
+                importedLabels.values.all { it.length in 1..16 && !it.contains('\n') && !it.contains('\r') })
+            require(importedLabels.values.map { it.lowercase(java.util.Locale.ROOT) }.distinct().size == importedLabels.size)
+            val labels = (DEFAULT_CATEGORY_LABELS + importedLabels).toMutableMap()
+            val importedLabelValues = importedLabels.values.mapTo(mutableSetOf()) { it.lowercase(java.util.Locale.ROOT) }
+            DEFAULT_CATEGORY_LABELS.forEach { (key, label) ->
+                if (key !in importedLabels && label.lowercase(java.util.Locale.ROOT) in importedLabelValues) {
+                    var uniqueLabel = "$label (기본)".take(16)
+                    var suffix = 2
+                    while (labels.any { (otherKey, otherLabel) -> otherKey != key && otherLabel.equals(uniqueLabel, ignoreCase = true) }) {
+                        uniqueLabel = "$label (${suffix++})".take(16)
+                    }
+                    labels[key] = uniqueLabel
+                }
+            }
             require(labels.values.map { it.lowercase(java.util.Locale.ROOT) }.distinct().size == labels.size)
             val categoryBudgets = s.getJSONObject("categoryBudgets").let { b -> b.keys().asSequence().associateWith { b.getLong(it) } }
             require(categoryBudgets.keys.all { it in labels } && categoryBudgets.values.all { it in 1..1_000_000_000_000L })
+            val categoryOrder = s.optJSONArray("categoryOrder")?.let { order ->
+                (0 until order.length()).map { order.getString(it) }
+            } ?: (DEFAULT_CATEGORY_LABELS.keys + importedLabels.keys.filterNot { it in DEFAULT_CATEGORY_LABELS }).toList()
+            require(categoryOrder.size == importedLabels.size && categoryOrder.distinct().size == categoryOrder.size && categoryOrder.toSet() == importedLabels.keys) {
+                "카테고리 순서가 올바르지 않은 백업이에요."
+            }
+            val upgradedCategoryOrder = categoryOrder + labels.keys.filterNot { it in categoryOrder }
+            val monthlyIncomeTargets = s.optJSONObject("monthlyIncomeTargets")?.let { targets ->
+                targets.keys().asSequence().associateWith { month -> targets.getLong(month) }
+            } ?: emptyMap()
+            require(monthlyIncomeTargets.size <= 120 && monthlyIncomeTargets.all { (month, target) ->
+                runCatching { YearMonth.parse(month) }.isSuccess && target in 1..1_000_000_000_000L
+            }) { "월 수입 목표가 올바르지 않은 백업이에요." }
+            val homeDashboardCards = s.optJSONArray("homeDashboardCards")?.let { cards ->
+                (0 until cards.length()).map { cards.getString(it) }.toSet()
+            } ?: HomeDashboardCards.defaults
+            require(homeDashboardCards.size <= HomeDashboardCards.defaults.size && homeDashboardCards.all { it in HomeDashboardCards.defaults }) {
+                "홈 카드 설정이 올바르지 않은 백업이에요."
+            }
+            val noSpendChallengeGoalDays = s.optInt("noSpendChallengeGoalDays", 7)
+            require(noSpendChallengeGoalDays in setOf(7, 14, 30)) { "무지출 챌린지 설정이 올바르지 않은 백업이에요." }
+            val noSpendChallengeStartDate = if (s.has("noSpendChallengeStartDate") && !s.isNull("noSpendChallengeStartDate")) {
+                runCatching { LocalDate.parse(s.getString("noSpendChallengeStartDate")) }.getOrElse {
+                    throw IllegalArgumentException("무지출 챌린지 시작일이 올바르지 않은 백업이에요.")
+                }
+            } else null
             val cardText = s.getString("paymentCards")
             val cards = PaymentCardSettings.decode(cardText)
             require(PaymentCardSettings.encode(cards) == cardText) { "카드 설정이 손상된 백업이에요." }
-            BackupSettings(s.getBoolean("darkTheme"), s.getBoolean("reduceMotion"), methods, cards, labels, categoryBudgets)
+            BackupSettings(
+                s.getBoolean("darkTheme"), s.getBoolean("reduceMotion"), methods, cards, labels,
+                categoryBudgets, upgradedCategoryOrder, monthlyIncomeTargets, homeDashboardCards,
+                noSpendChallengeGoalDays, noSpendChallengeStartDate,
+            )
         }
         if (version == 2) require(settings != null) { "앱 설정이 없는 백업이에요." }
         return FullBackup(transactions, budgets, rules, accounts, settings, legacy = version == 1)

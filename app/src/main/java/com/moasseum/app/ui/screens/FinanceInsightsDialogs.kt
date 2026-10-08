@@ -23,6 +23,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -33,9 +34,11 @@ import androidx.compose.ui.unit.dp
 import com.moasseum.app.domain.LedgerUiState
 import com.moasseum.app.domain.PaymentCard
 import com.moasseum.app.domain.RecurringRule
+import com.moasseum.app.domain.RecurringExpensePattern
 import com.moasseum.app.domain.Transaction
 import com.moasseum.app.domain.TransactionType
 import com.moasseum.app.domain.cardUsage
+import com.moasseum.app.domain.detectRecurringExpensePatterns
 import com.moasseum.app.domain.formatDate
 import com.moasseum.app.domain.formatMonth
 import com.moasseum.app.domain.formatWon
@@ -126,11 +129,15 @@ fun FixedExpenseRadarDialog(
     uiState: LedgerUiState,
     onDismiss: () -> Unit,
     onManageRules: () -> Unit,
+    onAddDetected: (RecurringExpensePattern) -> Unit,
 ) {
     val colors = LocalFinanceColors.current
     val today = LocalDate.now()
     val upcoming = upcomingFixedExpenses(rules, today)
     val active = rules.filter { it.isActive && it.type == TransactionType.EXPENSE }
+    val suggestions = remember(uiState.transactions, rules) {
+        detectRecurringExpensePatterns(uiState.transactions, rules, YearMonth.now())
+    }
     val recorded = uiState.monthTransactions.filter { it.type == TransactionType.EXPENSE && it.source == "RECURRING" }.sumOf { it.amount }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -145,6 +152,23 @@ fun FixedExpenseRadarDialog(
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         InsightMetric("매월 예정 고정비", active.sumOf { it.amount })
                         InsightMetric("앞으로 7일 예정", upcoming.filter { it.date < today.plusDays(7) }.sumOf { it.rule.amount })
+                    }
+                }
+                if (suggestions.isNotEmpty()) {
+                    Text("반복 지출 후보", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    suggestions.forEach { pattern ->
+                        FinanceCard {
+                            Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(pattern.merchant, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                                    FittedAmountText("월 ${formatWon(pattern.averageAmount)}", style = MaterialTheme.typography.bodyMedium)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("${pattern.monthsSeen}개월 반복 · ${pattern.paymentMethod}", modifier = Modifier.weight(1f), color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                                    TextButton(onClick = { onAddDetected(pattern) }) { Text("반복 등록") }
+                                }
+                            }
+                        }
                     }
                 }
                 FinanceCard {

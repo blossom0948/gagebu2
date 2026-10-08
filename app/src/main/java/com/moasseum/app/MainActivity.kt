@@ -7,7 +7,9 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.speech.RecognizerIntent
-import androidx.activity.ComponentActivity
+import android.widget.Toast
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -15,6 +17,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +41,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -55,11 +61,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.core.view.WindowCompat
@@ -70,6 +78,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.fragment.app.FragmentActivity
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -78,23 +87,31 @@ import androidx.navigation.compose.rememberNavController
 import com.moasseum.app.ui.components.AddMode
 import com.moasseum.app.ui.components.AddTransactionSheet
 import com.moasseum.app.ui.components.LocalCategoryLabels
+import com.moasseum.app.ui.components.LocalCategoryOrder
 import com.moasseum.app.ui.components.BottomNavBar
 import com.moasseum.app.ui.components.ROUTE_HISTORY
 import com.moasseum.app.ui.components.ROUTE_HOME
 import com.moasseum.app.ui.components.ROUTE_MANAGE
 import com.moasseum.app.ui.components.ROUTE_NOTIFICATIONS
+import com.moasseum.app.ui.components.ROUTE_TOGETHER
+import com.moasseum.app.ui.components.ROUTE_LEGACY_TOGETHER
 import com.moasseum.app.ui.screens.HistoryScreen
 import com.moasseum.app.ui.screens.HomeScreen
 import com.moasseum.app.ui.screens.ManageScreen
 import com.moasseum.app.ui.screens.NotificationsScreen
+import com.moasseum.app.ui.screens.TogetherScreen
+import com.moasseum.app.data.SharedLedgerSnapshot
 import com.moasseum.app.ui.theme.MoasseumTheme
 import com.moasseum.app.data.AiClient
 import com.moasseum.app.data.CsvBackup
 import com.moasseum.app.data.DEFAULT_CATEGORY_LABELS
+import com.moasseum.app.data.DEFAULT_CATEGORY_ORDER
 import com.moasseum.app.data.DEFAULT_PAYMENT_METHODS
 import com.moasseum.app.data.JsonBackup
 import com.moasseum.app.data.ReceiptOcr
 import com.moasseum.app.domain.AiParseState
+import com.moasseum.app.domain.HomeDashboardCards
+import com.moasseum.app.domain.NoSpendChallengeSettings
 import com.moasseum.app.domain.NotificationCandidate
 import com.moasseum.app.domain.SpendingAnalysisState
 import com.moasseum.app.domain.SpendingQuestionState
@@ -105,18 +122,84 @@ import com.moasseum.app.update.AppUpdateManager
 import com.moasseum.app.update.UpdateCheckState
 import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.material3.SnackbarResult
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private val incomingNotificationCandidateId = MutableStateFlow<Long?>(null)
+    private val incomingSharedContent = MutableStateFlow<IncomingShare?>(null)
+    private var sharedContentSequence = 0L
+    private val biometricLockReleased = MutableStateFlow(false)
+
+    override fun onStop() {
+        super.onStop()
+        lifecycleScope.launch {
+            val app = application as? FinanceApplication ?: return@launch
+            if (app.preferencesRepository.appLockEnabled.first()) biometricLockReleased.value = false
+        }
+    }
+
+    fun authenticateAppLock() {
+        showBiometricPrompt { success -> if (success) biometricLockReleased.value = true }
+    }
+
+    fun setAppLockEnabled(enabled: Boolean) {
+        if (!enabled) {
+            lifecycleScope.launch {
+                (application as FinanceApplication).preferencesRepository.setAppLockEnabled(false)
+                biometricLockReleased.value = true
+            }
+            return
+        }
+        val app = application as FinanceApplication
+        val authenticators = appLockAuthenticators()
+        val availability = BiometricManager.from(this).canAuthenticate(authenticators)
+        if (availability != BiometricManager.BIOMETRIC_SUCCESS) {
+            Toast.makeText(this, "기기 설정에서 생체 인증 또는 화면 잠금을 먼저 설정해 주세요.", Toast.LENGTH_LONG).show()
+            return
+        }
+        showBiometricPrompt { success ->
+            if (success) lifecycleScope.launch {
+                app.preferencesRepository.setAppLockEnabled(true)
+                biometricLockReleased.value = true
+            }
+        }
+    }
+
+    private fun showBiometricPrompt(onResult: (Boolean) -> Unit) {
+        val title = "모아씀 잠금 해제"
+        val builder = BiometricPrompt.PromptInfo.Builder()
+            .setTitle(title)
+            .setSubtitle("생체 인증 또는 기기 잠금으로 확인해 주세요.")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            builder.setAllowedAuthenticators(appLockAuthenticators())
+        } else {
+            builder.setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                .setNegativeButtonText("취소")
+        }
+        BiometricPrompt(
+            this,
+            ContextCompat.getMainExecutor(this),
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) = onResult(true)
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) = onResult(false)
+            },
+        ).authenticate(builder.build())
+    }
+
+    private fun appLockAuthenticators(): Int = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+    } else BiometricManager.Authenticators.BIOMETRIC_STRONG
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        applyImmersiveSystemBars()
         incomingNotificationCandidateId.value = intentCandidateId(intent)
+        incomingSharedContent.value = extractShare(intent)
         val application = application as FinanceApplication
         consumeAuthIntent(intent)
         setContent {
@@ -126,9 +209,13 @@ class MainActivity : ComponentActivity() {
             val darkTheme by application.preferencesRepository.isDarkTheme.collectAsStateWithLifecycle(initialValue = true)
             val reduceMotion by application.preferencesRepository.reduceMotion.collectAsStateWithLifecycle(initialValue = false)
             val categoryLabels by application.preferencesRepository.categoryLabels.collectAsStateWithLifecycle(initialValue = DEFAULT_CATEGORY_LABELS)
+            val categoryOrder by application.preferencesRepository.categoryOrder.collectAsStateWithLifecycle(initialValue = DEFAULT_CATEGORY_ORDER)
             val paymentMethods by application.preferencesRepository.paymentMethods.collectAsStateWithLifecycle(initialValue = DEFAULT_PAYMENT_METHODS)
             val paymentCards by application.preferencesRepository.paymentCards.collectAsStateWithLifecycle(initialValue = emptyList())
             val categoryBudgets by application.preferencesRepository.categoryBudgets.collectAsStateWithLifecycle(initialValue = emptyMap())
+            val monthlyIncomeTargets by application.preferencesRepository.monthlyIncomeTargets.collectAsStateWithLifecycle(initialValue = emptyMap())
+            val homeDashboardCards by application.preferencesRepository.homeDashboardCards.collectAsStateWithLifecycle(initialValue = HomeDashboardCards.defaults)
+            val noSpendChallenge by application.preferencesRepository.noSpendChallenge.collectAsStateWithLifecycle(initialValue = NoSpendChallengeSettings())
             val postNotificationPermissionPromptShown by application.preferencesRepository.notificationPostPermissionPromptShown.collectAsStateWithLifecycle(initialValue = false)
             val aiNotificationClassificationEnabled by application.preferencesRepository.aiNotificationClassificationEnabled.collectAsStateWithLifecycle(initialValue = false)
             val notificationServiceConnectedAt by application.preferencesRepository.notificationServiceConnectedAt.collectAsStateWithLifecycle(initialValue = null)
@@ -136,7 +223,14 @@ class MainActivity : ComponentActivity() {
             val notificationLastSeenAt by application.preferencesRepository.notificationLastSeenAt.collectAsStateWithLifecycle(initialValue = null)
             val notificationLastCandidateAt by application.preferencesRepository.notificationLastCandidateAt.collectAsStateWithLifecycle(initialValue = null)
             val candidateIdFromNotification by incomingNotificationCandidateId.collectAsStateWithLifecycle()
-            CompositionLocalProvider(LocalCategoryLabels provides categoryLabels) {
+            val sharedContent by incomingSharedContent.collectAsStateWithLifecycle()
+            val appLockEnabled by application.preferencesRepository.appLockEnabled.collectAsStateWithLifecycle(initialValue = false)
+            val appLockReleased by biometricLockReleased.collectAsStateWithLifecycle()
+            val financeRemindersEnabled by application.preferencesRepository.financeRemindersEnabled.collectAsStateWithLifecycle(initialValue = true)
+            CompositionLocalProvider(
+                LocalCategoryLabels provides categoryLabels,
+                LocalCategoryOrder provides categoryOrder,
+            ) {
                 MoasseumTheme(darkTheme = darkTheme, reduceMotion = reduceMotion) {
                     UpdateSystemBars(darkTheme)
                     MoasseumApp(
@@ -157,6 +251,14 @@ class MainActivity : ComponentActivity() {
                         onSaveCategoryLabels = { labels ->
                             application.preferencesRepository.saveCategoryLabels(labels)
                         },
+                        categoryOrder = categoryOrder,
+                        onSaveCategoryOrder = { order -> application.preferencesRepository.saveCategoryOrder(order) },
+                        monthlyIncomeTargets = monthlyIncomeTargets,
+                        onSaveMonthlyIncomeTarget = { monthKey, amount -> application.preferencesRepository.saveMonthlyIncomeTarget(monthKey, amount) },
+                        homeDashboardCards = homeDashboardCards,
+                        onSaveHomeDashboardCards = { cards -> application.preferencesRepository.saveHomeDashboardCards(cards) },
+                        noSpendChallenge = noSpendChallenge,
+                        onSaveNoSpendChallenge = { enabled, goalDays -> application.preferencesRepository.configureNoSpendChallenge(enabled, goalDays) },
                         onSetAiNotificationClassificationEnabled = { enabled ->
                             viewModel.performOperation("AI 알림 설정을 저장하지 못했어요.") { application.preferencesRepository.setAiNotificationClassificationEnabled(enabled) }
                         },
@@ -181,9 +283,35 @@ class MainActivity : ComponentActivity() {
                         onIncomingNotificationCandidateConsumed = { id ->
                             if (incomingNotificationCandidateId.value == id) incomingNotificationCandidateId.value = null
                         },
+                        incomingSharedContent = sharedContent,
+                        onSharedContentConsumed = { token ->
+                            if (incomingSharedContent.value?.token == token) incomingSharedContent.value = null
+                        },
+                        appLockEnabled = appLockEnabled,
+                        appLockReleased = appLockReleased,
+                        onSetAppLockEnabled = ::setAppLockEnabled,
+                        onAuthenticateAppLock = ::authenticateAppLock,
+                        financeRemindersEnabled = financeRemindersEnabled,
+                        onSetFinanceRemindersEnabled = { enabled ->
+                            viewModel.performOperation("알림 설정을 저장하지 못했어요.") {
+                                application.preferencesRepository.setFinanceRemindersEnabled(enabled)
+                            }
+                        },
                     )
                 }
             }
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) applyImmersiveSystemBars()
+    }
+
+    private fun applyImmersiveSystemBars() {
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.statusBars())
         }
     }
 
@@ -191,6 +319,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         incomingNotificationCandidateId.value = intentCandidateId(intent)
+        incomingSharedContent.value = extractShare(intent)
         consumeAuthIntent(intent)
     }
 
@@ -208,7 +337,26 @@ class MainActivity : ComponentActivity() {
 
     private fun intentCandidateId(intent: Intent?): Long? =
         intent?.getLongExtra(EXTRA_NOTIFICATION_CANDIDATE_ID, 0L)?.takeIf { it > 0L }
+
+    private fun extractShare(incoming: Intent?): IncomingShare? {
+        if (incoming?.action != Intent.ACTION_SEND) return null
+        val text = runCatching { incoming.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()?.trim()?.take(4000)?.takeIf(String::isNotBlank) }
+            .getOrNull()
+        @Suppress("DEPRECATION")
+        val stream = runCatching {
+            if (Build.VERSION.SDK_INT >= 33) incoming.getParcelableExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java)
+            else incoming.getParcelableExtra(Intent.EXTRA_STREAM)
+        }.getOrNull()
+        val clipUri = runCatching { incoming.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri }.getOrNull()
+        val uri = (stream ?: clipUri)
+            ?.takeIf { incoming.type?.startsWith("image/") == true }
+        if (text == null && uri == null) return null
+        sharedContentSequence++
+        return IncomingShare(sharedContentSequence, text, uri)
+    }
 }
+
+private data class IncomingShare(val token: Long, val text: String?, val imageUri: android.net.Uri?)
 
 @Composable
 private fun UpdateSystemBars(darkTheme: Boolean) {
@@ -232,6 +380,14 @@ private fun MoasseumApp(
     categoryBudgets: Map<String, Long>,
     onSaveCategoryBudgets: suspend (Map<String, Long>) -> Unit,
     onSaveCategoryLabels: suspend (Map<String, String>) -> Unit,
+    categoryOrder: List<String>,
+    onSaveCategoryOrder: suspend (List<String>) -> Unit,
+    monthlyIncomeTargets: Map<String, Long>,
+    onSaveMonthlyIncomeTarget: suspend (String, Long?) -> Unit,
+    homeDashboardCards: Set<String>,
+    onSaveHomeDashboardCards: suspend (Set<String>) -> Unit,
+    noSpendChallenge: NoSpendChallengeSettings,
+    onSaveNoSpendChallenge: suspend (Boolean, Int) -> Unit,
     onSetAiNotificationClassificationEnabled: (Boolean) -> Unit,
     darkTheme: Boolean,
     reduceMotion: Boolean,
@@ -246,6 +402,14 @@ private fun MoasseumApp(
     notificationLastCandidateAt: Long?,
     incomingNotificationCandidateId: Long?,
     onIncomingNotificationCandidateConsumed: (Long) -> Unit,
+    incomingSharedContent: IncomingShare?,
+    onSharedContentConsumed: (Long) -> Unit,
+    appLockEnabled: Boolean,
+    appLockReleased: Boolean,
+    onSetAppLockEnabled: (Boolean) -> Unit,
+    onAuthenticateAppLock: () -> Unit,
+    financeRemindersEnabled: Boolean,
+    onSetFinanceRemindersEnabled: (Boolean) -> Unit,
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -255,6 +419,9 @@ private fun MoasseumApp(
     val pendingCandidates by viewModel.pendingNotificationCandidates.collectAsStateWithLifecycle()
     val recurringRules by viewModel.recurringRules.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    LaunchedEffect(appLockEnabled, appLockReleased) {
+        if (appLockEnabled && !appLockReleased) onAuthenticateAppLock()
+    }
     var notificationAccessEnabled by remember { mutableStateOf(NotificationAccess.isEnabled(context)) }
     var appNotificationsEnabled by remember { mutableStateOf(NotificationAccess.areAppNotificationsEnabled(context)) }
     var showNotificationAccessPrompt by remember { mutableStateOf(false) }
@@ -327,6 +494,8 @@ private fun MoasseumApp(
     }
     val analysisRequests = remember { com.moasseum.app.domain.LatestRequestGate() }
     val questionRequests = remember { com.moasseum.app.domain.LatestRequestGate() }
+    val sharedAnalysisRequests = remember { com.moasseum.app.domain.LatestRequestGate() }
+    val sharedQuestionRequests = remember { com.moasseum.app.domain.LatestRequestGate() }
     val notificationSaving = com.moasseum.app.ui.components.rememberSaveActionState()
     val coroutineScope = rememberCoroutineScope()
     val aiClient = remember { application.aiClient }
@@ -334,15 +503,56 @@ private fun MoasseumApp(
     var showAccounts by rememberSaveable { mutableStateOf(false) }
     var showAuth by rememberSaveable { mutableStateOf(false) }
     val authState by application.authRepository.state.collectAsStateWithLifecycle()
+    var sharedSnapshot by remember { mutableStateOf(SharedLedgerSnapshot()) }
+    var sharedReportMonth by remember { mutableStateOf(java.time.YearMonth.now()) }
+    var sharedBusy by remember { mutableStateOf(false) }
+    var sharedError by remember { mutableStateOf<String?>(null) }
+    var sharedAiAnalysisState by remember { mutableStateOf<SpendingAnalysisState>(SpendingAnalysisState.Idle) }
+    var sharedAiQuestionState by remember { mutableStateOf<SpendingQuestionState>(SpendingQuestionState.Idle) }
+    LaunchedEffect(currentRoute, authState.user?.id) {
+        if (currentRoute == ROUTE_TOGETHER && authState.user != null && !sharedBusy) {
+            sharedBusy = true
+            sharedError = null
+            try {
+                sharedSnapshot = application.sharedLedgerRepository.refresh()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                sharedError = error.message ?: "공유 장부를 불러오지 못했어요."
+            } finally {
+                sharedBusy = false
+            }
+        }
+    }
     LaunchedEffect(authState.linkEvent) {
         if (authState.linkEvent > 0) showAuth = true
+    }
+    fun runSharedAction(successMessage: String? = null, action: suspend () -> SharedLedgerSnapshot) {
+        if (sharedBusy) return
+        sharedBusy = true
+        sharedError = null
+        coroutineScope.launch {
+            try {
+                sharedSnapshot = action()
+                if (successMessage != null) snackbarHostState.showSnackbar(successMessage)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                sharedError = error.message ?: "공유 작업을 완료하지 못했어요."
+            } finally {
+                sharedBusy = false
+            }
+        }
     }
     var aiState by remember { mutableStateOf<AiParseState>(AiParseState.Idle) }
     var aiAnalysisState by remember { mutableStateOf<SpendingAnalysisState>(SpendingAnalysisState.Idle) }
     var aiQuestionState by remember { mutableStateOf<SpendingQuestionState>(SpendingQuestionState.Idle) }
     var addOpen by rememberSaveable { mutableStateOf(false) }
+    var pendingHistoryTransactionId by rememberSaveable { mutableStateOf<Long?>(null) }
     var savingTransaction by remember { mutableStateOf(false) }
     var addModeName by rememberSaveable { mutableStateOf(AddMode.MENU.name) }
+    var sharedPrefillText by rememberSaveable { mutableStateOf<String?>(null) }
+    var sharedPrefillKey by rememberSaveable { mutableStateOf("") }
     var showHelpDialog by rememberSaveable { mutableStateOf(false) }
     var updateState by remember { mutableStateOf<UpdateCheckState>(UpdateCheckState.Idle) }
     var downloadedUpdatePath by rememberSaveable { mutableStateOf<String?>(null) }
@@ -387,6 +597,31 @@ private fun MoasseumApp(
         if (file != null && success) recognizeReceipt(androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file), file)
         else file?.delete()
     }
+    fun takeReceiptPhoto() {
+        runCatching {
+            val folder = java.io.File(context.cacheDir, "receipt-capture").apply { mkdirs() }
+            val file = java.io.File.createTempFile("receipt-", ".jpg", folder)
+            receiptCameraPath = file.absolutePath
+            receiptCameraLauncher.launch(androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file))
+        }.onFailure { error ->
+            coroutineScope.launch { snackbarHostState.showSnackbar(error.message ?: "카메라를 열 수 없어요.") }
+        }
+    }
+    LaunchedEffect(incomingSharedContent?.token) {
+        val incoming = incomingSharedContent ?: return@LaunchedEffect
+        navigateTo(navController, ROUTE_HOME)
+        if (incoming.imageUri != null) {
+            sharedPrefillText = null
+            recognizeReceipt(incoming.imageUri)
+        } else {
+            sharedPrefillText = incoming.text
+            sharedPrefillKey = incoming.token.toString()
+            aiState = AiParseState.Idle
+            addOpen = true
+            addModeName = AddMode.AI_INPUT.name
+        }
+        onSharedContentConsumed(incoming.token)
+    }
     val exportCsvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         if (uri != null) {
             coroutineScope.launch {
@@ -400,6 +635,20 @@ private fun MoasseumApp(
                     else result.exceptionOrNull()?.message ?: "CSV 내보내기에 실패했어요.",
                 )
             }
+        }
+    }
+    var yearCsvExport by rememberSaveable { mutableStateOf(java.time.LocalDate.now().year) }
+    val exportYearCsvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        if (uri != null) coroutineScope.launch {
+            val rows = uiState.transactions.filter { it.occurredDate.year == yearCsvExport }
+            val result = withContext(Dispatchers.IO) { runCatching {
+                val output = context.contentResolver.openOutputStream(uri) ?: error("선택한 위치에 CSV 파일을 쓸 수 없어요.")
+                output.bufferedWriter(Charsets.UTF_8).use { it.write(CsvBackup.encode(rows)) }
+            } }
+            snackbarHostState.showSnackbar(
+                if (result.isSuccess) "${yearCsvExport}년 거래 ${rows.size}건을 내보냈어요."
+                else result.exceptionOrNull()?.message ?: "CSV 내보내기에 실패했어요.",
+            )
         }
     }
     val exportJsonLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
@@ -449,6 +698,23 @@ private fun MoasseumApp(
                 output.use { com.moasseum.app.data.MonthlyPdfReport.write(snapshot, labels, it) }
             } }
             snackbarHostState.showSnackbar(if (result.isSuccess) "${snapshot.month} PDF 리포트를 저장했어요." else result.exceptionOrNull()?.message ?: "PDF 저장에 실패했어요.")
+        }
+    }
+    val exportSharedPdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        if (uri != null) coroutineScope.launch {
+            val reportState = com.moasseum.app.domain.LedgerUiState(
+                month = sharedReportMonth,
+                transactions = sharedSnapshot.transactions,
+            )
+            val result = withContext(Dispatchers.IO) { runCatching {
+                val labels = application.preferencesRepository.backupSettings().categoryLabels
+                val output = context.contentResolver.openOutputStream(uri) ?: error("PDF를 쓸 수 없어요.")
+                output.use { com.moasseum.app.data.MonthlyPdfReport.write(reportState, labels, it) }
+            } }
+            snackbarHostState.showSnackbar(
+                if (result.isSuccess) "${sharedReportMonth} 공동 리포트를 저장했어요."
+                else result.exceptionOrNull()?.message ?: "공동 PDF 리포트 저장에 실패했어요.",
+            )
         }
     }
     val importCsvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -535,6 +801,37 @@ private fun MoasseumApp(
         }
     }
 
+    fun generateSharedSpendingAnalysis(month: java.time.YearMonth) {
+        val requestedState = com.moasseum.app.domain.LedgerUiState(month = month, transactions = sharedSnapshot.transactions)
+        if (requestedState.expenseCount == 0) return
+        val request = sharedAnalysisRequests.start()
+        sharedAiAnalysisState = SpendingAnalysisState.Loading
+        coroutineScope.launch {
+            val result = aiClient.analyzeSpending(requestedState)
+            if (!sharedAnalysisRequests.isCurrent(request)) return@launch
+            sharedAiAnalysisState = result.fold(
+                onSuccess = { SpendingAnalysisState.Success(month, it) },
+                onFailure = { SpendingAnalysisState.Error(it.message ?: "공동 소비 분석에 실패했어요. 잠시 후 다시 시도해 주세요.") },
+            )
+        }
+    }
+
+    fun askSharedSpendingQuestion(question: String, month: java.time.YearMonth) {
+        if (question.isBlank()) return
+        val requestedState = com.moasseum.app.domain.LedgerUiState(month = month, transactions = sharedSnapshot.transactions)
+        if (requestedState.monthTransactions.isEmpty()) return
+        val request = sharedQuestionRequests.start()
+        sharedAiQuestionState = SpendingQuestionState.Loading
+        coroutineScope.launch {
+            val result = aiClient.askSpending(question.trim(), requestedState)
+            if (!sharedQuestionRequests.isCurrent(request)) return@launch
+            sharedAiQuestionState = result.fold(
+                onSuccess = { SpendingQuestionState.Success(month, question.trim(), it) },
+                onFailure = { SpendingQuestionState.Error(it.message ?: "공동 장부 답변을 만들지 못했어요. 잠시 후 다시 시도해 주세요.") },
+            )
+        }
+    }
+
     LaunchedEffect(uiState.month) {
         analysisRequests.invalidate()
         questionRequests.invalidate()
@@ -546,6 +843,7 @@ private fun MoasseumApp(
         if (savingTransaction) return
         addOpen = false
         addModeName = AddMode.MENU.name
+        sharedPrefillText = null
         aiState = AiParseState.Idle
     }
 
@@ -611,10 +909,12 @@ private fun MoasseumApp(
             BottomNavBar(
                 currentRoute = currentRoute,
                 onNavigate = { route -> navigateTo(navController, route) },
-                pendingCount = pendingCandidates.size,
+                addExpanded = addOpen,
                 onAdd = {
-                    addOpen = true
-                    addModeName = AddMode.MENU.name
+                    if (addOpen) closeAdd() else {
+                        addOpen = true
+                        addModeName = AddMode.MENU.name
+                    }
                 },
             )
         },
@@ -638,15 +938,31 @@ private fun MoasseumApp(
                         onAskAiQuestion = ::askSpendingQuestion,
                         categoryBudgets = categoryBudgets,
                         onExportCsv = { exportCsvLauncher.launch("moasseum-${java.time.LocalDate.now()}.csv") },
+                        onExportPdf = { exportPdfLauncher.launch("moasseum-report-${uiState.month}.pdf") },
+                        onSelectMonth = viewModel::selectMonth,
                         onAdd = { mode ->
                             addModeName = mode.name
                             addOpen = true
                         },
                         onOpenManage = { navigateTo(navController, ROUTE_MANAGE) },
                         onOpenHistory = { navigateTo(navController, ROUTE_HISTORY) },
+                        onOpenTransaction = { id ->
+                            uiState.transactions.firstOrNull { it.id == id }?.let { transaction ->
+                                pendingHistoryTransactionId = id
+                                viewModel.selectMonth(java.time.YearMonth.from(transaction.occurredDate))
+                                viewModel.selectDate(transaction.occurredDate)
+                            }
+                            navigateTo(navController, ROUTE_HISTORY)
+                        },
                         onOpenHelp = { showHelpDialog = true },
                         onOpenNotifications = { navigateTo(navController, ROUTE_NOTIFICATIONS) },
                         onStartVoiceInput = ::startVoiceInput,
+                        onPickReceipt = ::pickReceiptPhoto,
+                        onTakeReceipt = ::takeReceiptPhoto,
+                        displayName = authState.user?.email?.substringBefore("@")?.takeIf(String::isNotBlank) ?: "모아씀",
+                        pendingCount = pendingCandidates.size,
+                        homeDashboardCards = homeDashboardCards,
+                        noSpendChallenge = noSpendChallenge,
                     )
                 }
                 composable(ROUTE_HISTORY) {
@@ -672,6 +988,8 @@ private fun MoasseumApp(
                         onExportCsv = { exportCsvLauncher.launch("moasseum-${java.time.LocalDate.now()}.csv") },
                         onExportJson = { exportJsonLauncher.launch("moasseum-${java.time.LocalDate.now()}.json") },
                         onImportCsv = { importCsvLauncher.launch(arrayOf("text/*", "application/vnd.ms-excel")) },
+                        initialTransactionId = pendingHistoryTransactionId,
+                        onInitialTransactionHandled = { pendingHistoryTransactionId = null },
                     )
                 }
                 composable(ROUTE_NOTIFICATIONS) {
@@ -688,6 +1006,80 @@ private fun MoasseumApp(
                         onOpenSettings = { navigateTo(navController, ROUTE_MANAGE) },
                     )
                 }
+                composable(ROUTE_LEGACY_TOGETHER) {
+                    NotificationsScreen(
+                        candidates = pendingCandidates,
+                        onReview = { candidate ->
+                            notificationPromptIds = listOf(candidate.id) + notificationPromptIds.filterNot { it == candidate.id }
+                        },
+                        onDismiss = { id ->
+                            viewModel.dismissNotificationCandidate(id)
+                            notificationPromptIds = notificationPromptIds.filterNot { it == id }
+                            PaymentNotificationNotifier.cancel(context, id)
+                        },
+                        onOpenSettings = { navigateTo(navController, ROUTE_MANAGE) },
+                    )
+                }
+                composable(ROUTE_TOGETHER) {
+                    TogetherScreen(
+                        email = authState.user?.email,
+                        userId = authState.user?.id,
+                        snapshot = sharedSnapshot,
+                        personalTransactions = uiState.transactions,
+                        busy = sharedBusy,
+                        error = sharedError,
+                        onLogin = { showAuth = true },
+                        onCreateInvite = {
+                            runSharedAction("초대 코드를 만들었어요.") { application.sharedLedgerRepository.createInvite() }
+                        },
+                        onJoin = { code ->
+                            runSharedAction("파트너 장부에 참여했어요.") { application.sharedLedgerRepository.join(code) }
+                        },
+                        onRefresh = {
+                            runSharedAction { application.sharedLedgerRepository.refresh() }
+                        },
+                        onToggleShare = { transaction, shared ->
+                            runSharedAction(if (shared) "거래를 파트너와 공유했어요." else "공유를 해제했어요.") {
+                                application.sharedLedgerRepository.setShared(transaction.id, shared)
+                            }
+                        },
+                        onCopyInvite = { code ->
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, "모아씀 공유 장부 초대 코드: $code\n24시간 이내에 앱에서 한 번만 사용할 수 있어요.")
+                            }
+                            context.startActivity(Intent.createChooser(shareIntent, "초대 코드 공유"))
+                        },
+                        onSaveGoal = { goalId, title, targetAmount, currentAmount, monthKey ->
+                            runSharedAction("공동 목표를 저장했어요.") {
+                                application.sharedLedgerRepository.saveGoal(goalId, title, targetAmount, currentAmount, monthKey)
+                            }
+                        },
+                        onDeleteGoal = { goalId ->
+                            runSharedAction("공동 목표를 삭제했어요.") {
+                                application.sharedLedgerRepository.deleteGoal(goalId)
+                            }
+                        },
+                        onSaveFinanceItem = { item ->
+                            runSharedAction("공동 재정 항목을 저장했어요.") {
+                                application.sharedLedgerRepository.saveFinanceItem(item)
+                            }
+                        },
+                        onDeleteFinanceItem = { itemId ->
+                            runSharedAction("공동 항목을 삭제했어요.") {
+                                application.sharedLedgerRepository.deleteFinanceItem(itemId)
+                            }
+                        },
+                        onExportReport = { month ->
+                            sharedReportMonth = month
+                            exportSharedPdfLauncher.launch("moasseum-together-${month}.pdf")
+                        },
+                        aiAnalysisState = sharedAiAnalysisState,
+                        aiQuestionState = sharedAiQuestionState,
+                        onAnalyzeShared = ::generateSharedSpendingAnalysis,
+                        onAskShared = ::askSharedSpendingQuestion,
+                    )
+                }
                 composable(ROUTE_MANAGE) {
                     ManageScreen(
                         onOpenAuth = { showAuth = true },
@@ -698,8 +1090,16 @@ private fun MoasseumApp(
                         onRestoreBackup = { importJsonLauncher.launch(arrayOf("application/json", "text/*")) },
                         onExportSafetyBackup = { exportSafetyLauncher.launch("moasseum-before-restore.json") },
                         onExportPdf = { exportPdfLauncher.launch("moasseum-report-${uiState.month}.pdf") },
+                        onExportYearTransactions = { year ->
+                            yearCsvExport = year
+                            exportYearCsvLauncher.launch("moasseum-year-$year.csv")
+                        },
                         onOpenAccounts = { showAccounts = true },
                         uiState = uiState,
+                        homeDashboardCards = homeDashboardCards,
+                        onSaveHomeDashboardCards = onSaveHomeDashboardCards,
+                        noSpendChallenge = noSpendChallenge,
+                        onSaveNoSpendChallenge = onSaveNoSpendChallenge,
                         paymentMethods = paymentMethods,
                         paymentCards = paymentCards,
                         onSavePaymentCards = onSavePaymentCards,
@@ -707,6 +1107,10 @@ private fun MoasseumApp(
                         onSaveCategoryBudgets = onSaveCategoryBudgets,
                         onSavePaymentMethods = onSavePaymentMethods,
                         onSaveCategoryLabels = onSaveCategoryLabels,
+                        categoryOrder = categoryOrder,
+                        onSaveCategoryOrder = onSaveCategoryOrder,
+                        monthlyIncomeTarget = monthlyIncomeTargets[uiState.month.toString()],
+                        onSaveMonthlyIncomeTarget = { amount -> onSaveMonthlyIncomeTarget(uiState.month.toString(), amount) },
                         onDeleteCustomCategory = { key, labels ->
                             require(labels.values.all { it.isNotBlank() })
                             require(labels.values.map { it.trim().lowercase(java.util.Locale.ROOT) }.distinct().size == labels.size)
@@ -718,6 +1122,8 @@ private fun MoasseumApp(
                         onEditRecurringRule = viewModel::editRecurringRule,
                         onSetRecurringRuleActive = viewModel::setRecurringRuleActive,
                         onDeleteRecurringRule = viewModel::deleteRecurringRule,
+                        onAddInstallmentPlan = viewModel::addInstallmentPlan,
+                        onDeleteInstallmentPlan = viewModel::deleteInstallmentPlan,
                         onClearLocalData = {
                             viewModel.clearAllLocalRecords { result ->
                                 coroutineScope.launch {
@@ -742,6 +1148,10 @@ private fun MoasseumApp(
                         notificationServiceConnectedAt = notificationServiceConnectedAt,
                         notificationServiceDisconnectedAt = notificationServiceDisconnectedAt,
                         notificationLastSeenAt = notificationLastSeenAt,
+                        appLockEnabled = appLockEnabled,
+                        onSetAppLockEnabled = onSetAppLockEnabled,
+                        financeRemindersEnabled = financeRemindersEnabled,
+                        onSetFinanceRemindersEnabled = onSetFinanceRemindersEnabled,
                         updateState = updateState,
                         onCheckForUpdate = {
                             updateState = UpdateCheckState.Checking
@@ -780,6 +1190,15 @@ private fun MoasseumApp(
             containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background,
             tonalElevation = 0.dp,
         ) {
+            val sheetWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
+            SideEffect {
+                sheetWindow?.let { window ->
+                    WindowInsetsControllerCompat(window, window.decorView).apply {
+                        systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                        hide(WindowInsetsCompat.Type.statusBars())
+                    }
+                }
+            }
             AddTransactionSheet(
                 mode = addMode,
                 onModeChange = { if (!savingTransaction) addModeName = it.name },
@@ -811,16 +1230,55 @@ private fun MoasseumApp(
                 },
                 onStartVoiceInput = ::startVoiceInput,
                 onPickReceipt = ::pickReceiptPhoto,
-                onTakeReceipt = {
-                    runCatching {
-                        val folder = java.io.File(context.cacheDir, "receipt-capture").apply { mkdirs() }
-                        val file = java.io.File.createTempFile("receipt-", ".jpg", folder)
-                        receiptCameraPath = file.absolutePath
-                        receiptCameraLauncher.launch(androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file))
-                    }.onFailure { error -> coroutineScope.launch { snackbarHostState.showSnackbar(error.message ?: "카메라를 열 수 없어요.") } }
-                },
+                onTakeReceipt = ::takeReceiptPhoto,
                 speechResult = speechResult,
                 onSpeechResultConsumed = { speechResult = null },
+                prefillText = sharedPrefillText,
+                prefillKey = sharedPrefillKey,
+                transactions = uiState.transactions,
+                onAddBatch = { candidates, method ->
+                    if (savingTransaction) false else {
+                        savingTransaction = true
+                        coroutineScope.launch {
+                            val result = runCatching { viewModel.addBatchTransactions(candidates, method) }
+                            savingTransaction = false
+                            result.onSuccess { count ->
+                                closeAdd()
+                                snackbarHostState.showSnackbar("거래 ${count}건을 추가했어요")
+                            }.onFailure { error -> snackbarHostState.showSnackbar(error.message ?: "일괄 추가에 실패했어요.") }
+                        }
+                        true
+                    }
+                },
+                onApplyBatch = { action, ids, edit ->
+                    if (savingTransaction || ids.isEmpty()) false else {
+                        savingTransaction = true
+                        coroutineScope.launch {
+                            val result = runCatching {
+                                when (action) {
+                                    com.moasseum.app.data.BatchCommandAction.DELETE -> viewModel.deleteBatchTransactions(ids)
+                                    com.moasseum.app.data.BatchCommandAction.UPDATE -> viewModel.editBatchTransactions(ids, requireNotNull(edit))
+                                    com.moasseum.app.data.BatchCommandAction.ADD -> error("추가 작업에는 거래 미리보기를 사용해 주세요.")
+                                }
+                            }
+                            savingTransaction = false
+                            result.onSuccess { count ->
+                                closeAdd()
+                                val deleted = action == com.moasseum.app.data.BatchCommandAction.DELETE
+                                val snackbar = snackbarHostState.showSnackbar(
+                                    message = if (deleted) "거래 ${count}건을 삭제했어요" else "거래 ${count}건을 수정했어요",
+                                    actionLabel = if (deleted) "실행 취소" else null,
+                                    withDismissAction = deleted,
+                                )
+                                if (deleted && snackbar == SnackbarResult.ActionPerformed) {
+                                    val restored = runCatching { viewModel.restoreBatchTransactions(ids) }
+                                    restored.onFailure { error -> snackbarHostState.showSnackbar(error.message ?: "거래 복원에 실패했어요.") }
+                                }
+                            }.onFailure { error -> snackbarHostState.showSnackbar(error.message ?: "일괄 처리에 실패했어요.") }
+                        }
+                        true
+                    }
+                },
                 onSave = { amount, type, merchant, categoryKey, memo, paymentMethod, accountId ->
                     val alreadySaving = savingTransaction
                     if (!alreadySaving) savingTransaction = true
@@ -913,6 +1371,29 @@ private fun MoasseumApp(
                 notificationSetupDismissedThisSession = true
             },
         )
+    }
+
+    if (appLockEnabled && !appLockReleased) {
+        Dialog(
+            onDismissRequest = {},
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Icon(Icons.Rounded.Security, contentDescription = null, tint = com.moasseum.app.ui.theme.LocalFinanceColors.current.accent, modifier = Modifier.size(48.dp))
+                    Spacer(Modifier.size(16.dp))
+                    Text("모아씀 잠금", style = MaterialTheme.typography.headlineSmall)
+                    Spacer(Modifier.size(8.dp))
+                    Text("계속하려면 본인 인증이 필요해요.", color = com.moasseum.app.ui.theme.LocalFinanceColors.current.textSecondary)
+                    Spacer(Modifier.size(20.dp))
+                    androidx.compose.material3.Button(onClick = onAuthenticateAppLock) { Text("다시 인증") }
+                }
+            }
+        }
     }
 }
 

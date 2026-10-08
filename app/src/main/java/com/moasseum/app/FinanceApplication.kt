@@ -9,6 +9,7 @@ import com.moasseum.app.data.local.FinanceDatabase
 import com.moasseum.app.domain.NotificationCandidate
 import com.moasseum.app.notification.PaymentNotificationNotifier
 import com.moasseum.app.work.RecurringTransactionWorker
+import com.moasseum.app.work.FinanceReminderWorker
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
@@ -16,6 +17,9 @@ import kotlinx.coroutines.launch
 class FinanceApplication : Application() {
     val database by lazy { FinanceDatabase.create(this) }
     val financeRepository by lazy { FinanceRepository(database.financeDao()) }
+    val sharedLedgerRepository by lazy {
+        com.moasseum.app.data.SharedLedgerRepository(database.financeDao(), authRepository)
+    }
     val preferencesRepository by lazy { UserPreferencesRepository(this) }
     val backupManager by lazy { com.moasseum.app.data.BackupManager(this, financeRepository, preferencesRepository) }
     val authRepository by lazy {
@@ -63,6 +67,7 @@ class FinanceApplication : Application() {
             override fun onActivityDestroyed(activity: Activity) = Unit
         })
         RecurringTransactionWorker.schedule(this)
+        FinanceReminderWorker.schedule(this)
     }
 
     fun publishNotificationCandidate(candidate: NotificationCandidate): Boolean =

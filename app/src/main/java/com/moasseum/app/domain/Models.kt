@@ -19,6 +19,43 @@ enum class TransactionType {
     TRANSFER,
 }
 
+object HomeDashboardCards {
+    const val TODAY_WEEK = "today_week"
+    const val TODAY_INSIGHT = "today_insight"
+    const val CATEGORIES = "categories"
+    const val RECENT_TRANSACTIONS = "recent_transactions"
+    const val NO_SPEND_CHALLENGE = "no_spend_challenge"
+
+    val defaults = setOf(TODAY_WEEK, TODAY_INSIGHT, CATEGORIES, RECENT_TRANSACTIONS, NO_SPEND_CHALLENGE)
+}
+
+data class NoSpendChallengeSettings(
+    val startDate: LocalDate? = null,
+    val goalDays: Int = 7,
+) {
+    val enabled: Boolean get() = startDate != null
+}
+
+fun noSpendStreakDays(
+    transactions: List<Transaction>,
+    startDate: LocalDate,
+    today: LocalDate = LocalDate.now(),
+): Int {
+    if (startDate.isAfter(today)) return 0
+    val spendingDays = transactions.asSequence()
+        .filter { it.type == TransactionType.EXPENSE }
+        .map { it.occurredDate }
+        .filter { !it.isBefore(startDate) && !it.isAfter(today) }
+        .toHashSet()
+    var day = today
+    var streak = 0
+    while (!day.isBefore(startDate) && streak < 3660 && day !in spendingDays) {
+        streak++
+        day = day.minusDays(1)
+    }
+    return streak
+}
+
 data class AiTransactionCandidate(
     val type: TransactionType,
     val amount: Long,
@@ -53,9 +90,32 @@ data class Transaction(
     val accountId: String? = null,
     val destinationAccountId: String? = null,
     val timezone: String = ZoneId.systemDefault().id,
+    val ownerId: String = "local-user",
+    val ledgerId: String = "personal",
+    val sharingScope: String = "PRIVATE",
+    val cloudId: String? = null,
+    val installmentGroupId: String? = null,
+    val installmentNumber: Int? = null,
+    val installmentCount: Int? = null,
 ) {
     val occurredDate: LocalDate
         get() = Instant.ofEpochMilli(occurredAt).atZone(ZoneId.of(timezone)).toLocalDate()
+}
+
+data class InstallmentPart(val number: Int, val amount: Long, val date: LocalDate)
+
+/** Splits a purchase into equal monthly charges while preserving the exact original total. */
+fun installmentSchedule(total: Long, count: Int, firstChargeDate: LocalDate): List<InstallmentPart> {
+    require(total in 1..1_000_000_000_000L) { "총액은 1원 이상 입력해 주세요." }
+    require(count in 2..60) { "할부 개월은 2~60개월로 설정해 주세요." }
+    require(total >= count) { "할부 회차마다 최소 1원 이상이어야 해요." }
+    val base = total / count
+    val remainder = total % count
+    val preferredDay = firstChargeDate.dayOfMonth
+    return (1..count).map { number ->
+        val month = YearMonth.from(firstChargeDate).plusMonths((number - 1).toLong())
+        InstallmentPart(number, base + if (number <= remainder) 1 else 0, month.atDay(preferredDay.coerceAtMost(month.lengthOfMonth())))
+    }
 }
 
 data class RecurringRule(

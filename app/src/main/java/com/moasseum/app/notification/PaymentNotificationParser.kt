@@ -146,11 +146,24 @@ object PaymentNotificationParser {
     private fun inferCategory(text: String): String {
         val lower = text.lowercase(Locale.KOREAN)
         return when {
-            listOf("카페", "커피", "스타벅스", "식당", "치킨", "배달", "점심", "저녁", "마트", "편의점", "food", "restaurant").any { lower.contains(it) } -> "FOOD"
+            listOf("카페", "커피", "스타벅스", "아메리카노", "cafe", "coffee").any { lower.contains(it) } -> "CAFE"
+            listOf("식당", "치킨", "배달", "점심", "저녁", "마트", "편의점", "food", "restaurant").any { lower.contains(it) } -> "FOOD"
             listOf("택시", "버스", "지하철", "주유", "교통", "uber", "taxi", "transport").any { lower.contains(it) } -> "TRANSPORT"
             listOf("쇼핑", "온라인", "쿠팡", "무신사", "shopping", "store").any { lower.contains(it) } -> "SHOPPING"
-            listOf("병원", "약국", "건강", "hospital", "pharmacy").any { lower.contains(it) } -> "HEALTH"
-            listOf("넷플릭스", "유튜브", "게임", "영화", "leisure", "subscription").any { lower.contains(it) } -> "LEISURE"
+            listOf("월세", "전세", "관리비", "주거", "housing").any { lower.contains(it) } -> "HOUSING"
+            listOf("통신비", "휴대폰 요금", "인터넷 요금", "통신", "communication").any { lower.contains(it) } -> "COMMUNICATION"
+            listOf("병원", "약국", "건강", "의료", "hospital", "pharmacy").any { lower.contains(it) } -> "HEALTH"
+            listOf("학원", "교재", "수강료", "교육", "education").any { lower.contains(it) } -> "EDUCATION"
+            listOf("전시", "공연", "박물관", "문화", "culture").any { lower.contains(it) } -> "CULTURE"
+            listOf("여행", "항공권", "숙박", "호텔", "travel").any { lower.contains(it) } -> "TRAVEL"
+            listOf("경조사", "축의금", "조의금", "선물", "gift").any { lower.contains(it) } -> "GIFT"
+            listOf("미용실", "헤어", "네일", "화장품", "beauty").any { lower.contains(it) } -> "BEAUTY"
+            listOf("반려견", "반려묘", "동물병원", "펫", "pet").any { lower.contains(it) } -> "PET"
+            listOf("구독", "멤버십", "정기결제", "subscription").any { lower.contains(it) } -> "SUBSCRIPTION"
+            listOf("보험료", "보험", "insurance").any { lower.contains(it) } -> "INSURANCE"
+            listOf("이자", "수수료", "금융", "finance").any { lower.contains(it) } -> "FINANCE"
+            listOf("넷플릭스", "유튜브 프리미엄", "게임", "영화", "leisure").any { lower.contains(it) } -> "LEISURE"
+            listOf("전기", "가스", "생필품", "생활용품", "living").any { lower.contains(it) } -> "LIVING"
             else -> "OTHER"
         }
     }

@@ -16,12 +16,15 @@ data class ImportedTransaction(
     val accountId: String? = null,
     val destinationAccountId: String? = null,
     val timezone: String? = null,
+    val installmentGroupId: String? = null,
+    val installmentNumber: Int? = null,
+    val installmentCount: Int? = null,
 )
 
 object CsvBackup {
     private val headers = listOf(
         "id", "type", "amount", "occurredAt", "categoryKey", "merchant", "memo", "paymentMethod", "source",
-        "accountId", "destinationAccountId", "timezone",
+        "accountId", "destinationAccountId", "timezone", "installmentGroupId", "installmentNumber", "installmentCount",
     )
 
     fun encode(transactions: List<Transaction>): String = buildString {
@@ -42,6 +45,9 @@ object CsvBackup {
                 transaction.accountId.orEmpty(),
                 transaction.destinationAccountId.orEmpty(),
                 transaction.timezone,
+                transaction.installmentGroupId.orEmpty(),
+                transaction.installmentNumber?.toString().orEmpty(),
+                transaction.installmentCount?.toString().orEmpty(),
             ).joinTo(this, separator = ",", transform = ::escape)
             append("\r\n")
         }
@@ -56,7 +62,7 @@ object CsvBackup {
         require(header.toSet().containsAll(required)) { "모아씀 CSV 형식이 아니에요. 내역 화면에서 내보낸 CSV를 선택해 주세요." }
         val index = header.withIndex().associate { it.value to it.index }
 
-        return rows.drop(1).mapIndexedNotNull { rowIndex, row ->
+        val imported = rows.drop(1).mapIndexedNotNull { rowIndex, row ->
             if (row.all(String::isBlank)) return@mapIndexedNotNull null
             fun value(key: String): String = row.getOrNull(index[key] ?: -1)?.trim().orEmpty()
             val lineNumber = rowIndex + 2
@@ -74,6 +80,15 @@ object CsvBackup {
             val timezone = value("timezone").takeIf(String::isNotBlank)?.also {
                 require(runCatching { java.time.ZoneId.of(it) }.isSuccess) { "${lineNumber}번째 줄의 시간대를 확인해 주세요." }
             }
+            val installmentGroupId = value("installmentGroupId").takeIf(String::isNotBlank)?.also {
+                require(runCatching { java.util.UUID.fromString(it) }.isSuccess) { "${lineNumber}번째 줄의 할부 ID를 확인해 주세요." }
+            }
+            val installmentNumber = value("installmentNumber").takeIf(String::isNotBlank)?.toIntOrNull()
+            val installmentCount = value("installmentCount").takeIf(String::isNotBlank)?.toIntOrNull()
+            require((installmentGroupId == null && installmentNumber == null && installmentCount == null) ||
+                (type == TransactionType.EXPENSE && installmentGroupId != null && installmentNumber != null && installmentNumber in 1..60 && installmentCount != null && installmentCount in 2..60 && installmentNumber <= installmentCount)) {
+                "${lineNumber}번째 줄의 할부 정보를 확인해 주세요."
+            }
             if (type == TransactionType.TRANSFER) require(accountId != null && destination != null && accountId != destination) { "${lineNumber}번째 줄의 이체 계좌를 확인해 주세요. 계좌까지 복원하려면 JSON 전체 백업을 사용하세요." }
             else require(destination == null)
             ImportedTransaction(
@@ -88,8 +103,16 @@ object CsvBackup {
                 accountId = accountId,
                 destinationAccountId = destination,
                 timezone = timezone,
+                installmentGroupId = installmentGroupId,
+                installmentNumber = installmentNumber,
+                installmentCount = installmentCount,
             )
         }
+        require(imported.filter { it.installmentGroupId != null }.groupBy { it.installmentGroupId }.values.all { group ->
+            val count = group.first().installmentCount
+            count != null && group.size == count && group.mapNotNull { it.installmentNumber }.toSet() == (1..count).toSet() && group.all { it.installmentCount == count }
+        }) { "CSV 할부 회차가 빠졌거나 중복됐어요." }
+        return imported
     }
 
     private fun escape(value: String): String =

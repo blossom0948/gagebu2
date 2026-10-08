@@ -26,7 +26,9 @@ interface FinanceDao {
             if (!transactionExists(row.type.name, row.amount, row.occurredAt, row.categoryKey, merchant, memo, row.paymentMethod, row.accountId, row.destinationAccountId)) {
                 insertTransaction(TransactionEntity(type = row.type.name, amount = row.amount, occurredAt = row.occurredAt, timezone = row.timezone ?: timezone,
                     categoryKey = row.categoryKey, merchant = merchant, memo = memo, paymentMethod = row.paymentMethod, source = row.source,
-                    accountId = row.accountId, destinationAccountId = row.destinationAccountId, createdAt = now, updatedAt = now))
+                    accountId = row.accountId, destinationAccountId = row.destinationAccountId,
+                    installmentGroupId = row.installmentGroupId, installmentNumber = row.installmentNumber, installmentCount = row.installmentCount,
+                    createdAt = now, updatedAt = now))
                 count++
             }
         }
@@ -74,6 +76,27 @@ interface FinanceDao {
 
     @Query("SELECT * FROM transactions WHERE id = :id")
     suspend fun getTransaction(id: Long): TransactionEntity?
+
+    @Query("SELECT * FROM transactions WHERE cloudId = :cloudId LIMIT 1")
+    suspend fun getTransactionByCloudId(cloudId: String): TransactionEntity?
+
+    @Query("SELECT * FROM transactions WHERE sharingScope = 'SHARED' AND cloudId IS NOT NULL ORDER BY occurredAt DESC, id DESC")
+    fun observeSharedTransactions(): Flow<List<TransactionEntity>>
+
+    @Query("SELECT * FROM transactions WHERE sharingScope = 'SHARED' AND cloudId IS NOT NULL ORDER BY occurredAt DESC, id DESC")
+    suspend fun getAllSharedTransactions(): List<TransactionEntity>
+
+    @Query("SELECT * FROM transactions WHERE sharingScope = 'SHARED' AND ownerId = :ownerId AND cloudId IS NOT NULL ORDER BY updatedAt ASC, id ASC")
+    suspend fun getSharedOutbox(ownerId: String): List<TransactionEntity>
+
+    @Query("UPDATE transactions SET ownerId = :ownerId, sharingScope = 'SHARED', cloudId = COALESCE(cloudId, :cloudId), updatedAt = :now WHERE id = :id AND deletedAt IS NULL AND type != 'TRANSFER'")
+    suspend fun shareTransaction(id: Long, ownerId: String, cloudId: String, now: Long): Int
+
+    @Query("UPDATE transactions SET ownerId = 'local-user', ledgerId = 'personal', sharingScope = 'PRIVATE', cloudId = NULL, updatedAt = :now WHERE id = :id AND sharingScope = 'SHARED'")
+    suspend fun unshareTransaction(id: Long, now: Long): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSharedTransaction(transaction: TransactionEntity): Long
 
     @Query("UPDATE transactions SET accountId = :accountId, updatedAt = :now WHERE id = :id AND deletedAt IS NULL AND type != 'TRANSFER'")
     suspend fun setTransactionAccount(id: Long, accountId: String?, now: Long)
@@ -134,7 +157,7 @@ interface FinanceDao {
     @Query(
         """
         SELECT * FROM transactions
-        WHERE deletedAt IS NULL
+        WHERE deletedAt IS NULL AND ledgerId = 'personal'
         ORDER BY occurredAt DESC, id DESC
         """,
     )
@@ -142,6 +165,69 @@ interface FinanceDao {
 
     @Insert
     suspend fun insertTransaction(transaction: TransactionEntity): Long
+
+    @Insert
+    suspend fun insertTransactions(transactions: List<TransactionEntity>): List<Long>
+
+    @Transaction
+    suspend fun saveBatchTransactions(transactions: List<TransactionEntity>) {
+        require(transactions.size in 1..30)
+        require(transactions.all {
+            it.type in setOf("EXPENSE", "INCOME") && it.amount in 1..1_000_000_000_000L &&
+                it.merchant.isNotBlank() && it.ledgerId == "personal" && it.sharingScope == "PRIVATE"
+        })
+        insertTransactions(transactions)
+    }
+
+    @Query("UPDATE transactions SET deletedAt = :now, updatedAt = :now WHERE id IN (:ids) AND deletedAt IS NULL AND ledgerId = 'personal' AND sharingScope = 'PRIVATE' AND type != 'TRANSFER' AND installmentGroupId IS NULL")
+    suspend fun softDeletePersonalBatchRows(ids: List<Long>, now: Long): Int
+
+    @Query("UPDATE transactions SET amount = COALESCE(:amount, amount), merchant = COALESCE(:merchant, merchant), categoryKey = COALESCE(:categoryKey, categoryKey), type = COALESCE(:type, type), occurredAt = COALESCE(:occurredAt, occurredAt), timezone = COALESCE(:timezone, timezone), memo = COALESCE(:memo, memo), updatedAt = :now WHERE id IN (:ids) AND deletedAt IS NULL AND ledgerId = 'personal' AND sharingScope = 'PRIVATE' AND type != 'TRANSFER' AND installmentGroupId IS NULL")
+    suspend fun updatePersonalBatchRows(ids: List<Long>, amount: Long?, merchant: String?, categoryKey: String?, type: String?, occurredAt: Long?, timezone: String?, memo: String?, now: Long): Int
+
+    @Query("UPDATE transactions SET deletedAt = NULL, updatedAt = :now WHERE id IN (:ids) AND deletedAt IS NOT NULL AND ledgerId = 'personal' AND sharingScope = 'PRIVATE'")
+    suspend fun restorePersonalBatchRows(ids: List<Long>, now: Long): Int
+
+    @Transaction
+    suspend fun applyPersonalBatchDelete(ids: List<Long>, now: Long): Int {
+        require(ids.isNotEmpty() && ids.size <= 100 && ids.distinct().size == ids.size)
+        val changed = softDeletePersonalBatchRows(ids, now)
+        check(changed == ids.size) { "목록이 바뀌었어요. 거래를 다시 확인해 주세요." }
+        return changed
+    }
+
+    @Transaction
+    suspend fun applyPersonalBatchEdit(ids: List<Long>, amount: Long?, merchant: String?, categoryKey: String?, type: String?, occurredAt: Long?, timezone: String?, memo: String?, now: Long): Int {
+        require(ids.isNotEmpty() && ids.size <= 100 && ids.distinct().size == ids.size)
+        require(amount == null || amount in 1..1_000_000_000_000L)
+        require(merchant == null || merchant.isNotBlank())
+        require(categoryKey == null || categoryKey.isNotBlank())
+        require(type == null || type in setOf("EXPENSE", "INCOME"))
+        require(occurredAt == null || timezone != null)
+        require(memo == null || memo.length <= 300)
+        require(amount != null || merchant != null || categoryKey != null || type != null || occurredAt != null || memo != null)
+        val changed = updatePersonalBatchRows(ids, amount, merchant, categoryKey, type, occurredAt, timezone, memo, now)
+        check(changed == ids.size) { "목록이 바뀌었어요. 거래를 다시 확인해 주세요." }
+        return changed
+    }
+
+    @Transaction
+    suspend fun restorePersonalBatch(ids: List<Long>, now: Long): Int {
+        require(ids.isNotEmpty() && ids.size <= 100 && ids.distinct().size == ids.size)
+        val restored = restorePersonalBatchRows(ids, now)
+        check(restored == ids.size) { "삭제한 거래 일부를 복원하지 못했어요. 내역을 확인해 주세요." }
+        return restored
+    }
+
+    @Transaction
+    suspend fun saveInstallmentPlan(transactions: List<TransactionEntity>) {
+        require(transactions.size in 2..60)
+        require(transactions.all { it.type == "EXPENSE" && it.installmentGroupId == transactions.first().installmentGroupId })
+        insertTransactions(transactions)
+    }
+
+    @Query("UPDATE transactions SET deletedAt = :deletedAt, updatedAt = :deletedAt WHERE installmentGroupId = :groupId AND deletedAt IS NULL")
+    suspend fun softDeleteInstallmentPlan(groupId: String, deletedAt: Long): Int
 
     @Query("SELECT * FROM recurring_transactions ORDER BY isActive DESC, dayOfMonth ASC, id ASC")
     fun observeRecurringRules(): Flow<List<RecurringTransactionEntity>>

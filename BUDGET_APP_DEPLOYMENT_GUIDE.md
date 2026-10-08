@@ -394,7 +394,7 @@ com.moasseum.app.qa://auth/callback?**
 9. 동일 공개 설정으로 버전을 올린 서명 Release APK를 빌드/설치/게시한다. URL/key가 APK의 BuildConfig이므로 서버만 설정하고 v0.1.17 이하 APK를 유지하면 로그인이 켜지지 않는다. 기존 패키지/서명과 기기 기록을 유지한다.
 10. 앱 로그인과 실제 서버 AI 호출이 확인되면 Worker에 같은 프로젝트 URL/publishable key와 `REQUIRE_AUTH=true`를 배포한다. v0.1.18에서 완료했다. 무인증/위조 401, 인증 장애 503, 올바른 토큰으로 네 AI 경로의 200을 확인했고 실제 Workerd 회귀 테스트도 추가했다. v0.1.17 이하의 서버 AI 사용자는 업데이트/앱 로그인이 필요하다. 기본 수동 기록·기기 내 알림 감지와 로컬 파싱 fallback은 유지된다.
 
-로그인은 로컬 기록의 자동 동기화/공동 장부가 아니다. 이후 서버 테이블과 RLS, 사용자별 원장, outbox/충돌 처리, 1회 만료 초대, 선택 공유와 두 계정 격리 테스트를 구현·검증한 뒤 해당 기능을 노출한다. [RLS 공식 문서](https://supabase.com/docs/guides/database/postgres/row-level-security)
+로그인만으로 로컬 거래를 자동 동기화하지 않는다. 공동 장부 배포 상태는 아래 섹션을 따른다. [RLS 공식 문서](https://supabase.com/docs/guides/database/postgres/row-level-security)
 
 ### 구글 로그인 배포 (v0.1.19)
 
@@ -407,7 +407,7 @@ https://nbkedjtzbdtjlkkkxrta.supabase.co/auth/v1/callback
 ```
 
 2. Client ID와 Client Secret을 **Supabase → Authentication → Providers → Google**에 저장하고 활성화한다. Client Secret은 APK·BuildConfig·GitHub·채팅·Worker 코드에 넣지 않는다. `Skip nonce checks`와 `Allow users without an email`은 끈 상태를 유지한다. 이메일 가입 확인도 켠 상태를 유지한다.
-3. Google 인증은 현재 External/Testing이며 승인받은 소유자 계정 하나만 테스트 사용자에 등록했다. 다른 사용자 추가·전체 공개·유료 전환은 별도 사용자 승인 없이 수행하지 않는다. APK 공개 다운로드와 Google 인증 앱의 전체 공개 전환은 서로 다른 작업이다.
+3. Google 인증은 현재 External/Testing이며 소유자 계정이 테스트 목록에 등록돼 있다. 다만 앱은 `openid email profile` 기본 로그인 범위만 요청한다. Google 정책상 이 기본 신원 범위만 사용하는 앱은 Testing 상태에서도 테스트 사용자 목록 밖 계정이 접근할 수 있는 예외가 있으므로, 파트너 이메일을 미리 추가해야 한다고 단정하지 않는다. 두 번째 계정 실제 로그인은 아직 검증되지 않았다. APK 공개 다운로드와 Google 인증 앱의 전체 공개 전환은 서로 다른 작업이다. [Google OAuth 테스트 사용자 예외](https://developers.google.com/identity/protocols/oauth2/production-readiness/overview)
 4. 앱은 PKCE S256과 요청 식별값을 사용해 시스템 브라우저에서 인증한 뒤 기존 본앱/QA 반환 주소로 돌아온다. 검증값은 기기에 암호화하여 저장하고 1시간 후 만료한다. 권한은 `openid email profile`뿐이며 Gmail/Drive/오프라인 Google 접근을 요청하지 않는다. Google 공급자의 별도 access/refresh token은 저장하지 않는다.
 5. 다음 검사는 실제 서버에서 공급자 활성화·이메일 확인 유지·두 패키지의 Google 리다이렉트/클라이언트/서버 반환 주소/권한 범위를 확인한다. 사용자 계정으로 로그인하거나 동의를 누르는 검사는 아니다.
 
@@ -443,10 +443,17 @@ v0.1.20 빌드는 unit 114개 통과, lint 오류 0(경고 21개), Release APK �
 | Room 필드/테이블 | Migration과 이전 데이터 보존 검사 후 APK |
 | AI 프롬프트/API/인증 검사 | Worker typecheck·배포, 계약/앱 설정이 바뀌면 APK도 배포 |
 | 로그인 프로젝트/공개 설정 | Supabase 이메일 설정·실제 인증 검사 후 새 설정 APK |
-| Google 로그인/반환 주소 | Google OAuth·Supabase 공급자/allowlist·PKCE 검사; 앱 코드/공개 설정 변경 시 APK, 실제 계정/휴대폰 복귀는 별도 검증 |
+| Google 로그인/반환 주소 | Google OAuth·Supabase 공급자/기본 scope·PKCE 검사; 앱 코드/공개 설정 변경 시 APK, 실제 계정/휴대폰 복귀는 별도 검증 |
 | 동기화/공동 원장 | 서버 Migration·RLS 격리/두 기기 충돌 검사 + Worker/앱 배포 |
 
 현재 수동 GitHub Release 방식은 무료 개인 설치 경로이며, 관리→앱 업데이트에서 직접 다운로드한다. 무음 설치나 Android 보안 팝업 생략을 보장하지 않는다.
+
+### 공동 장부 schema / 선택 공유 (2026-10-08)
+
+- `supabase/migrations/202610080001_shared_ledger.sql`을 전용 `moasseum` Supabase SQL Editor에서 한 번 실행했다. 사전 검사에서는 대상 테이블이 없었고, 실행 후 `shared_*` 다섯 테이블 모두 RLS가 켜졌으며 초대 RPC 3개가 `SECURITY DEFINER`로 등록된 것을 확인했다. 초대 테이블은 직접 API 정책 없이 서버 RPC만 사용한다.
+- DB에는 개인 거래를 넣지 않았다. 앱은 사용자가 선택한 거래와 공동 화면에서 직접 저장한 항목만 올리며, 계좌 식별자·알림 원문·개인 예산·반복 규칙은 공유하지 않는다. 한 장부 최대 2명, 20자리 초대 코드 24시간 만료·1회 사용이다.
+- Room `5→6` Migration과 탭 UI·선택 공유·공동 월 합산/카테고리·목표/재정 설정·AI 분석/Q&A·PDF·할부·일괄 입력 코드를 추가했다. 공동 재정 항목은 해당 화면에서 직접 저장한 값만 동기화한다. v0.1.21 APK를 먼저 공개했지만 `202610080002_shared_goal_collaboration.sql`과 `202610080003_shared_finance_items.sql`은 아직 미적용이므로 공동 목표 진행액·공동 재정 저장은 사용할 수 없거나 오류가 날 수 있다. 두 계정 RLS 격리·오프라인 충돌·기존 DB 보존·실기기 UI도 미검증이다.
+- 후속 조치: 전용 `moasseum` Supabase SQL Editor에서 두 migration을 번호 순으로 적용하고 RLS/컬럼을 확인 → 공동 목표·재정 CRUD 및 두 계정 격리, 오프라인 동기화, 기존 Room 데이터 보존, 실기기 업데이트를 검증한다. APK는 이미 v0.1.21로 게시했으므로 migration 적용 후 별도 APK 재배포는 필요하지 않다. 추가 앱 코드는 기존 절차대로 versionCode를 올리고 같은 서명키로 빌드·해시 검증한 뒤 GitHub Release에 올린다.
 
 ---
 

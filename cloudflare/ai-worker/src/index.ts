@@ -7,7 +7,10 @@ interface Env {
   ALLOWED_ORIGIN?: string;
 }
 
-const CATEGORY_KEYS = ["FOOD", "TRANSPORT", "SHOPPING", "LIVING", "HEALTH", "LEISURE", "OTHER"] as const;
+const CATEGORY_KEYS = [
+  "FOOD", "CAFE", "TRANSPORT", "SHOPPING", "HOUSING", "COMMUNICATION", "HEALTH", "EDUCATION", "CULTURE",
+  "LEISURE", "TRAVEL", "GIFT", "BEAUTY", "PET", "SUBSCRIPTION", "INSURANCE", "FINANCE", "LIVING", "OTHER",
+] as const;
 const MAX_INPUT_LENGTH = 500;
 const PUBLIC_REQUESTS_PER_MINUTE = 30;
 
@@ -119,7 +122,8 @@ export default {
       "금액·날짜를 추측하지 말고, 모호하면 needsConfirmation에 필드명을 넣으세요.",
       `오늘 날짜: ${today}`,
       `사용자 시간대: ${input.timezone || "Asia/Seoul"}`,
-      `허용 카테고리: ${CATEGORY_KEYS.join(", ")}`,
+      "카테고리 기준: FOOD=식비, CAFE=카페, TRANSPORT=교통, SHOPPING=쇼핑, HOUSING=주거, COMMUNICATION=통신, HEALTH=의료, EDUCATION=교육, CULTURE=문화, LEISURE=여가, TRAVEL=여행, GIFT=경조사, BEAUTY=미용, PET=반려동물, SUBSCRIPTION=구독, INSURANCE=보험, FINANCE=금융, LIVING=생활, OTHER=기타.",
+      `허용 카테고리 키: ${CATEGORY_KEYS.join(", ")}`,
       `사용자 문장: ${text}`,
     ].join("\n");
 

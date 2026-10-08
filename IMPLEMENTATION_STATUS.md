@@ -18,9 +18,16 @@
 - 월 예산 이월, 남은 하루 사용 가능 금액, 월말 예상 지출과 지난달 같은 기간 비교
 - JSON 전체 백업/복원: 거래(삭제 표시 포함)·계좌·월 예산·반복 규칙·결제수단·카드·카테고리·화면 설정. 이전 거래 전용 JSON은 기존 데이터를 대체하지 않고 합침
 - 전체 복원 전 내부 안전 백업 생성과 내보내기. 로그인 토큰·비밀번호·AI 알림 전송 동의·원문 알림 후보는 백업에서 제외
+- 할부 2~60회 등록과 월별 회차 지출, 원 단위 잔액 분배·월말 날짜 보정, 할부 묶음 삭제. JSON/CSV 회차 정보 보존, Room 5→6 마이그레이션
+- 최근 3개월 연속·유사 금액 지출을 고정비 후보로 제안하고, 사용자가 확인한 경우에만 반복 규칙으로 등록
+- 매월 예산 50%·초과와 반복 지출 전날 알림, 중복 발송 방지, 알림 설정에서 전체 켜기/끄기
+- 생체 인증/기기 잠금 앱 잠금 옵션
+- 연도별 수입·지출/카테고리 요약과 상세 거래 CSV 내보내기(세액·환급 계산은 제공하지 않음)
+- Android 공유 메뉴에서 텍스트를 AI 입력 화면에, 영수증 이미지를 기기 내 OCR 확인 화면에 전달. 공유만으로 자동 저장하지 않음
+- 문장 일괄 처리: 로컬 미리보기 후 다중 거래 추가, 조건 검색 후 선택 수정/삭제(삭제 취소 가능). 임의 문장 AI 명령이 아니라 정해진 한국어 문장 패턴으로 처리하며, 할부·공유·이체 거래는 제외
 - 선택 월의 카테고리 합계와 내역을 한국어 다중 페이지 PDF로 내보내기
 - CSV 중복 가져오기는 동일 거래 필드를 기준으로 건너뜀
-- 7개 기본 카테고리 이름 변경과 사용자 카테고리 추가·수정·삭제(최대 20개); 삭제 시 기존 거래·반복 규칙·알림 후보를 기타로 이동
+- 19개 기본 카테고리(식비·카페·교통·쇼핑·주거·통신·의료·교육 등)와 사용자 카테고리 추가·수정·삭제(최대 20개); 삭제 시 기존 거래·반복 규칙·알림 후보를 기타로 이동
 - 반복 지출/수입 규칙을 매월 지정일에 기록; 앱 미실행 중에도 WorkManager가 하루 한 번 처리하고 앱 시작 시 놓친 회차를 보충
 - 한국어 자연어 입력을 거래 후보로 해석한 뒤 사용자가 검토하고 저장
 - Android 시스템 음성 인식 앱을 호출하는 음성 입력
@@ -42,15 +49,15 @@
 - v0.1.19: Google 공식 버튼·시스템 브라우저 OAuth·PKCE S256·암호화된 요청 복원·취소/만료/재사용 방어 추가. 모아씀 전용 Google OAuth 클라이언트를 Supabase Google 공급자에 연결하고 소유자 계정 하나만 Testing 허용 목록에 등록. 이메일 확인/nonce 검사는 유지하며 유료 전환하지 않음. 실제 Google 계정 로그인·동의·휴대폰 복귀는 미검증
 - 기본 무료 메일의 소유자/조직 이메일 제한과 시간당 2통을 화면에 설명. 가입·복구 링크는 PKCE S256/기기 내 암호화 검증값/요청 식별값으로 검증하며, 앱 재실행·재전송·만료·위조·다른 계정·재사용을 검사
 - 실제 서버 로그인·세션 갱신·앱 재시작 복구·로그아웃과 인증된 AI 호출을 합성 계정으로 검증. 실제 소유자 이메일의 가입/복구 메일 수신·링크 완료와 두 계정 RLS 격리 테스트는 미실행. 가짜 Auth API 단위 테스트를 메일 실수신 성공으로 간주하지 않음
-- 공동 장부·만료되는 초대 코드/QR·공동 목표·기기 간 오프라인 동기화는 미구현. 로그인만으로 기기 금융 기록을 서버에 올리거나 공유하지 않음
+- v0.1.21 공개판에는 선택 거래 공유·초대·월별 합산·공동 저축 목표·공동 재정 항목·AI 분석/Q&A·PDF 코드가 포함. Supabase `202610080002` 목표 진행액 migration과 `202610080003` 공동 재정 migration은 미적용 상태로 APK를 먼저 공개했으므로, 이 두 서버 저장 기능은 migration 적용 전까지 사용할 수 없거나 오류가 날 수 있음. 두 계정 격리/오프라인 충돌·재시도/실기기 UI 및 기존 Room DB 이전 검증은 미완료
 
 ## 외부 연결 상태와 제한
 
-- Cloudflare Worker: `https://moasseum-ai-worker.blossom0948.workers.dev`
+- Cloudflare Worker: `https://moasseum-ai-worker.blossom0948.workers.dev` (2026-10-08 deployed version `7f223d5d-9a24-4bf0-8a68-ecf0bfb0b4c2`)
 - Worker 경로: `/health`, `/v1/parse-transaction`, `/v1/analyze-spending`, `/v1/ask-spending`, `/v1/classify-notification`
 - Gemini 키는 Worker Secret `GEMINI_API_KEY`로만 관리하며 APK에 포함하지 않음
 - v0.1.18 Worker `REQUIRE_AUTH=true`: 같은 전용 Supabase에서 로그인 토큰 확인, 무인증/위조 401, 인증 장애 503, 인증 사용자별 호출 제한. 실제 네 경로의 인증된 200 응답 검증
-- Supabase 인증은 연결됐지만 사용자별 원장 테이블/RLS/오프라인 동기화·함께 쓰기·초대 코드는 미구현이며, 해당 메뉴는 알림 후보함으로 유지
+- Supabase 인증 연결. shared_* 기본 테이블·RLS는 적용됐으나 공동 목표/재정 증분 migration은 미적용. 두 기능의 서버 동작과 두 계정 격리·기기 간 동기화는 검증되지 않음
 - 알림 읽기는 Android 특수 접근 권한이라 사용자가 시스템 화면에서 직접 허용해야 함. Android 13 이상에서는 모아씀 알림 표시 런타임 권한도 필요
 - AI 알림 분류는 기본 꺼짐. 켜면 해당 알림 제목·내용이 외부 AI 서버로 전송되고 Gemini 사용량이 발생할 수 있음
 - OCR은 사진 보관 기능이 아니며 선택/촬영 이미지에서 후보를 만들 뿐. 촬영 임시 파일은 처리/취소 후 제거. 인식 결과를 반드시 확인해야 함
@@ -58,8 +65,15 @@
 
 ## 이번 작업 검증
 
+- 2026-10-08 공동 장부 첫 구현: `shared_*` 기본 테이블 5개와 RLS는 전용 Supabase에 적용. 증분 migration 002/003은 미적용. DB 사용자 데이터 업로드/초대 생성은 하지 않음
+- 2026-10-08 v0.1.21 Release: 단위 테스트·lint·AndroidTest APK 빌드·서명 Release 빌드 성공. lint 오류 0/경고 24개. 에뮬레이터 instrumentation 12개 통과, 실제 Supabase 계정 테스트 1개는 자격 증명 미제공으로 skip. 작은/큰 화면 UI를 확인했으나 실제 Galaxy에서의 설치·로그인·알림 및 Room 5→6 이전은 미검증
+- 문장 일괄 추가·수정·삭제는 로컬 제한형 파서로 추가. 임의 자유형 AI 명령, 일괄 추가 후보별 세부 편집, 일괄 기능 실기기 조작은 미검증
+- 공동 재정 모드와 5종 항목의 앱/UI/API/마이그레이션 코드는 추가했지만, 새 Supabase migration 적용과 두 계정 동기화 검증 전까지 완료/배포 상태가 아님
+- Weeple 화면 기능 대조 작업(2026-10-08): 홈 월 이동, 빠른 카메라/사진 입력, 최근 내역, PDF 리포트 진입을 추가. 관리 화면의 순서를 Weeple 캡처 흐름으로 재배치하고 카테고리 사용 막대·미설정 목록 접기/펼치기·저장되는 카테고리 순서·월별 수입 목표를 추가. 캡처에 보이는 기본 19개 카테고리를 거래 입력·내역 필터·예산에 추가하고, 이전 7개 설정/백업은 기존 이름과 순서를 보존해 확장. 자연어·영수증·결제 알림·Worker 카테고리 키도 동기화. 화면 제목을 줄이고 상단 상태 표시줄만 숨겨 캡처의 화면 밀도에 가깝게 조정. 전체 시스템 바를 숨기는 안은 Android 전체 화면 경고와 하단 탭 잘림 때문에 제외. 홈도 밀도를 낮추고 오늘 소비 인사이트를 반영했으며, 거래가 없을 때 빈 최근 내역 카드를 숨겨 초기 화면 스크롤을 줄임. 내역은 CSV 가져오기 위치·달력 확장·카테고리 칩·한 줄 합계/정렬을 캡처에 맞춤. 함께 연결 전 미리보기와 초대/참여 화면을 보강. 함께 화면에 공유 월 합산·카테고리·공동 저축 목표 진행/수정/삭제·공동 AI 분석/Q&A·공동 PDF를 연결. `202610080002_shared_goal_collaboration.sql`로 current_amount와 공동 멤버 편집 정책 준비. DB 적용·두 계정/실기기 사용성 검증·전체 Weeple 잔여 기능 대조는 미완료. 자세한 범위는 [Weeple 기능 대조 진행 보고서](WEEPLE_PARITY_PROGRESS_2026-10-08.md)
+- 검증: unit/lint/서명 Release APK 빌드 성공, Worker typecheck 및 테스트 10개 통과. v0.1.21의 최신 연결 instrumentation은 12개 통과/1개 skip. 인증 없는 Worker 요청은 401, `/health`는 200 반환. 단위 테스트 최종 수와 전체 lint 경고 목록은 Gradle 보고서를 참고. 로그인된 초대/수락·실제 휴대폰 동작·새 migration 적용은 미검증
+- Google 가입 범위 확인: `node scripts/check-google-oauth.mjs`에서 실제 서버 Google/email 활성화, 이메일 확인 유지, 앱/QA PKCE redirect와 `openid email profile`만 요청 확인. 실제 두 번째 Google 계정 로그인/앱 복귀는 미검증. Google 기본 신원 scope 예외에 따라 별도 테스트 사용자 등록이 필수가 아닐 수 있음
 - v0.1.20 (2026-10-08): 관리·입력·알림·로그인 화면의 반복 설명 정리 및 사용하지 않는 문구 리소스 제거. 오늘/이번 주 집계와 월 경계, 실제 저장 완료 전에 성공 처리하던 폼, 저장 예외 누락, 오래된 월의 AI 응답 경합, 거래 시간대 손실, 잘못된 금액 붙여넣기, 카드/카테고리 설정 정합성, 반복 규칙 수정의 거짓 성공, 알림 진단 저장 실패가 감지를 막는 경로를 수정. 단위 114개·lint 오류 0·Debug/AndroidTest/Release APK 빌드 성공. lint 경고 21개는 기존 의존성 업데이트 안내 등이며 새 오류는 아님. Android instrumentation 10개는 컴파일만 확인했고 휴대폰 미연결로 실행/설치/Google 로그인/알림 실기기 동작은 미검증. 상세: [2026-10-08 앱 QA 보고서](QA_APP_AUDIT_REPORT_2026-10-08.md)
-- v0.1.20 APK: `com.moasseum.app`, versionCode 20, versionName 0.1.20, 59,130,809 bytes; SHA-256 `ec0b2aaf9f4c6df88fe241339c49af6231167b62a189d8bde9720472b79646c9`. 기존 Release 인증서 지문 유지. 공개 Release와 공개 다운로드 해시는 배포 후 확인해 아래에 기록.
+- v0.1.21 APK: `com.moasseum.app`, versionCode 21, versionName 0.1.21, 59,510,773 bytes; SHA-256 `f69638449384a0ae4f6d5d7cf72b44f6fbd345b220a323fa1115ce90b307c59f`. 서명 인증서 SHA-256 `669674a2114fb59d85c56bba774b89fec9ce7f7ee79825769826130362a091c9` (v0.1.20과 동일). 공개 Release digest/다운로드는 게시 후 확인.
 
 - v0.1.14: UI·애니메이션 정리, 대화 알림 제외, 알림 후보 확인 큐/중복 저장 방어. 상세 범위와 한계는 [QA_UI_REPORT_2026-10-04.md](QA_UI_REPORT_2026-10-04.md) 참고
 - v0.1.14: 단위 테스트 25개·lint·서명 Release 빌드 성공, Galaxy 기존 데이터 유지 설치와 설치 APK 해시 일치 확인
@@ -90,7 +104,7 @@
 - 연결 Android 기기 — `R3CT80B80MN` / Galaxy Z Fold4 / Android 16(API 36)에서 최종 릴리스 설치·기능·알림·재연결·백그라운드 알림 검증 완료
 - 상세 실기기 오류 기록과 수정 결과 — [QA_TEST_REPORT_2026-10-04.md](QA_TEST_REPORT_2026-10-04.md)
 - Debug APK — `app/build/outputs/apk/debug/app-debug.apk`
-- 현재 공개 APK — [v0.1.20](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.20), 59,130,809 bytes; SHA-256 `ec0b2aaf9f4c6df88fe241339c49af6231167b62a189d8bde9720472b79646c9`. GitHub latest 태그·asset digest·익명 공개 재다운로드가 로컬 Release APK와 바이트 단위 일치하며, tag commit은 `30c688df10987698eeb6a5ab2a5ab6cabbc8c0ac`. 휴대폰 설치/Google 로그인/알림 실기기 검증은 미실행.
+- 현재 공개 APK — [v0.1.21](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.21), 59,510,773 bytes; SHA-256 `f69638449384a0ae4f6d5d7cf72b44f6fbd345b220a323fa1115ce90b307c59f`. Release digest/공개 재다운로드와 앱 내 업데이트 경로는 게시 후 확인한다. 실제 휴대폰 설치/Google 로그인/알림은 미검증.
 - 이전 공개 APK — [v0.1.19](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.19), 59,131,229 bytes; SHA-256 `d9dee61e2c9a954f916d9afa94b40267032d485262e380d419008909530d416c`. 당시 무인증 latest·asset digest·공개 재다운로드와 로컬 서명 빌드 일치. 휴대폰 설치/실제 Google 로그인은 미실행.
 - 마지막 휴대폰 설치 검증 APK — [v0.1.18](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.18), 56,905,458 bytes; SHA-256 `172d481f7915d9916a27c4d809d6618ce62ced3830c1c7722a3fed91e3a23521`. 2026-10-05 무인증 latest·asset digest·공개 재다운로드·설치 APK 일치. v0.1.19의 설치 성공으로 간주하지 않음
 
@@ -99,5 +113,5 @@
 - Android 코드·UI·Room 스키마 변경: 테스트 후 `versionCode`를 올리고 서명 APK를 GitHub Release에 올림
 - Worker 코드·프롬프트·API 응답 변경: `cd cloudflare/ai-worker`, `npm run typecheck`, `npm run deploy`; 이어 앱과 계약이 바뀌면 APK도 새로 릴리스
 - Room Entity 추가/변경: 반드시 `FinanceDatabase` 버전을 올리고 이전 설치 데이터용 Migration 작성
-- 함께 쓰기 활성화 전: 이미 연결한 Supabase에 원장 테이블/RLS 정책·두 계정 격리·오프라인 동기화/충돌 테스트가 추가로 필요. 로그인과 Worker 인증만으로 함께 쓰기가 완성되지 않음
+- 공동 장부 후속: `202610080002_shared_goal_collaboration.sql`, `202610080003_shared_finance_items.sql`을 전용 Supabase에 적용하고 RLS/컬럼 및 두 로그인 계정 격리를 확인한다. 선택 거래 업/다운로드·삭제/공유 해제·저축 목표 협업·기존 Room 데이터·오프라인 재시도 테스트는 계속 남아 있다. APK v0.1.21은 먼저 공개했으므로 migration 적용 후 앱 재배포는 필요하지 않다.
 - 개인 배포는 GitHub Release 기반. 앱이 새 APK를 직접 내려받고 크기·SHA-256(제공 시)·패키지·버전·서명을 확인한 뒤 설치 화면을 열며, 출처 허용과 설치 승인은 Android 보안상 사용자가 해야 함

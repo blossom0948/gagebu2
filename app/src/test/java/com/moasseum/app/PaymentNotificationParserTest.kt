@@ -48,6 +48,7 @@ class PaymentNotificationParserTest {
         assertEquals(5_900L, candidate?.amount)
         assertEquals("EXPENSE", candidate?.type)
         assertEquals("스타벅스", candidate?.merchant)
+        assertEquals("CAFE", candidate?.categoryKey)
     }
 
     @Test

@@ -34,6 +34,20 @@ class CsvBackupTest {
         assertEquals(transaction.source, imported.source)
     }
 
+    @Test fun `CSV round trip preserves installment group`() {
+        val group = "971a8c7e-7f32-4e6b-9a74-82c22e218671"
+        val entries = (1..2).map { number ->
+            Transaction(
+                id = number.toLong(), type = TransactionType.EXPENSE, amount = 5_000, occurredAt = number.toLong(),
+                categoryKey = "SHOPPING", merchant = "가전", memo = "할부", paymentMethod = "카드", source = "INSTALLMENT",
+                installmentGroupId = group, installmentNumber = number, installmentCount = 2,
+            )
+        }
+        val decoded = CsvBackup.decode(CsvBackup.encode(entries))
+        assertEquals(listOf(1, 2), decoded.map { it.installmentNumber })
+        assertEquals(setOf(group), decoded.mapNotNull { it.installmentGroupId }.toSet())
+    }
+
     @Test
     fun `CSV import rejects unknown schemas and invalid amounts`() {
         assertThrows(IllegalArgumentException::class.java) {

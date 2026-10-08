@@ -9,6 +9,8 @@ import androidx.room.PrimaryKey
     indices = [
         Index(value = ["occurredAt"]),
         Index(value = ["deletedAt"]),
+        Index(value = ["cloudId"], unique = true),
+        Index(value = ["installmentGroupId"]),
     ],
 )
 data class TransactionEntity(
@@ -32,4 +34,8 @@ data class TransactionEntity(
     val deletedAt: Long? = null,
     val accountId: String? = null,
     val destinationAccountId: String? = null,
+    val cloudId: String? = null,
+    val installmentGroupId: String? = null,
+    val installmentNumber: Int? = null,
+    val installmentCount: Int? = null,
 )

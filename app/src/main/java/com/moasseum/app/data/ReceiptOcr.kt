@@ -61,9 +61,10 @@ object ReceiptOcr {
             }.getOrNull()
         } ?: today
         val category = when {
+            listOf("카페", "커피", "스타벅스", "아메리카노").any(text::contains) -> "CAFE"
             listOf("약국", "병원", "의원", "약품").any(text::contains) -> "HEALTH"
             listOf("택시", "주유", "버스", "지하철").any(text::contains) -> "TRANSPORT"
-            listOf("카페", "식당", "식품", "배달", "음식").any(text::contains) -> "FOOD"
+            listOf("식당", "식품", "배달", "음식").any(text::contains) -> "FOOD"
             else -> "OTHER"
         }
         val needsConfirmation = buildList {

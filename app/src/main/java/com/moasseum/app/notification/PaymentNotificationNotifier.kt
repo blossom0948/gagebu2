@@ -22,6 +22,7 @@ const val EXTRA_NOTIFICATION_CANDIDATE_ID = "com.moasseum.app.extra.NOTIFICATION
 
 object PaymentNotificationNotifier {
     const val CHANNEL_ID = "payment_detection"
+    const val FINANCE_CHANNEL_ID = "finance_reminders"
 
     fun createChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -34,6 +35,13 @@ object PaymentNotificationNotifier {
             enableVibration(true)
         }
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.getSystemService(NotificationManager::class.java).createNotificationChannel(
+                NotificationChannel(FINANCE_CHANNEL_ID, "예산·고정비 알림", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    description = "예산 사용과 다가오는 고정 결제일을 알려드려요."
+                },
+            )
+        }
     }
 
     fun areAppNotificationsEnabled(context: Context): Boolean {
@@ -43,6 +51,18 @@ object PaymentNotificationNotifier {
         ) return false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = context.getSystemService(NotificationManager::class.java).getNotificationChannel(CHANNEL_ID)
+            if (channel != null && channel.importance == NotificationManager.IMPORTANCE_NONE) return false
+        }
+        return true
+    }
+
+    fun areFinanceRemindersEnabled(context: Context): Boolean {
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = context.getSystemService(NotificationManager::class.java).getNotificationChannel(FINANCE_CHANNEL_ID)
             if (channel != null && channel.importance == NotificationManager.IMPORTANCE_NONE) return false
         }
         return true
@@ -84,6 +104,29 @@ object PaymentNotificationNotifier {
 
     fun cancel(context: Context, candidateId: Long) {
         NotificationManagerCompat.from(context).cancel(notificationId(candidateId))
+    }
+
+    @SuppressLint("MissingPermission")
+    fun showFinanceReminder(context: Context, title: String, message: String, key: String) {
+        if (!areFinanceRemindersEnabled(context)) return
+        createChannel(context)
+        val id = key.hashCode()
+        val intent = Intent(context, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context, id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(context, FINANCE_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .build()
+        runCatching { NotificationManagerCompat.from(context).notify(id, notification) }
     }
 
     private fun notificationId(id: Long): Int = (id xor (id ushr 32)).toInt()

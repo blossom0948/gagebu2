@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CameraAlt
+import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.HelpOutline
@@ -33,12 +34,16 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import com.moasseum.app.ui.components.FinanceTextField as OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,13 +58,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.moasseum.app.domain.LedgerUiState
+import com.moasseum.app.domain.HomeDashboardCards
+import com.moasseum.app.domain.NoSpendChallengeSettings
 import com.moasseum.app.domain.SpendingAnalysisState
 import com.moasseum.app.domain.SpendingQuestionState
 import com.moasseum.app.domain.formatLongDate
 import com.moasseum.app.domain.formatMonth
 import com.moasseum.app.domain.formatWon
+import com.moasseum.app.domain.noSpendStreakDays
 import com.moasseum.app.ui.components.AddMode
-import com.moasseum.app.ui.components.EmptyState
 import com.moasseum.app.ui.components.FinanceCard
 import com.moasseum.app.ui.components.FittedAmountText
 import com.moasseum.app.ui.components.TransactionRow
@@ -67,6 +74,8 @@ import com.moasseum.app.ui.components.categoryColor
 import com.moasseum.app.ui.components.categoryLabel
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import com.moasseum.app.ui.theme.LocalFinanceMotion
+import java.time.YearMonth
+import java.time.LocalDate
 
 private enum class HomeTab(val label: String) {
     SUMMARY("요약"),
@@ -84,12 +93,21 @@ fun HomeScreen(
     onAskAiQuestion: (String) -> Unit,
     categoryBudgets: Map<String, Long>,
     onExportCsv: () -> Unit,
+    onExportPdf: () -> Unit,
+    onSelectMonth: (YearMonth) -> Unit,
     onAdd: (AddMode) -> Unit,
     onOpenManage: () -> Unit,
     onOpenHistory: () -> Unit,
+    onOpenTransaction: (Long) -> Unit,
     onOpenHelp: () -> Unit,
     onOpenNotifications: () -> Unit,
     onStartVoiceInput: () -> Unit,
+    onPickReceipt: () -> Unit,
+    onTakeReceipt: () -> Unit,
+    displayName: String,
+    pendingCount: Int = 0,
+    homeDashboardCards: Set<String> = HomeDashboardCards.defaults,
+    noSpendChallenge: NoSpendChallengeSettings = NoSpendChallengeSettings(),
 ) {
     var selectedTabName by rememberSaveable { mutableStateOf(HomeTab.SUMMARY.name) }
     val selectedTab = HomeTab.valueOf(selectedTabName)
@@ -97,16 +115,25 @@ fun HomeScreen(
     LazyColumn(
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         item {
             HomeHeader(
                 onOpenManage = onOpenManage,
                 onOpenHelp = onOpenHelp,
                 onOpenNotifications = onOpenNotifications,
+                displayName = displayName,
+                pendingCount = pendingCount,
             )
         }
-        item { QuickCaptureCard(onAdd = onAdd, onStartVoiceInput = onStartVoiceInput) }
+        item {
+            QuickCaptureCard(
+                onAdd = onAdd,
+                onStartVoiceInput = onStartVoiceInput,
+                onPickReceipt = onPickReceipt,
+                onTakeReceipt = onTakeReceipt,
+            )
+        }
         item {
             HomeTabs(
                 selected = selectedTab,
@@ -115,13 +142,22 @@ fun HomeScreen(
         }
         when (selectedTab) {
             HomeTab.SUMMARY -> {
-                item { MonthlySummaryCard(uiState, onOpenManage) }
-                item { TodayAndWeekCard(uiState) }
-                item { CategorySpendingCard(uiState, categoryBudgets, onOpenHistory = onOpenHistory) }
+                item { MonthlySummaryCard(uiState, onOpenManage, onSelectMonth) }
+                if (noSpendChallenge.enabled && HomeDashboardCards.NO_SPEND_CHALLENGE in homeDashboardCards) {
+                    item { NoSpendChallengeCard(uiState, noSpendChallenge) }
+                }
+                if (HomeDashboardCards.TODAY_WEEK in homeDashboardCards) item { TodayAndWeekCard(uiState) }
+                if (HomeDashboardCards.TODAY_INSIGHT in homeDashboardCards) item { TodayInsightCard(uiState) }
+                if (HomeDashboardCards.CATEGORIES in homeDashboardCards) {
+                    item { CategorySpendingCard(uiState, categoryBudgets, onOpenHistory = onOpenHistory) }
+                }
+                if (HomeDashboardCards.RECENT_TRANSACTIONS in homeDashboardCards && uiState.monthTransactions.any { it.type != com.moasseum.app.domain.TransactionType.TRANSFER }) {
+                    item { RecentTransactionsCard(uiState, onOpenHistory, onOpenTransaction) }
+                }
             }
 
             HomeTab.INSIGHTS -> item { InsightsContent(uiState) }
-            HomeTab.REPORT -> item { ReportContent(uiState, onExportCsv) }
+            HomeTab.REPORT -> item { ReportContent(uiState, onExportPdf, onExportCsv) }
             HomeTab.AI -> item {
                 AiAnalysisContent(
                     uiState = uiState,
@@ -136,12 +172,58 @@ fun HomeScreen(
 }
 
 @Composable
+private fun NoSpendChallengeCard(
+    uiState: LedgerUiState,
+    settings: NoSpendChallengeSettings,
+) {
+    val colors = LocalFinanceColors.current
+    val today = LocalDate.now()
+    val startDate = settings.startDate ?: return
+    val streak = noSpendStreakDays(uiState.transactions, startDate, today)
+    val progress = (streak.toFloat() / settings.goalDays.coerceAtLeast(1)).coerceIn(0f, 1f)
+    val reached = streak >= settings.goalDays
+    FinanceCard(highlighted = reached) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(7.dp))
+                Text("무지출 챌린지", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text("${settings.goalDays}일 목표", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            }
+            Text(
+                text = if (reached) "목표 달성! ${streak}일 연속 무지출" else if (streak > 0) "${streak}일째 무지출 기록 중" else "오늘 지출이 기록됐어요 · 다시 이어가 봐요",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (reached) colors.success else colors.textPrimary,
+            )
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.fillMaxWidth().height(6.dp),
+                color = if (reached) colors.success else colors.accent,
+                trackColor = colors.surfaceOverlay,
+            )
+            Text("${streak.coerceAtMost(settings.goalDays)} / ${settings.goalDays}일", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+@Composable
 private fun HomeHeader(
     onOpenManage: () -> Unit,
     onOpenHelp: () -> Unit,
     onOpenNotifications: () -> Unit,
+    displayName: String,
+    pendingCount: Int,
 ) {
     val colors = LocalFinanceColors.current
+    val greeting = when (java.time.LocalTime.now().hour) {
+        in 5..11 -> "좋은 아침이에요"
+        in 12..17 -> "좋은 오후예요"
+        else -> "좋은 밤이에요"
+    }
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -162,7 +244,7 @@ private fun HomeHeader(
         Spacer(Modifier.width(9.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "모아씀",
+                text = "$greeting, ${displayName.ifBlank { "모아씀" }}",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
@@ -178,7 +260,7 @@ private fun HomeHeader(
         }
         HeaderIconButton(Icons.Rounded.HelpOutline, "도움말", onClick = onOpenHelp)
         Spacer(Modifier.width(4.dp))
-        HeaderIconButton(Icons.Rounded.NotificationsNone, "알림", onClick = onOpenNotifications)
+        HeaderIconButton(Icons.Rounded.NotificationsNone, "알림", onClick = onOpenNotifications, badgeCount = pendingCount)
         Spacer(Modifier.width(4.dp))
         HeaderIconButton(Icons.Rounded.Settings, "관리 설정", onOpenManage)
     }
@@ -189,6 +271,7 @@ private fun HeaderIconButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
+    badgeCount: Int = 0,
 ) {
     val colors = LocalFinanceColors.current
     Surface(
@@ -198,29 +281,36 @@ private fun HeaderIconButton(
         shape = RoundedCornerShape(11.dp),
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Icon(icon, contentDescription = contentDescription, tint = colors.textSecondary, modifier = Modifier.size(18.dp))
+            BadgedBox(badge = { if (badgeCount > 0) Badge { Text(if (badgeCount > 9) "9+" else badgeCount.toString()) } }) {
+                Icon(icon, contentDescription = contentDescription, tint = colors.textSecondary, modifier = Modifier.size(18.dp))
+            }
         }
     }
 }
 
 @Composable
-private fun QuickCaptureCard(onAdd: (AddMode) -> Unit, onStartVoiceInput: () -> Unit) {
+private fun QuickCaptureCard(
+    onAdd: (AddMode) -> Unit,
+    onStartVoiceInput: () -> Unit,
+    onPickReceipt: () -> Unit,
+    onTakeReceipt: () -> Unit,
+) {
     val colors = LocalFinanceColors.current
     FinanceCard(highlighted = true) {
         Row(
-            modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(7.dp),
         ) {
-            Column(modifier = Modifier.weight(1f).clickable(role = androidx.compose.ui.semantics.Role.Button) { onAdd(AddMode.AI_INPUT) }.padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(15.dp))
-                    Text("문장으로 기록", color = colors.accent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                }
+            Box(
+                modifier = Modifier.weight(1f).clickable(role = androidx.compose.ui.semantics.Role.Button) { onAdd(AddMode.AI_INPUT) }.padding(vertical = 9.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
                 Text("예: 점심 8,000원", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
             }
             QuickCaptureAction(Icons.Rounded.KeyboardVoice, "음성으로 입력", onStartVoiceInput)
-            QuickCaptureAction(Icons.Rounded.PhotoLibrary, "영수증 사진") { onAdd(AddMode.RECEIPT_NOTICE) }
+            QuickCaptureAction(Icons.Rounded.CameraAlt, "영수증 촬영", onTakeReceipt)
+            QuickCaptureAction(Icons.Rounded.PhotoLibrary, "사진에서 영수증 선택", onPickReceipt)
         }
     }
 }
@@ -233,7 +323,7 @@ private fun QuickCaptureAction(
 ) {
     val colors = LocalFinanceColors.current
     Surface(
-        modifier = Modifier.size(44.dp),
+        modifier = Modifier.size(38.dp),
         onClick = onClick,
         color = colors.surfaceOverlay,
         contentColor = colors.accent,
@@ -255,13 +345,13 @@ private fun HomeTabs(
         modifier = Modifier
             .fillMaxWidth()
             .background(colors.surfaceRaised, RoundedCornerShape(24.dp))
-            .padding(4.dp),
+            .padding(3.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         HomeTab.entries.forEach { tab ->
             val tabColor by animateColorAsState(if (tab == selected) colors.accent else Color.Transparent, tween(if (LocalFinanceMotion.current.reduceMotion) 0 else 140), label = "homeTab")
             Surface(
-                modifier = Modifier.weight(1f).heightIn(min = 40.dp),
+                modifier = Modifier.weight(1f).heightIn(min = 33.dp),
                 onClick = { onSelect(tab) },
                 color = tabColor,
                 contentColor = if (tab == selected) MaterialTheme.colorScheme.onPrimary else colors.textSecondary,
@@ -279,6 +369,7 @@ private fun HomeTabs(
 private fun MonthlySummaryCard(
     uiState: LedgerUiState,
     onOpenManage: () -> Unit,
+    onSelectMonth: (YearMonth) -> Unit,
 ) {
     val colors = LocalFinanceColors.current
     val change = uiState.expenseTotal - uiState.previousExpenseTotal
@@ -291,23 +382,38 @@ private fun MonthlySummaryCard(
     val animatedProgress by animateFloatAsState(progress, tween(if (LocalFinanceMotion.current.reduceMotion) 0 else 240), label = "budgetProgress")
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("${formatMonth(uiState.month)} 지출", color = colors.textSecondary, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+            androidx.compose.material3.IconButton(
+                onClick = { onSelectMonth(uiState.month.minusMonths(1)) },
+                modifier = Modifier.size(32.dp),
+            ) { Icon(Icons.Rounded.ChevronLeft, contentDescription = "지난달") }
+            TextButton(onClick = { onSelectMonth(YearMonth.now()) }) {
+                Text("${formatMonth(uiState.month)} · 이번 달 지출", color = colors.textSecondary,
+                    style = MaterialTheme.typography.labelMedium, maxLines = 1)
+            }
+            androidx.compose.material3.IconButton(
+                onClick = { onSelectMonth(uiState.month.plusMonths(1)) },
+                modifier = Modifier.size(32.dp),
+            ) { Icon(Icons.Rounded.ChevronRight, contentDescription = "다음달") }
+            Spacer(Modifier.weight(1f))
             Text("${uiState.expenseCount}건", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         }
-        FittedAmountText(formatWon(uiState.expenseTotal), MaterialTheme.typography.displaySmall)
+        FittedAmountText(
+            formatWon(uiState.expenseTotal),
+            MaterialTheme.typography.displaySmall.copy(fontSize = 30.sp, lineHeight = 36.sp, letterSpacing = (-0.5).sp),
+        )
         Row(verticalAlignment = Alignment.CenterVertically) {
             Surface(
                 onClick = onOpenManage,
-                color = colors.accentSoft,
+                color = Color.Transparent,
                 contentColor = colors.accent,
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(8.dp),
             ) {
                 Text(
                     text = budget?.let { "목표 ${formatWon(it)}" } ?: "목표 설정",
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
+                    modifier = Modifier.padding(horizontal = 2.dp, vertical = 1.dp),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                 )
@@ -346,8 +452,12 @@ private fun MonthlySummaryCard(
         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
             val pace = com.moasseum.app.domain.budgetPace(uiState)
             if (uiState.carriedBudgetAmount > 0) Text("지난달 이월 ${formatWon(uiState.carriedBudgetAmount)} 포함", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-            if (budget != null && pace.remainingDays > 0) Text("남은 ${pace.remainingDays}일 · 하루 ${formatWon(pace.dailyAllowance)} 사용 가능", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-            pace.projectedExpense?.let { Text("현재 속도 월말 예상 ${formatWon(it)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium) }
+            if (budget != null && pace.remainingDays > 0) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("남은 ${pace.remainingDays}일 · 하루 ${formatWon(pace.dailyAllowance)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                    pace.projectedExpense?.let { Text("예상 ${formatWon(it)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium) }
+                }
+            } else pace.projectedExpense?.let { Text("현재 속도 월말 예상 ${formatWon(it)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium) }
             if (pace.previousSamePeriodExpense > 0 && uiState.month == java.time.YearMonth.now()) Text("지난달 같은 기간 ${formatWon(pace.previousSamePeriodExpense)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             if (uiState.previousExpenseTotal > 0L) {
                 Text(
@@ -378,6 +488,76 @@ private fun TodayAndWeekCard(uiState: LedgerUiState) {
             count = uiState.weekTransactionCount,
             modifier = Modifier.weight(1f),
         )
+    }
+}
+
+@Composable
+private fun TodayInsightCard(uiState: LedgerUiState) {
+    val colors = LocalFinanceColors.current
+    val today = java.time.LocalDate.now()
+    val todayTransactions = uiState.transactions.filter {
+        it.type == com.moasseum.app.domain.TransactionType.EXPENSE && it.occurredDate == today
+    }
+    val todayTotal = todayTransactions.sumOf { it.amount }
+    val yesterdayTotal = uiState.transactions.asSequence()
+        .filter { it.type == com.moasseum.app.domain.TransactionType.EXPENSE && it.occurredDate == today.minusDays(1) }
+        .sumOf { it.amount }
+    val headline = when {
+        todayTotal == 0L -> "오늘 소비가 없어요"
+        yesterdayTotal > todayTotal -> "어제보다 ${formatWon(yesterdayTotal - todayTotal)} 줄었어요"
+        yesterdayTotal in 1 until todayTotal -> "어제보다 ${formatWon(todayTotal - yesterdayTotal)} 더 썼어요"
+        else -> "오늘 ${formatWon(todayTotal)} 사용했어요"
+    }
+    val supportingText = when {
+        todayTotal == 0L && yesterdayTotal == 0L -> "좋은 하루 보내세요"
+        todayTotal == 0L -> "어제는 ${formatWon(yesterdayTotal)} 사용했어요"
+        else -> "오늘 기록 ${todayTransactions.size}건"
+    }
+    FinanceCard(highlighted = true) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 9.dp),
+            horizontalArrangement = Arrangement.spacedBy(9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(19.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(headline, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                Text(supportingText, color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecentTransactionsCard(uiState: LedgerUiState, onOpenHistory: () -> Unit, onOpenTransaction: (Long) -> Unit) {
+    val latest = uiState.monthTransactions
+        .filter { it.type != com.moasseum.app.domain.TransactionType.TRANSFER }
+        .sortedByDescending { it.occurredAt }
+        .take(3)
+    val colors = LocalFinanceColors.current
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("최근 내역", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Surface(onClick = onOpenHistory, color = Color.Transparent, contentColor = colors.accent) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("전체 보기", style = MaterialTheme.typography.labelMedium)
+                    Icon(Icons.Rounded.ChevronRight, contentDescription = "소비내역 전체 보기", modifier = Modifier.size(17.dp))
+                }
+            }
+        }
+        FinanceCard {
+            Column {
+                latest.forEachIndexed { index, transaction ->
+                    TransactionRow(transaction, onClick = { onOpenTransaction(transaction.id) })
+                    if (index != latest.lastIndex) {
+                        androidx.compose.material3.HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 14.dp),
+                            color = colors.divider.copy(alpha = 0.5f),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -510,7 +690,7 @@ private fun InsightRow(label: String, value: String) {
 }
 
 @Composable
-private fun ReportContent(uiState: LedgerUiState, onExportCsv: () -> Unit) {
+private fun ReportContent(uiState: LedgerUiState, onExportPdf: () -> Unit, onExportCsv: () -> Unit) {
     val colors = LocalFinanceColors.current
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         FinanceCard {
@@ -543,11 +723,14 @@ private fun ReportContent(uiState: LedgerUiState, onExportCsv: () -> Unit) {
             }
         }
         FinanceCard {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                OutlinedButton(onClick = onExportCsv, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedButton(onClick = onExportPdf, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Rounded.FileDownload, contentDescription = null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(7.dp))
-                    Text("CSV 내보내기")
+                    Text("월간 PDF 리포트 저장")
+                }
+                androidx.compose.material3.TextButton(onClick = onExportCsv, modifier = Modifier.fillMaxWidth()) {
+                    Text("거래 CSV 내보내기")
                 }
             }
         }

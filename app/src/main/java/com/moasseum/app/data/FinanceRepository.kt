@@ -12,7 +12,9 @@ import com.moasseum.app.domain.NotificationCandidate
 import com.moasseum.app.domain.RecurringRule
 import com.moasseum.app.domain.Transaction
 import com.moasseum.app.domain.TransactionType
+import com.moasseum.app.domain.AiTransactionCandidate
 import com.moasseum.app.domain.firstRecurringOccurrence
+import com.moasseum.app.domain.installmentSchedule
 import com.moasseum.app.domain.toDomain
 import com.moasseum.app.notification.NotificationSourcePolicy
 import kotlinx.coroutines.flow.Flow
@@ -139,6 +141,90 @@ class FinanceRepository(
             ),
         )
     }
+
+    suspend fun addBatchTransactions(candidates: List<AiTransactionCandidate>, paymentMethod: String): Int {
+        require(candidates.size in 1..30 && paymentMethod.isNotBlank())
+        val now = System.currentTimeMillis()
+        val timezone = TimeZone.getDefault().id
+        val rows = candidates.map { candidate ->
+            require(candidate.type != TransactionType.TRANSFER)
+            require(candidate.amount in 1..1_000_000_000_000L && candidate.merchant.isNotBlank() && candidate.categoryKey.isNotBlank())
+            TransactionEntity(
+                type = candidate.type.name,
+                amount = candidate.amount,
+                occurredAt = candidate.occurredDate.atStartOfDay(ZoneId.of(timezone)).toInstant().toEpochMilli(),
+                timezone = timezone,
+                categoryKey = candidate.categoryKey,
+                merchant = candidate.merchant.trim(),
+                memo = candidate.memo.trim(),
+                paymentMethod = paymentMethod,
+                source = "AI_BATCH",
+                createdAt = now,
+                updatedAt = now,
+            )
+        }
+        dao.saveBatchTransactions(rows)
+        return rows.size
+    }
+
+    suspend fun applyBatchDelete(ids: List<Long>): Int =
+        dao.applyPersonalBatchDelete(ids, System.currentTimeMillis())
+
+    suspend fun applyBatchEdit(ids: List<Long>, values: BatchEditValues): Int {
+        val timezone = values.occurredDate?.let { TimeZone.getDefault().id }
+        val occurredAt = values.occurredDate?.atStartOfDay(ZoneId.of(timezone!!))?.toInstant()?.toEpochMilli()
+        return dao.applyPersonalBatchEdit(
+            ids = ids,
+            amount = values.amount,
+            merchant = values.merchant?.trim(),
+            categoryKey = values.categoryKey,
+            type = values.type?.name,
+            occurredAt = occurredAt,
+            timezone = timezone,
+            memo = values.memo?.trim(),
+            now = System.currentTimeMillis(),
+        )
+    }
+
+    suspend fun restoreBatch(ids: List<Long>): Int = dao.restorePersonalBatch(ids, System.currentTimeMillis())
+
+    suspend fun addInstallmentPlan(
+        total: Long,
+        count: Int,
+        firstChargeDate: LocalDate,
+        categoryKey: String,
+        merchant: String,
+        memo: String,
+        paymentMethod: String,
+    ) {
+        require(merchant.isNotBlank()) { "가맹점 이름을 입력해 주세요." }
+        require(categoryKey.isNotBlank() && paymentMethod.isNotBlank())
+        val schedule = installmentSchedule(total, count, firstChargeDate)
+        val now = System.currentTimeMillis()
+        val timezone = TimeZone.getDefault().id
+        val groupId = java.util.UUID.randomUUID().toString()
+        dao.saveInstallmentPlan(schedule.map { part ->
+            TransactionEntity(
+                type = TransactionType.EXPENSE.name,
+                amount = part.amount,
+                occurredAt = part.date.atStartOfDay(ZoneId.of(timezone)).toInstant().toEpochMilli(),
+                timezone = timezone,
+                categoryKey = categoryKey,
+                merchant = merchant.trim(),
+                memo = listOf(memo.trim(), "할부 ${part.number}/$count").filter(String::isNotBlank).joinToString(" · "),
+                paymentMethod = paymentMethod,
+                source = "INSTALLMENT",
+                installmentGroupId = groupId,
+                installmentNumber = part.number,
+                installmentCount = count,
+                createdAt = now,
+                updatedAt = now,
+            )
+        })
+    }
+
+    suspend fun deleteInstallmentPlan(groupId: String): Int =
+        dao.softDeleteInstallmentPlan(groupId, System.currentTimeMillis())
 
     suspend fun softDeleteTransaction(id: Long) {
         dao.softDeleteTransaction(id = id, deletedAt = System.currentTimeMillis())
@@ -290,6 +376,13 @@ private fun TransactionEntity.toDomain(): Transaction =
         accountId = accountId,
         destinationAccountId = destinationAccountId,
         timezone = timezone,
+        ownerId = ownerId,
+        ledgerId = ledgerId,
+        sharingScope = sharingScope,
+        cloudId = cloudId,
+        installmentGroupId = installmentGroupId,
+        installmentNumber = installmentNumber,
+        installmentCount = installmentCount,
     )
 
 private fun RecurringTransactionEntity.toDomain(): RecurringRule =

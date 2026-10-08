@@ -20,7 +20,7 @@ class ReceiptOcrTest {
         assertEquals(4_500L, candidate!!.amount)
         assertEquals("카페 모아씀", candidate.merchant)
         assertEquals(LocalDate.of(2026, 9, 17), candidate.occurredDate)
-        assertEquals("FOOD", candidate.categoryKey)
+        assertEquals("CAFE", candidate.categoryKey)
         assertEquals(TransactionType.EXPENSE, candidate.type)
     }
 

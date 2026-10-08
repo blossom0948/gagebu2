@@ -21,6 +21,7 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.KeyboardVoice
 import androidx.compose.material.icons.rounded.Payments
 import androidx.compose.material.icons.rounded.PieChartOutline
@@ -56,6 +57,7 @@ import com.moasseum.app.domain.AiTransactionCandidate
 import com.moasseum.app.domain.formatDate
 import com.moasseum.app.domain.formatWon
 import com.moasseum.app.domain.parseAmount
+import com.moasseum.app.domain.Transaction
 import com.moasseum.app.ui.components.categoryLabel
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import java.time.LocalDate
@@ -64,6 +66,7 @@ enum class AddMode {
     MENU,
     DIRECT,
     AI_INPUT,
+    BATCH,
     AI_NOTICE,
     RECEIPT_NOTICE,
 }
@@ -85,6 +88,11 @@ fun AddTransactionSheet(
     onTakeReceipt: () -> Unit = {},
     speechResult: String? = null,
     onSpeechResultConsumed: () -> Unit = {},
+    prefillText: String? = null,
+    prefillKey: String = "",
+    transactions: List<Transaction> = emptyList(),
+    onAddBatch: (List<AiTransactionCandidate>, String) -> Boolean = { _, _ -> false },
+    onApplyBatch: (com.moasseum.app.data.BatchCommandAction, List<Long>, com.moasseum.app.data.BatchEditValues?) -> Boolean = { _, _, _ -> false },
 ) {
     val scrollState = rememberScrollState()
     LaunchedEffect(mode) { scrollState.scrollTo(0) }
@@ -103,12 +111,22 @@ fun AddTransactionSheet(
                 onStartVoiceInput = onStartVoiceInput,
                 speechResult = speechResult,
                 onSpeechResultConsumed = onSpeechResultConsumed,
+                prefillText = prefillText,
+                prefillKey = prefillKey,
             )
             AddMode.RECEIPT_NOTICE -> ReceiptInputNotice(
                 aiState = aiState,
                 onPickReceipt = onPickReceipt,
                 onTakeReceipt = onTakeReceipt,
                 onBack = { onModeChange(AddMode.MENU) },
+            )
+            AddMode.BATCH -> BatchCommandSheet(
+                transactions = transactions,
+                paymentMethods = paymentMethods,
+                saving = saving,
+                onDismiss = onDismiss,
+                onAdd = onAddBatch,
+                onApply = onApplyBatch,
             )
         }
     }
@@ -132,6 +150,12 @@ private fun AddMenu(onModeChange: (AddMode) -> Unit, onStartVoiceInput: () -> Un
             title = "AI 문장으로 입력",
             message = "예: 점심 8천원",
             onClick = { onModeChange(AddMode.AI_INPUT) },
+        )
+        AddActionRow(
+            icon = Icons.Rounded.Edit,
+            title = "문장으로 여러 건 처리",
+            message = "추가 · 수정 · 삭제",
+            onClick = { onModeChange(AddMode.BATCH) },
         )
         AddActionRow(
             icon = Icons.Rounded.KeyboardVoice,
@@ -159,6 +183,8 @@ private fun AiInputForm(
     onStartVoiceInput: () -> Unit,
     speechResult: String?,
     onSpeechResultConsumed: () -> Unit,
+    prefillText: String?,
+    prefillKey: String,
 ) {
     val colors = LocalFinanceColors.current
     val focusManager = LocalFocusManager.current
@@ -191,6 +217,13 @@ private fun AiInputForm(
             input = speechResult
             showConfirmError = false
             onSpeechResultConsumed()
+        }
+    }
+
+    LaunchedEffect(prefillKey) {
+        if (!prefillText.isNullOrBlank()) {
+            input = prefillText.take(4000)
+            showConfirmError = false
         }
     }
 

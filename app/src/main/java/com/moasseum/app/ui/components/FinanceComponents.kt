@@ -28,15 +28,26 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Category
+import androidx.compose.material.icons.rounded.AccountBalance
+import androidx.compose.material.icons.rounded.CardGiftcard
 import androidx.compose.material.icons.rounded.DirectionsBus
+import androidx.compose.material.icons.rounded.Face
+import androidx.compose.material.icons.rounded.Flight
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.LocalHospital
+import androidx.compose.material.icons.rounded.LocalCafe
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Movie
-import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Payments
+import androidx.compose.material.icons.rounded.Pets
+import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.Restaurant
+import androidx.compose.material.icons.rounded.School
+import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.ShoppingBag
+import androidx.compose.material.icons.rounded.Subscriptions
+import androidx.compose.material.icons.rounded.TheaterComedy
 import androidx.compose.material.icons.rounded.TrendingDown
 import androidx.compose.material.icons.rounded.TrendingUp
 import androidx.compose.material3.Card
@@ -72,12 +83,24 @@ import com.moasseum.app.domain.formatSignedWon
 import com.moasseum.app.domain.formatWon
 import com.moasseum.app.domain.formatDate
 import com.moasseum.app.ui.theme.CategoryFood
+import com.moasseum.app.ui.theme.CategoryCafe
 import com.moasseum.app.ui.theme.CategoryHealth
 import com.moasseum.app.ui.theme.CategoryLeisure
 import com.moasseum.app.ui.theme.CategoryLiving
 import com.moasseum.app.ui.theme.CategoryOther
 import com.moasseum.app.ui.theme.CategoryShopping
 import com.moasseum.app.ui.theme.CategoryTransport
+import com.moasseum.app.ui.theme.CategoryHousing
+import com.moasseum.app.ui.theme.CategoryCommunication
+import com.moasseum.app.ui.theme.CategoryEducation
+import com.moasseum.app.ui.theme.CategoryCulture
+import com.moasseum.app.ui.theme.CategoryTravel
+import com.moasseum.app.ui.theme.CategoryGift
+import com.moasseum.app.ui.theme.CategoryBeauty
+import com.moasseum.app.ui.theme.CategoryPet
+import com.moasseum.app.ui.theme.CategorySubscription
+import com.moasseum.app.ui.theme.CategoryInsurance
+import com.moasseum.app.ui.theme.CategoryFinance
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import com.moasseum.app.ui.theme.LocalFinanceMotion
 
@@ -90,11 +113,23 @@ data class CategorySpec(
 
 val CategorySpecs = listOf(
     CategorySpec("FOOD", "식비", Icons.Rounded.Restaurant, CategoryFood),
+    CategorySpec("CAFE", "카페", Icons.Rounded.LocalCafe, CategoryCafe),
     CategorySpec("TRANSPORT", "교통", Icons.Rounded.DirectionsBus, CategoryTransport),
     CategorySpec("SHOPPING", "쇼핑", Icons.Rounded.ShoppingBag, CategoryShopping),
-    CategorySpec("LIVING", "생활", Icons.Rounded.Home, CategoryLiving),
-    CategorySpec("HEALTH", "건강", Icons.Rounded.LocalHospital, CategoryHealth),
+    CategorySpec("HOUSING", "주거", Icons.Rounded.Home, CategoryHousing),
+    CategorySpec("COMMUNICATION", "통신", Icons.Rounded.PhoneAndroid, CategoryCommunication),
+    CategorySpec("HEALTH", "의료", Icons.Rounded.LocalHospital, CategoryHealth),
+    CategorySpec("EDUCATION", "교육", Icons.Rounded.School, CategoryEducation),
+    CategorySpec("CULTURE", "문화", Icons.Rounded.TheaterComedy, CategoryCulture),
     CategorySpec("LEISURE", "여가", Icons.Rounded.Movie, CategoryLeisure),
+    CategorySpec("TRAVEL", "여행", Icons.Rounded.Flight, CategoryTravel),
+    CategorySpec("GIFT", "경조사", Icons.Rounded.CardGiftcard, CategoryGift),
+    CategorySpec("BEAUTY", "미용", Icons.Rounded.Face, CategoryBeauty),
+    CategorySpec("PET", "반려동물", Icons.Rounded.Pets, CategoryPet),
+    CategorySpec("SUBSCRIPTION", "구독", Icons.Rounded.Subscriptions, CategorySubscription),
+    CategorySpec("INSURANCE", "보험", Icons.Rounded.Security, CategoryInsurance),
+    CategorySpec("FINANCE", "금융", Icons.Rounded.AccountBalance, CategoryFinance),
+    CategorySpec("LIVING", "생활", Icons.Rounded.Home, CategoryLiving),
     CategorySpec("OTHER", "기타", Icons.Rounded.MoreHoriz, CategoryOther),
 )
 
@@ -108,14 +143,16 @@ fun categoryLabel(key: String): String =
 @Composable
 fun allCategorySpecs(): List<CategorySpec> {
     val labels = LocalCategoryLabels.current
+    val order = LocalCategoryOrder.current
     val builtInKeys = CategorySpecs.mapTo(mutableSetOf(), CategorySpec::key)
     val custom = labels.entries
         .filter { (key, _) -> key !in builtInKeys }
         .map { (key, label) -> CategorySpec(key, label, Icons.Rounded.Category, CategoryOther) }
-    return CategorySpecs + custom
+    return (CategorySpecs + custom).sortedBy { spec -> order.indexOf(spec.key).takeIf { it >= 0 } ?: Int.MAX_VALUE }
 }
 
 val LocalCategoryLabels = compositionLocalOf<Map<String, String>> { emptyMap() }
+val LocalCategoryOrder = compositionLocalOf { CategorySpecs.map(CategorySpec::key) }
 
 fun categoryColor(key: String): Color =
     CategorySpecs.firstOrNull { it.key == key }?.color ?: CategoryOther
@@ -260,8 +297,8 @@ fun TransactionRow(
 fun BottomNavBar(
     currentRoute: String,
     onNavigate: (String) -> Unit,
+    addExpanded: Boolean = false,
     onAdd: () -> Unit,
-    pendingCount: Int,
 ) {
     val colors = LocalFinanceColors.current
     Box(
@@ -300,11 +337,10 @@ fun BottomNavBar(
                 )
                 Spacer(Modifier.width(58.dp))
                 BottomNavItem(
-                    label = "알림",
-                    icon = Icons.Rounded.Notifications,
-                    selected = currentRoute == ROUTE_NOTIFICATIONS,
-                    onClick = { onNavigate(ROUTE_NOTIFICATIONS) },
-                    badgeCount = pendingCount,
+                    label = "함께",
+                    icon = Icons.Rounded.Group,
+                    selected = currentRoute == ROUTE_TOGETHER,
+                    onClick = { onNavigate(ROUTE_TOGETHER) },
                     modifier = Modifier.weight(1f),
                 )
                 BottomNavItem(
@@ -317,7 +353,7 @@ fun BottomNavBar(
             }
         }
         Box(Modifier.align(Alignment.TopCenter)) {
-            AddFloatingActionButton(expanded = false, onClick = onAdd)
+            AddFloatingActionButton(expanded = addExpanded, onClick = onAdd)
         }
     }
 }
@@ -463,5 +499,7 @@ fun TrendLabel(
 const val ROUTE_HOME = "home"
 const val ROUTE_HISTORY = "history"
 // Keep the old destination ID so updating from the former Together tab restores safely.
-const val ROUTE_NOTIFICATIONS = "together"
+const val ROUTE_TOGETHER = "couple"
+const val ROUTE_NOTIFICATIONS = "notifications"
+const val ROUTE_LEGACY_TOGETHER = "together"
 const val ROUTE_MANAGE = "manage"
