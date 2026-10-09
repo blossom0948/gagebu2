@@ -32,35 +32,44 @@ fun AuthDialog(repository: AuthRepository, onDismiss: () -> Unit) {
     var showCode by rememberSaveable { mutableStateOf(false) }
     val colors = LocalFinanceColors.current
     val context = LocalContext.current
+    LaunchedEffect(repository) { repository.refreshSocialProviders() }
     fun switch(value: String) { mode = value; password = ""; confirmation = ""; code = ""; localError = null; showCode = false }
     LaunchedEffect(state.recoveryEmail) {
         state.recoveryEmail?.let { email = it; switch("NEW_PASSWORD") }
     }
-    fun close() { if (!state.busy) scope.launch { repository.cancelRecovery(); repository.cancelGoogleLogin(); onDismiss() } }
+    fun close() { if (!state.busy) scope.launch { repository.cancelRecovery(); repository.cancelSocialLogin(); onDismiss() } }
+    fun startSocialLogin(provider: String) {
+        localError = null
+        password = ""; confirmation = ""; code = ""
+        scope.launch {
+            repository.beginSocialLogin(provider).onSuccess { url ->
+                try {
+                    context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).addCategory(android.content.Intent.CATEGORY_BROWSABLE))
+                } catch (_: android.content.ActivityNotFoundException) {
+                    repository.cancelSocialLogin(); localError = "로그인할 브라우저가 없어요. 브라우저를 설치하거나 이메일 로그인을 사용해 주세요."
+                } catch (_: SecurityException) {
+                    repository.cancelSocialLogin(); localError = "브라우저를 열지 못했어요. 이메일 로그인을 사용해 주세요."
+                }
+            }
+        }
+    }
     AlertDialog(onDismissRequest = { close() }, title = { Text("로그인·계정") }, text = {
         Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             if (!repository.configured) Text("로그인 서버에 연결되지 않았습니다.", style = MaterialTheme.typography.bodyMedium, color = colors.expense)
             state.user?.takeIf { mode != "NEW_PASSWORD" }?.let { user ->
-                Text("로그인됨 · ${user.email}", style = MaterialTheme.typography.titleSmall)
+                Text("로그인됨 · ${user.displayLabel}", style = MaterialTheme.typography.titleSmall)
                 TextButton(enabled = !state.busy, onClick = { showLogout = true }) { Text("로그아웃") }
             } ?: run {
-                if (mode in listOf("LOGIN", "SIGNUP") && repository.supportsGoogleLogin) {
-                    GoogleSignInButton(enabled = repository.configured && !state.busy, onClick = {
-                        localError = null
-                        password = ""; confirmation = ""; code = ""
-                        scope.launch {
-                            repository.beginGoogleLogin().onSuccess { url ->
-                                try {
-                                    context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).addCategory(android.content.Intent.CATEGORY_BROWSABLE))
-                                } catch (_: android.content.ActivityNotFoundException) {
-                                    repository.cancelGoogleLogin(); localError = "로그인할 브라우저가 없어요. 브라우저를 설치하거나 이메일 로그인을 사용해 주세요."
-                                } catch (_: SecurityException) {
-                                    repository.cancelGoogleLogin(); localError = "브라우저를 열지 못했어요. 이메일 로그인을 사용해 주세요."
-                                }
-                            }
-                        }
-                    })
-                    Text("이메일·기본 프로필만 사용합니다.", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+                if (mode in listOf("LOGIN", "SIGNUP") && repository.supportsSocialLogin) {
+                    GoogleSignInButton(enabled = repository.configured && !state.busy && "google" in state.socialProviders, onClick = { startSocialLogin("google") })
+                    KakaoSignInButton(available = "kakao" in state.socialProviders, enabled = repository.configured && !state.busy, onClick = { startSocialLogin("kakao") })
+                    if (!state.socialProvidersChecked) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                    } else if ("kakao" !in state.socialProviders) {
+                        Text("카카오 로그인은 서버 연결 후 사용할 수 있어요.", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+                    } else {
+                        Text("카카오 이메일이 제공되지 않아도 로그인할 수 있어요.", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+                    }
                     HorizontalDivider(color = colors.textSecondary.copy(alpha = 0.15f))
                 }
                 if (mode != "NEW_PASSWORD") Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

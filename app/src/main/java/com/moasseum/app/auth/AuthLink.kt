@@ -9,7 +9,7 @@ import java.util.Base64
 // No passwords or tokens in the callback URL. The random verifier stays on this device.
 class PendingAuthFlow(val email: String, val verifier: String, val flowId: String, val recovery: Boolean, val createdAt: Long, val redirectUri: String, val provider: String? = null) {
     init {
-        require(provider == null || provider == "google")
+        require(provider == null || provider in SocialOAuth.supportedProviders)
         require(provider == null || (!recovery && email.isEmpty()))
     }
     val challenge: String get() = Base64.getUrlEncoder().withoutPadding().encodeToString(MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII)))

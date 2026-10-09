@@ -1,7 +1,10 @@
 package com.moasseum.app.auth
 
-data class SignedInUser(val id: String, val email: String)
-data class AuthState(val user: SignedInUser? = null, val initialized: Boolean = false, val busy: Boolean = false, val message: String? = null, val error: String? = null, val recoveryEmail: String? = null, val linkEvent: Long = 0)
+data class SignedInUser(val id: String, val email: String, val provider: String? = null) {
+    val displayLabel: String
+        get() = email.ifBlank { provider?.let(SocialOAuth::displayName)?.plus(" 계정") ?: "소셜 계정" }
+}
+data class AuthState(val user: SignedInUser? = null, val initialized: Boolean = false, val busy: Boolean = false, val message: String? = null, val error: String? = null, val recoveryEmail: String? = null, val linkEvent: Long = 0, val socialProviders: Set<String> = emptySet(), val socialProvidersChecked: Boolean = false)
 
 class AuthSession(val user: SignedInUser, val accessToken: String, val refreshToken: String, val expiresAt: Long, val providers: Set<String> = emptySet()) {
     override fun toString(): String = "AuthSession(redacted)"
@@ -33,7 +36,8 @@ interface AuthLinkApi : AuthApi {
 }
 
 interface OAuthAuthApi : AuthLinkApi {
-    suspend fun googleAuthorizationUrl(flow: PendingAuthFlow): String
+    suspend fun enabledSocialProviders(): Set<String>
+    suspend fun authorizationUrl(provider: String, flow: PendingAuthFlow): String
 }
 
 interface PendingAuthStore {

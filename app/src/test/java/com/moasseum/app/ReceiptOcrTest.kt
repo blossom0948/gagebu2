@@ -2,6 +2,9 @@ package com.moasseum.app
 
 import com.moasseum.app.data.ReceiptOcr
 import com.moasseum.app.data.PhotoTransactionImport
+import com.moasseum.app.data.PhotoEvidenceBounds
+import com.moasseum.app.data.ReceiptOcrDocument
+import com.moasseum.app.data.ReceiptOcrRow
 import com.moasseum.app.domain.TransactionType
 import com.moasseum.app.domain.Transaction
 import java.time.LocalDate
@@ -119,6 +122,27 @@ class ReceiptOcrTest {
         assertEquals(2, preview.candidates.size)
         assertEquals(listOf("스타벅스 강남점", "올리브영"), preview.candidates.map { it.transaction.merchant })
         assertEquals(2, preview.duplicateCount)
+    }
+
+    @Test
+    fun `overlapping captures prefer a crop when the first matching row has no bounds`() {
+        val candidates = PhotoTransactionImport.extract(
+            "거래내역\n10월 2일\n50,000원\n정회진 내 토스뱅크계좌",
+            today = LocalDate.of(2026, 10, 10),
+        )
+        val first = candidates.single().copy(sourceImageId = "capture-a", sourceImageUri = "content://capture-a")
+        val second = candidates.single().copy(
+            sourceImageId = "capture-b",
+            sourceImageUri = "content://capture-b",
+            sourceEvidenceImagePath = "/private/capture-b.jpg",
+        )
+
+        val preview = PhotoTransactionImport.preview(listOf(first, second), emptyList())
+
+        assertEquals(1, preview.candidates.size)
+        assertEquals(1, preview.duplicateCount)
+        assertEquals("content://capture-b", preview.candidates.single().sourceImageUri)
+        assertEquals("/private/capture-b.jpg", preview.candidates.single().sourceEvidenceImagePath)
     }
 
     @Test
@@ -337,6 +361,46 @@ class ReceiptOcrTest {
         assertEquals(1, candidates.size)
         assertEquals("메가커피", candidates.single().transaction.merchant)
         assertEquals(3_700L, candidates.single().transaction.amount)
+    }
+
+    @Test
+    fun `uncertain candidate keeps the OCR row range for its cropped source evidence`() {
+        val candidate = PhotoTransactionImport.extract(
+            "10월 2일 금요일\n50,000원\n정회진 내 토스뱅크계좌\n1일 목요일\n-2,650원\n배달의민족",
+            today = LocalDate.of(2026, 10, 10),
+        ).first { it.transaction.amount == 50_000L }
+
+        assertEquals(1, candidate.sourceLineStart)
+        assertEquals(2, candidate.sourceLineEnd)
+        assert(candidate.transaction.needsConfirmation.contains("merchant"))
+    }
+
+    @Test
+    fun `cropped evidence stops before a later month section heading`() {
+        val candidate = PhotoTransactionImport.extract(
+            "1일 목요일\n-8,061원\n마켓컬리 | 토스뱅크 체크카드\n9월\n30일 수요일\n-3,000원\n하이푸드",
+            today = LocalDate.of(2026, 10, 10),
+        ).first { it.transaction.amount == 8_061L }
+
+        assertEquals(1, candidate.sourceLineStart)
+        assertEquals(2, candidate.sourceLineEnd)
+    }
+
+    @Test
+    fun `OCR evidence range unions only the selected transaction rows`() {
+        val document = ReceiptOcrDocument(
+            text = "금액\n가맹점\n다음 거래",
+            rows = listOf(
+                ReceiptOcrRow("금액", PhotoEvidenceBounds(0.70f, 0.20f, 0.90f, 0.22f)),
+                ReceiptOcrRow("가맹점", PhotoEvidenceBounds(0.12f, 0.23f, 0.65f, 0.25f)),
+                ReceiptOcrRow("다음 거래", PhotoEvidenceBounds(0.10f, 0.40f, 0.88f, 0.42f)),
+            ),
+        )
+
+        assertEquals(
+            PhotoEvidenceBounds(0.12f, 0.20f, 0.90f, 0.25f),
+            document.boundsForLines(0, 1),
+        )
     }
 
     @Test

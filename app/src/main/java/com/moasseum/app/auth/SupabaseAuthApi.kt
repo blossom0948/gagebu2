@@ -38,11 +38,17 @@ class SupabaseAuthApi(
         require(code.matches(Regex("[A-Za-z0-9._~-]{1,512}")) && verifier.matches(Regex("[A-Za-z0-9_-]{43}"))) { "인증 링크를 다시 요청해 주세요." }
         return parseSession(request("token?grant_type=pkce", JSONObject().put("auth_code", code).put("code_verifier", verifier)))
     }
-    override suspend fun googleAuthorizationUrl(flow: PendingAuthFlow): String {
-        // Check the real provider before launching a browser; do not pretend setup is done.
+    override suspend fun enabledSocialProviders(): Set<String> {
         val settings = request("settings", method = "GET")
-        check(settings.optJSONObject("external")?.optBoolean("google") == true) { "구글 로그인 서버 설정이 아직 준비되지 않았어요. 이메일 로그인은 계속 사용할 수 있습니다." }
-        return GoogleOAuth.authorizationUrl(baseUrl, flow)
+        return parseEnabledSocialProviders(settings)
+    }
+    override suspend fun authorizationUrl(provider: String, flow: PendingAuthFlow): String {
+        require(provider in SocialOAuth.supportedProviders && flow.provider == provider) { "지원하지 않는 로그인 방식입니다." }
+        check(provider in enabledSocialProviders()) {
+            if (provider == "kakao") "카카오 로그인 서버 설정이 아직 준비되지 않았어요. 이메일 로그인은 계속 사용할 수 있습니다."
+            else "구글 로그인 서버 설정이 아직 준비되지 않았어요. 이메일 로그인은 계속 사용할 수 있습니다."
+        }
+        return SocialOAuth.authorizationUrl(baseUrl, flow)
     }
     private fun redirectPath(path: String, flow: PendingAuthFlow): String = "$path?redirect_to=${java.net.URLEncoder.encode(flow.callbackUri, "UTF-8")}"
     private fun challengeBody(flow: PendingAuthFlow) = JSONObject().put("code_challenge", flow.challenge).put("code_challenge_method", "s256")
@@ -109,22 +115,29 @@ class SupabaseAuthApi(
     }
 
     companion object {
+        internal fun parseEnabledSocialProviders(settings: JSONObject): Set<String> {
+            val external = settings.optJSONObject("external") ?: return emptySet()
+            return SocialOAuth.supportedProviders.filterTo(mutableSetOf()) { external.optBoolean(it, false) }
+        }
         internal fun parseSession(response: JSONObject, now: Long = System.currentTimeMillis() / 1000): AuthSession {
             try {
             val user = response.getJSONObject("user")
             val id = user.getString("id").also { java.util.UUID.fromString(it) }
-            val email = user.getString("email")
-            validateCredentials(email)
-            val access = response.getString("access_token"); val refresh = response.getString("refresh_token")
-            require(access.isNotBlank() && refresh.isNotBlank())
-            val expires = if (response.has("expires_at")) response.getLong("expires_at") else now + response.getLong("expires_in")
-            require(expires > now && expires - now <= 7 * 86400)
             val providers = buildSet {
                 user.optJSONArray("identities")?.let { identities ->
                     for (index in 0 until identities.length()) identities.optJSONObject(index)?.optString("provider")?.takeIf { it.isNotBlank() }?.let(::add)
                 }
+                user.optJSONObject("app_metadata")?.optString("provider")
+                    ?.takeIf { it in SocialOAuth.supportedProviders }?.let(::add)
             }
-            return AuthSession(SignedInUser(id, email), access, refresh, expires, providers)
+            val email = user.opt("email")?.takeIf { it != JSONObject.NULL }?.toString()?.trim().orEmpty()
+            if (email.isBlank()) require("kakao" in providers) else validateCredentials(email)
+            val access = response.getString("access_token"); val refresh = response.getString("refresh_token")
+            require(access.isNotBlank() && refresh.isNotBlank())
+            val expires = if (response.has("expires_at")) response.getLong("expires_at") else now + response.getLong("expires_in")
+            require(expires > now && expires - now <= 7 * 86400)
+            val primaryProvider = if (email.isBlank()) "kakao" else providers.firstOrNull { it in SocialOAuth.supportedProviders }
+            return AuthSession(SignedInUser(id, email, primaryProvider), access, refresh, expires, providers)
             } catch (_: Exception) {
                 // Parser diagnostics can contain the entire response, including tokens.
                 throw IllegalArgumentException("로그인 서버의 세션 응답을 확인하지 못했어요. 다시 시도해 주세요.")

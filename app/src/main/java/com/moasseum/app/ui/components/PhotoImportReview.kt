@@ -1,5 +1,9 @@
 package com.moasseum.app.ui.components
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -31,9 +35,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -45,6 +53,8 @@ import com.moasseum.app.domain.formatDate
 import com.moasseum.app.domain.formatWon
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import java.time.LocalDate
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private data class PhotoImportDraft(val candidate: PhotoTransactionCandidate, val selected: Boolean)
 
@@ -85,8 +95,8 @@ fun PhotoImportReview(
                 })
             }
             var editingIndex by remember(state) { mutableStateOf<Int?>(null) }
-            val selectableDrafts = drafts.filter { it.candidate.candidateCanBeSaved() }
-            val allSelectableDraftsSelected = selectableDrafts.isNotEmpty() && selectableDrafts.all { it.selected }
+            var evidenceIndex by remember(state) { mutableStateOf<Int?>(null) }
+            val allDraftsSelected = drafts.isNotEmpty() && drafts.all { it.selected }
             Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -109,15 +119,13 @@ fun PhotoImportReview(
                 if (drafts.isNotEmpty()) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text("추가할 내역", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                        TextButton(enabled = !saving && selectableDrafts.isNotEmpty(), onClick = {
-                            val selectAll = selectableDrafts.any { !it.selected }
-                            drafts = drafts.map { draft ->
-                                draft.copy(selected = draft.candidate.candidateCanBeSaved() && selectAll)
-                            }
-                        }) { Text(if (allSelectableDraftsSelected) "전체 해제" else "전체 선택") }
+                        TextButton(enabled = !saving && drafts.isNotEmpty(), onClick = {
+                            val selectAll = drafts.any { !it.selected }
+                            drafts = drafts.map { it.copy(selected = selectAll) }
+                        }) { Text(if (allDraftsSelected) "전체 해제" else "전체 선택") }
                     }
                     if (drafts.any { !it.candidate.candidateCanBeSaved() }) {
-                        Text("확인 필요 내역은 ‘수정’에서 확인한 뒤 추가할 수 있어요.", color = colors.warning, style = MaterialTheme.typography.labelSmall)
+                        Text("확인 필요 내역도 선택할 수 있어요. 사진을 보고 필요하면 수정하세요.", color = colors.warning, style = MaterialTheme.typography.labelSmall)
                     }
                     Column(
                         Modifier.fillMaxWidth().heightIn(max = 390.dp).verticalScroll(rememberScrollState()),
@@ -129,6 +137,7 @@ fun PhotoImportReview(
                                 enabled = !saving,
                                 onToggle = { drafts = drafts.toMutableList().also { it[index] = it[index].copy(selected = !it[index].selected) } },
                                 onEdit = { editingIndex = index },
+                                onViewEvidence = { evidenceIndex = index },
                             )
                         }
                     }
@@ -168,6 +177,18 @@ fun PhotoImportReview(
                     },
                 )
             }
+            evidenceIndex?.let { index ->
+                drafts.getOrNull(index)?.let { draft ->
+                    PhotoEvidenceDialog(
+                        candidate = draft.candidate,
+                        onDismiss = { evidenceIndex = null },
+                        onEdit = {
+                            evidenceIndex = null
+                            editingIndex = index
+                        },
+                    )
+                }
+            }
         }
     }
 }
@@ -178,12 +199,13 @@ private fun PhotoCandidateCard(
     enabled: Boolean,
     onToggle: () -> Unit,
     onEdit: () -> Unit,
+    onViewEvidence: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
     Surface(color = colors.surfaceRaised, shape = RoundedCornerShape(15.dp), modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().clickable(enabled = enabled && draft.candidate.candidateCanBeSaved(), onClick = onToggle).padding(start = 5.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+        Row(Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onToggle).padding(start = 5.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = draft.selected, onCheckedChange = { onToggle() }, enabled = enabled && draft.candidate.candidateCanBeSaved())
+            Checkbox(checked = draft.selected, onCheckedChange = { onToggle() }, enabled = enabled)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(draft.candidate.transaction.merchant, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -196,13 +218,77 @@ private fun PhotoCandidateCard(
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 Text(formatWon(draft.candidate.transaction.amount), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
                     color = if (draft.candidate.transaction.type.name == "INCOME") colors.income else colors.expense)
-                TextButton(enabled = enabled, onClick = onEdit, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
-                    Icon(Icons.Rounded.Edit, contentDescription = "인식 결과 수정", modifier = Modifier.size(14.dp))
-                    Text("수정", style = MaterialTheme.typography.labelSmall)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (draft.candidate.sourceImageUri != null || draft.candidate.sourceEvidenceImagePath != null) {
+                        TextButton(enabled = enabled, onClick = onViewEvidence, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                            Icon(Icons.Rounded.PhotoLibrary, contentDescription = "원본 거래 부분 보기", modifier = Modifier.size(14.dp))
+                            Text("사진", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                    TextButton(enabled = enabled, onClick = onEdit, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                        Icon(Icons.Rounded.Edit, contentDescription = "인식 결과 수정", modifier = Modifier.size(14.dp))
+                        Text("수정", style = MaterialTheme.typography.labelSmall)
+                    }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun PhotoEvidenceDialog(
+    candidate: PhotoTransactionCandidate,
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit,
+) {
+    val context = LocalContext.current
+    var evidenceBitmap by remember(candidate.sourceEvidenceImagePath) { mutableStateOf<Bitmap?>(null) }
+    var sourceBitmap by remember(candidate.sourceImageUri) { mutableStateOf<Bitmap?>(null) }
+    var showFullSource by remember(candidate.id) { mutableStateOf(false) }
+    LaunchedEffect(candidate.sourceEvidenceImagePath, candidate.sourceImageUri) {
+        evidenceBitmap = withContext(Dispatchers.IO) {
+            candidate.sourceEvidenceImagePath?.let(BitmapFactory::decodeFile)
+        }
+    }
+    LaunchedEffect(showFullSource, candidate.sourceImageUri) {
+        if (showFullSource && sourceBitmap == null) {
+            sourceBitmap = withContext(Dispatchers.IO) {
+                candidate.sourceImageUri?.let { rawUri ->
+                    runCatching {
+                        context.contentResolver.openInputStream(Uri.parse(rawUri))?.use(BitmapFactory::decodeStream)
+                    }.getOrNull()
+                }
+            }
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("원본 거래 부분") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val bitmap = if (showFullSource) sourceBitmap else evidenceBitmap
+                if (bitmap == null) {
+                    Text(
+                        if (showFullSource) "전체 캡처를 불러오지 못했어요. 수정에서 내용을 직접 고칠 수 있어요."
+                        else "이 거래의 부분 캡처를 만들지 못했어요. 수정에서 내용을 확인할 수 있어요.",
+                        color = LocalFinanceColors.current.textSecondary,
+                    )
+                    if (!showFullSource && candidate.sourceImageUri != null) {
+                        TextButton(onClick = { showFullSource = true }) { Text("원본 전체 보기") }
+                    }
+                } else {
+                    Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = if (showFullSource) "선택한 금융앱 캡처 원본" else "거래 인식에 사용된 캡처 부분",
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 340.dp),
+                        contentScale = ContentScale.Fit,
+                    )
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onEdit) { Text("수정하기") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("닫기") } },
+    )
 }
 
 @Composable

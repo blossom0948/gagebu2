@@ -13,7 +13,7 @@ class AuthRepository(private val api: AuthApi, private val store: SessionStore, 
     val state = mutableState.asStateFlow()
     val configured: Boolean get() = api.configured
     val supportsEmailLinks: Boolean get() = api is AuthLinkApi && pendingStore != null && redirectUri != null
-    val supportsGoogleLogin: Boolean get() = api is OAuthAuthApi && supportsEmailLinks
+    val supportsSocialLogin: Boolean get() = api is OAuthAuthApi && supportsEmailLinks
     private var session: AuthSession? = null
     private var recoverySession: AuthSession? = null
     private suspend fun save(value: AuthSession) {
@@ -40,23 +40,35 @@ class AuthRepository(private val api: AuthApi, private val store: SessionStore, 
     suspend fun login(email: String, password: String) = action {
         save(api.login(email.trim(), password)); clearPending(); message("로그인했어요.")
     }
-    suspend fun beginGoogleLogin(): Result<String> {
+    suspend fun refreshSocialProviders() {
+        if (!supportsSocialLogin || !configured) {
+            mutableState.value = mutableState.value.copy(socialProvidersChecked = true)
+            return
+        }
+        val providers = try {
+            (api as OAuthAuthApi).enabledSocialProviders().intersect(SocialOAuth.supportedProviders)
+        } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+        catch (_: Exception) { emptySet() }
+        mutableState.value = mutableState.value.copy(socialProviders = providers, socialProvidersChecked = true)
+    }
+    suspend fun beginSocialLogin(provider: String): Result<String> {
         var url: String? = null
         val result = action {
-            check(supportsGoogleLogin) { "이 버전에서는 구글 로그인을 사용할 수 없어요." }
-            val flow = PendingAuthFlow.create("", false, now(), redirectUri!!, provider = "google")
-            url = (api as OAuthAuthApi).googleAuthorizationUrl(flow)
+            require(provider in SocialOAuth.supportedProviders) { "지원하지 않는 로그인 방식입니다." }
+            check(supportsSocialLogin) { "이 버전에서는 소셜 로그인을 사용할 수 없어요." }
+            val flow = PendingAuthFlow.create("", false, now(), redirectUri!!, provider = provider)
+            url = (api as OAuthAuthApi).authorizationUrl(provider, flow)
             // Persist before browser launch, and only after provider availability is verified.
             withContext(Dispatchers.IO) { pendingStore!!.write(flow) }
             recoverySession = null
             mutableState.value = mutableState.value.copy(recoveryEmail = null)
-            message("브라우저에서 구글 계정을 선택해 주세요. 완료하면 앱으로 돌아옵니다.")
+            message("브라우저에서 ${SocialOAuth.displayName(provider)} 계정을 선택해 주세요. 완료하면 앱으로 돌아옵니다.")
         }
         return result.map { checkNotNull(url) }
     }
-    suspend fun cancelGoogleLogin(): Result<Unit> = mutex.withLock {
+    suspend fun cancelSocialLogin(): Result<Unit> = mutex.withLock {
         try {
-            if (readPending()?.provider == "google") clearPending()
+            if (readPending()?.provider in SocialOAuth.supportedProviders) clearPending()
             Result.success(Unit)
         } catch (error: kotlinx.coroutines.CancellationException) { throw error }
         catch (error: Exception) {
@@ -103,18 +115,19 @@ class AuthRepository(private val api: AuthApi, private val store: SessionStore, 
         val pending = readPending() ?: error("이 앱에서 먼저 로그인이나 인증 메일을 요청해 주세요. 다른 기기에서 시작한 인증은 사용할 수 없어요.")
         require(pending.flowId == link.flowId && pending.redirectUri == redirectUri) { "이 앱에서 시작한 최신 인증 요청을 완료해 주세요." }
         require(pending.isCurrent(now())) { "인증 요청이 만료됐어요. 이 앱에서 인증을 다시 시작해 주세요." }
-        if (link.failed) { clearPending(); error(if (pending.provider == "google") "구글 로그인이 취소됐거나 완료되지 않았어요. 다시 시도해 주세요." else "인증 링크가 만료됐거나 이미 사용됐어요. 인증 메일을 다시 요청해 주세요.") }
+        if (link.failed) { clearPending(); error(if (pending.provider in SocialOAuth.supportedProviders) "${SocialOAuth.displayName(pending.provider!!)} 로그인이 취소됐거나 완료되지 않았어요. 다시 시도해 주세요." else "인증 링크가 만료됐거나 이미 사용됐어요. 인증 메일을 다시 요청해 주세요.") }
         val verified = (api as AuthLinkApi).exchangeCode(link.code!!, pending.verifier)
-        if (pending.provider == "google") {
-            require("google" in verified.providers) { "구글 인증 계정을 확인하지 못했어요. 구글 로그인을 다시 시도해 주세요." }
-            validateCredentials(verified.user.email)
+        if (pending.provider in SocialOAuth.supportedProviders) {
+            require(pending.provider in verified.providers) { "${SocialOAuth.displayName(pending.provider!!)} 인증 계정을 확인하지 못했어요. 다시 로그인해 주세요." }
+            if (verified.user.email.isNotBlank()) validateCredentials(verified.user.email)
+            else require(pending.provider == "kakao") { "카카오 계정 이메일을 확인할 수 없어요. 이메일 로그인을 사용해 주세요." }
         } else require(verified.user.email.equals(pending.email, true)) { "인증 계정이 일치하지 않아요. 인증 메일을 다시 요청해 주세요." }
         if (pending.recovery) {
             recoverySession = verified
             mutableState.value = mutableState.value.copy(recoveryEmail = verified.user.email)
             message("이메일 인증을 마쳤어요. 새 비밀번호를 입력해 주세요.")
         } else {
-            save(verified); message(if (pending.provider == "google") "구글 로그인 완료" else "이메일 인증·로그인 완료")
+            save(verified); message(if (pending.provider in SocialOAuth.supportedProviders) "${SocialOAuth.displayName(pending.provider!!)} 로그인 완료" else "이메일 인증·로그인 완료")
         }
         clearPending()
     }

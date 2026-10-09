@@ -37,3 +37,22 @@ internal fun GoogleSignInButton(enabled: Boolean, onClick: () -> Unit) {
         Text("Google로 계속하기", fontFamily = GoogleButtonFont, fontWeight = FontWeight.Medium, fontSize = 14.sp, lineHeight = 20.sp)
     }
 }
+
+@Composable
+internal fun KakaoSignInButton(available: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        enabled = available && enabled,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        shape = RoundedCornerShape(24.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFFFEE500),
+            contentColor = Color(0xFF191919),
+            disabledContainerColor = Color(0xFFFEE500).copy(alpha = 0.42f),
+            disabledContentColor = Color(0xFF191919).copy(alpha = 0.6f),
+        ),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Text("카카오로 계속하기", fontWeight = FontWeight.Medium, fontSize = 14.sp, lineHeight = 20.sp)
+    }
+}

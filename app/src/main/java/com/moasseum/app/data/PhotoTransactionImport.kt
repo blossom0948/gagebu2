@@ -12,7 +12,13 @@ data class PhotoTransactionCandidate(
     val paymentMethod: String = "금융앱 캡처",
     val sourceImageId: String = "",
     val id: String = java.util.UUID.randomUUID().toString(),
+    val sourceImageUri: String? = null,
+    val sourceEvidenceImagePath: String? = null,
+    val sourceLineStart: Int? = null,
+    val sourceLineEnd: Int? = null,
 )
+
+data class PhotoEvidenceBounds(val left: Float, val top: Float, val right: Float, val bottom: Float)
 
 data class PhotoImportPreview(
     val candidates: List<PhotoTransactionCandidate>,
@@ -146,6 +152,8 @@ object PhotoTransactionImport {
                     needsConfirmation = needsConfirmation,
                 ),
                 paymentMethod = paymentMethodFrom((maxOf(contextStart, index - 2)..minOf(contextEnd, index + 1)).map(lines::get), defaultPaymentMethod),
+                sourceLineStart = index,
+                sourceLineEnd = evidenceEndLine(lines, index, nextAmount),
             )
         }
         return results
@@ -160,6 +168,15 @@ object PhotoTransactionImport {
             if (hasDateBoundary(lines, index, index) || extractAmount(line) != null || excludedLine.containsMatchIn(line)) return false
         }
         return false
+    }
+
+    private fun evidenceEndLine(lines: List<String>, amountIndex: Int, nextAmountIndex: Int): Int {
+        val maximum = minOf(amountIndex + 2, nextAmountIndex - 1, lines.lastIndex)
+        if (maximum <= amountIndex) return amountIndex
+        for (index in amountIndex + 1..maximum) {
+            if (dayHeading.containsMatchIn(lines[index]) || monthHeader.matches(lines[index])) return index - 1
+        }
+        return maximum
     }
 
     /** Receipt photos remain supported; a transaction-list screenshot can yield many rows. */
@@ -191,13 +208,33 @@ object PhotoTransactionImport {
         val accepted = mutableListOf<PhotoTransactionCandidate>()
         var duplicates = 0
         candidates.forEach { candidate ->
-            if (existing.any { isDuplicate(candidate.transaction, it) } || accepted.any {
-                    it.sourceImageId != candidate.sourceImageId && sameTransaction(candidate.transaction, it.transaction)
-                }
-            ) {
+            if (existing.any { isDuplicate(candidate.transaction, it) }) {
                 duplicates++
             } else {
-                accepted += candidate
+                val duplicateIndex = accepted.indexOfFirst {
+                    it.sourceImageId != candidate.sourceImageId && sameTransaction(candidate.transaction, it.transaction)
+                }
+                if (duplicateIndex < 0) {
+                    accepted += candidate
+                } else {
+                    duplicates++
+                    val kept = accepted[duplicateIndex]
+                    // Overlapping screenshots can contain the same transaction, but OCR box
+                    // metadata is occasionally missing in one capture. Keep the most useful
+                    // transaction-specific crop when both captures agree on all identity fields.
+                    if (kept.sourceEvidenceImagePath == null && candidate.sourceEvidenceImagePath != null &&
+                        sameEvidenceTransaction(kept.transaction, candidate.transaction)
+                    ) {
+                        accepted[duplicateIndex] = kept.copy(
+                            paymentMethod = candidate.paymentMethod,
+                            sourceImageId = candidate.sourceImageId,
+                            sourceImageUri = candidate.sourceImageUri,
+                            sourceEvidenceImagePath = candidate.sourceEvidenceImagePath,
+                            sourceLineStart = candidate.sourceLineStart,
+                            sourceLineEnd = candidate.sourceLineEnd,
+                        )
+                    }
+                }
             }
         }
         return PhotoImportPreview(accepted, duplicates)
@@ -219,6 +256,10 @@ object PhotoTransactionImport {
     fun sameTransaction(left: AiTransactionCandidate, right: AiTransactionCandidate): Boolean =
         left.type == right.type && left.amount == right.amount && left.occurredDate == right.occurredDate &&
             merchantMatches(left.merchant, right.merchant)
+
+    private fun sameEvidenceTransaction(left: AiTransactionCandidate, right: AiTransactionCandidate): Boolean =
+        left.type == right.type && left.amount == right.amount && left.occurredDate == right.occurredDate &&
+            normalizeMerchant(left.merchant) == normalizeMerchant(right.merchant)
 
     private fun merchantMatches(left: String, right: String): Boolean {
         val a = normalizeMerchant(left)

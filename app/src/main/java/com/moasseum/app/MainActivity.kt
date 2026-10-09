@@ -108,6 +108,7 @@ import com.moasseum.app.ui.screens.QuickHelpDialog
 import com.moasseum.app.ui.screens.ReleaseNotesCatalog
 import com.moasseum.app.ui.screens.WhatsNewDialog
 import com.moasseum.app.ui.screens.UpdateAvailableDialog
+import com.moasseum.app.ui.screens.UpdateDownloadDialog
 import com.moasseum.app.data.SharedLedgerSnapshot
 import com.moasseum.app.ui.theme.MoasseumTheme
 import com.moasseum.app.data.AiClient
@@ -652,6 +653,7 @@ private fun MoasseumApp(
     var sharedPrefillText by rememberSaveable { mutableStateOf<String?>(null) }
     var sharedPrefillKey by rememberSaveable { mutableStateOf("") }
     var updateState by remember { mutableStateOf<UpdateCheckState>(UpdateCheckState.Idle) }
+    var updateProgressDialogDismissed by remember { mutableStateOf(false) }
     val updatePreferences = remember(context) { context.getSharedPreferences("moasseum_update", android.content.Context.MODE_PRIVATE) }
     var dismissedUpdateVersion by remember { mutableStateOf(updatePreferences.getString("dismissed_version", null)) }
     var updatePromptRelease by remember { mutableStateOf<AppRelease?>(null) }
@@ -680,9 +682,26 @@ private fun MoasseumApp(
             var failedImages = 0
             uris.forEachIndexed { index, uri ->
                 val result = try {
-                    val recognizedText = withContext(Dispatchers.IO) { ReceiptOcr.recognize(context, uri) }
-                    val rows = PhotoTransactionImport.extractWithReceiptFallback(recognizedText)
-                    Result.success(rows)
+                    val document = withContext(Dispatchers.IO) { ReceiptOcr.recognizeDocument(context, uri) }
+                    val rows = PhotoTransactionImport.extractWithReceiptFallback(document.text)
+                    val imageId = java.util.UUID.randomUUID().toString()
+                    val evidenceBounds = rows.asSequence()
+                        .filter { it.transaction.needsConfirmation.isNotEmpty() }
+                        .mapNotNull { candidate ->
+                            document.boundsForLines(candidate.sourceLineStart, candidate.sourceLineEnd)
+                                ?.let { candidate.id to it }
+                        }
+                        .toMap()
+                    val evidencePaths = withContext(Dispatchers.IO) {
+                        ReceiptOcr.createEvidenceCrops(context, uri, evidenceBounds)
+                    }
+                    Result.success(rows.map { candidate ->
+                        candidate.copy(
+                            sourceImageId = imageId,
+                            sourceImageUri = uri.toString(),
+                            sourceEvidenceImagePath = evidencePaths[candidate.id],
+                        )
+                    })
                 } catch (cancelled: kotlinx.coroutines.CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
@@ -690,8 +709,7 @@ private fun MoasseumApp(
                 }
                 result.fold(
                     onSuccess = { rows ->
-                        val imageId = java.util.UUID.randomUUID().toString()
-                        extracted += rows.map { it.copy(sourceImageId = imageId) }
+                        extracted += rows
                     },
                     onFailure = { failedImages++ },
                 )
@@ -699,6 +717,10 @@ private fun MoasseumApp(
             }
             val combined = previousReview?.candidates.orEmpty() + extracted
             val preview = PhotoTransactionImport.preview(combined, uiState.transactions + sharedSnapshot.transactions)
+            val retainedEvidencePaths = preview.candidates.mapNotNull { it.sourceEvidenceImagePath }.toSet()
+            val droppedEvidencePaths = combined.mapNotNull { it.sourceEvidenceImagePath }
+                .filterNot(retainedEvidencePaths::contains)
+            ReceiptOcr.deleteEvidenceCrops(droppedEvidencePaths)
             val duplicateCount = (previousReview?.duplicateCount ?: 0) + preview.duplicateCount
             val totalImages = (previousReview?.imageCount ?: 0) + uris.size
             val totalFailures = (previousReview?.failedImageCount ?: 0) + failedImages
@@ -973,6 +995,10 @@ private fun MoasseumApp(
 
     fun closeAdd() {
         if (savingTransaction) return
+        (photoImportState as? PhotoImportState.Review)?.candidates
+            .orEmpty()
+            .mapNotNull { it.sourceEvidenceImagePath }
+            .let(ReceiptOcr::deleteEvidenceCrops)
         addOpen = false
         addModeName = AddMode.MENU.name
         addInitialDate = java.time.LocalDate.now().toString()
@@ -1067,6 +1093,7 @@ private fun MoasseumApp(
     }
 
     fun downloadAndInstallUpdate(release: com.moasseum.app.update.AppRelease) {
+        updateProgressDialogDismissed = false
         updateState = UpdateCheckState.Downloading(0)
         coroutineScope.launch {
             val result = AppUpdateManager.downloadApk(context, release) { progress ->
@@ -1750,6 +1777,13 @@ private fun MoasseumApp(
                 updatePreferences.edit().putString("dismissed_version", pendingUpdatePrompt.versionName).apply()
                 updatePromptRelease = null
             },
+        )
+    }
+    val downloadingUpdate = updateState as? UpdateCheckState.Downloading
+    if (downloadingUpdate != null && !updateProgressDialogDismissed) {
+        UpdateDownloadDialog(
+            progressPercent = downloadingUpdate.progressPercent,
+            onDismiss = { updateProgressDialogDismissed = true },
         )
     }
 }
