@@ -28,11 +28,16 @@ import androidx.compose.material.icons.rounded.PieChartOutline
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.rememberDatePickerState
 import com.moasseum.app.ui.components.FinanceTextField as OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -61,6 +66,7 @@ import com.moasseum.app.domain.Transaction
 import com.moasseum.app.ui.components.categoryLabel
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import java.time.LocalDate
+import java.time.ZoneOffset
 
 enum class AddMode {
     MENU,
@@ -79,7 +85,7 @@ fun AddTransactionSheet(
     saving: Boolean = false,
     onModeChange: (AddMode) -> Unit,
     onDismiss: () -> Unit,
-    onSave: (String, TransactionType, String, String, String, String, String?) -> Boolean,
+    onSave: (String, TransactionType, String, String, String, String, String?, LocalDate, Int?) -> Boolean,
     aiState: AiParseState = AiParseState.Idle,
     onParseAi: (String) -> Unit = {},
     onConfirmAi: (String, TransactionType, String, String, String, String, java.time.LocalDate) -> Boolean = { _, _, _, _, _, _, _ -> false },
@@ -447,13 +453,14 @@ private fun AddActionRow(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun DirectTransactionForm(
     paymentMethods: List<String>,
     accounts: List<com.moasseum.app.domain.Account>,
     saving: Boolean,
     onModeChange: (AddMode) -> Unit,
     onDismiss: () -> Unit,
-    onSave: (String, TransactionType, String, String, String, String, String?) -> Boolean,
+    onSave: (String, TransactionType, String, String, String, String, String?, LocalDate, Int?) -> Boolean,
 ) {
     val colors = LocalFinanceColors.current
     var typeName by rememberSaveable { mutableStateOf(TransactionType.EXPENSE.name) }
@@ -464,7 +471,10 @@ private fun DirectTransactionForm(
     var paymentMethod by rememberSaveable { mutableStateOf(paymentMethods.firstOrNull().orEmpty()) }
     var showError by rememberSaveable { mutableStateOf(false) }
     val type = TransactionType.valueOf(typeName)
-    val today = LocalDate.now()
+    var occurredDateText by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
+    var isInstallment by rememberSaveable { mutableStateOf(false) }
+    var installmentCountText by rememberSaveable { mutableStateOf("3") }
     var accountId by rememberSaveable { mutableStateOf<String?>(null) }
 
     Column(
@@ -488,7 +498,7 @@ private fun DirectTransactionForm(
             )
             FilterChip(
                 selected = type == TransactionType.INCOME,
-                onClick = { typeName = TransactionType.INCOME.name },
+                onClick = { typeName = TransactionType.INCOME.name; isInstallment = false },
                 label = { Text("수입") },
                 leadingIcon = { Icon(Icons.Rounded.PieChartOutline, contentDescription = null, modifier = Modifier.size(16.dp)) },
                 modifier = Modifier.weight(1f),
@@ -540,7 +550,38 @@ private fun DirectTransactionForm(
                 }
             }
         }
-        if (accounts.any { !it.archived }) com.moasseum.app.ui.screens.AccountChips("잔액에 반영할 계좌 (선택)", accounts.filterNot { it.archived }, accountId, true) { accountId = it }
+        if (type == TransactionType.EXPENSE) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("할부로 기록", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Text("월별 납부액으로 나눠 등록", color = colors.textSecondary, style = MaterialTheme.typography.labelSmall)
+                }
+                Switch(
+                    checked = isInstallment,
+                    onCheckedChange = {
+                        isInstallment = it
+                        if (it) accountId = null
+                        showError = false
+                    },
+                    enabled = !saving,
+                )
+            }
+            if (isInstallment) {
+                OutlinedTextField(
+                    value = installmentCountText,
+                    onValueChange = { installmentCountText = it.filter(Char::isDigit).take(2); showError = false },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("할부 개월") },
+                    suffix = { Text("개월 · 2~60") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    isError = showError,
+                    shape = RoundedCornerShape(15.dp),
+                )
+                Text("총액은 회차별로 나뉘며 합계는 원 단위까지 맞춰져요.", color = colors.textSecondary, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+        if (accounts.any { !it.archived } && !isInstallment) com.moasseum.app.ui.screens.AccountChips("잔액에 반영할 계좌 (선택)", accounts.filterNot { it.archived }, accountId, true) { accountId = it }
         OutlinedTextField(
             value = memo,
             onValueChange = { memo = it },
@@ -551,19 +592,26 @@ private fun DirectTransactionForm(
             maxLines = 2,
             shape = RoundedCornerShape(15.dp),
         )
-        Surface(color = colors.surfaceOverlay, shape = RoundedCornerShape(12.dp)) {
-            Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Surface(onClick = { showDatePicker = true }, color = colors.surfaceOverlay, shape = RoundedCornerShape(12.dp)) {
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = colors.accent, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(7.dp))
-                Text("거래일 · ${formatDate(today)}", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                Text("거래일 · ${runCatching { formatDate(LocalDate.parse(occurredDateText)) }.getOrDefault(occurredDateText)}", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Text("변경", color = colors.accent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
             }
         }
         if (showError) {
-            Text("금액과 가맹점을 입력해 주세요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
+            Text("금액·가맹점·날짜 또는 할부 개월을 확인해 주세요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
         }
         Button(
             onClick = {
-                if (!onSave(amount, type, merchant, categoryKey, memo, paymentMethod, accountId)) showError = true
+                val parsedAmount = parseAmount(amount)
+                val occurredDate = runCatching { LocalDate.parse(occurredDateText) }.getOrNull()
+                val count = installmentCountText.toIntOrNull()
+                val invalidInstallment = isInstallment && (count == null || count !in 2..60 || parsedAmount == null || parsedAmount < count)
+                if (parsedAmount == null || merchant.isBlank() || occurredDate == null || invalidInstallment ||
+                    !onSave(amount, type, merchant, categoryKey, memo, paymentMethod, accountId, occurredDate, count.takeIf { isInstallment })
+                ) showError = true
             },
             enabled = !saving,
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
@@ -573,6 +621,27 @@ private fun DirectTransactionForm(
             Text("거래 저장", fontWeight = FontWeight.Bold)
         }
         TextButton(enabled = !saving, onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("취소") }
+    }
+
+    if (showDatePicker) {
+        val initialMillis = runCatching {
+            LocalDate.parse(occurredDateText).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        }.getOrNull()
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        occurredDateText = java.time.Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()
+                    }
+                    showDatePicker = false
+                }) { Text("선택") }
+            },
+            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("취소") } },
+        ) {
+            DatePicker(state = datePickerState, showModeToggle = false)
+        }
     }
 }
 

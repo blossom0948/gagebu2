@@ -116,12 +116,14 @@ import com.moasseum.app.data.DEFAULT_PAYMENT_METHODS
 import com.moasseum.app.data.JsonBackup
 import com.moasseum.app.data.ReceiptOcr
 import com.moasseum.app.domain.AiParseState
+import com.moasseum.app.domain.buildActivityNotices
 import com.moasseum.app.domain.HomeDashboardCards
 import com.moasseum.app.domain.NoSpendChallengeSettings
 import com.moasseum.app.domain.NotificationCandidate
 import com.moasseum.app.domain.NetworkReconnectGate
 import com.moasseum.app.domain.SpendingAnalysisState
 import com.moasseum.app.domain.SpendingQuestionState
+import com.moasseum.app.domain.parseAmount
 import com.moasseum.app.notification.NotificationAccess
 import com.moasseum.app.notification.EXTRA_NOTIFICATION_CANDIDATE_ID
 import com.moasseum.app.notification.PaymentNotificationNotifier
@@ -223,6 +225,8 @@ class MainActivity : FragmentActivity() {
             val monthlyIncomeTargets by application.preferencesRepository.monthlyIncomeTargets.collectAsStateWithLifecycle(initialValue = emptyMap())
             val homeDashboardCards by application.preferencesRepository.homeDashboardCards.collectAsStateWithLifecycle(initialValue = HomeDashboardCards.defaults)
             val noSpendChallenge by application.preferencesRepository.noSpendChallenge.collectAsStateWithLifecycle(initialValue = NoSpendChallengeSettings())
+            val profileDisplayName by application.preferencesRepository.profileDisplayName.collectAsStateWithLifecycle(initialValue = "")
+            val readActivityNoticeIds by application.preferencesRepository.readActivityNoticeIds.collectAsStateWithLifecycle(initialValue = emptySet())
             val postNotificationPermissionPromptShown by application.preferencesRepository.notificationPostPermissionPromptShown.collectAsStateWithLifecycle(initialValue = false)
             val firstRunGuideCompleted by application.preferencesRepository.firstRunGuideCompleted.collectAsStateWithLifecycle(initialValue = true)
             val aiNotificationClassificationEnabled by application.preferencesRepository.aiNotificationClassificationEnabled.collectAsStateWithLifecycle(initialValue = false)
@@ -266,6 +270,14 @@ class MainActivity : FragmentActivity() {
                         homeDashboardCards = homeDashboardCards,
                         onSaveHomeDashboardCards = { cards -> application.preferencesRepository.saveHomeDashboardCards(cards) },
                         noSpendChallenge = noSpendChallenge,
+                        profileDisplayName = profileDisplayName,
+                        readActivityNoticeIds = readActivityNoticeIds,
+                        onSaveDisplayName = { name ->
+                            viewModel.performOperation("프로필 이름을 저장하지 못했어요.") { application.preferencesRepository.saveProfileDisplayName(name) }
+                        },
+                        onMarkActivityNoticesRead = { ids ->
+                            viewModel.performOperation("알림 상태를 저장하지 못했어요.") { application.preferencesRepository.markActivityNoticesRead(ids) }
+                        },
                         onSaveNoSpendChallenge = { enabled, goalDays -> application.preferencesRepository.configureNoSpendChallenge(enabled, goalDays) },
                         onSetAiNotificationClassificationEnabled = { enabled ->
                             viewModel.performOperation("AI 알림 설정을 저장하지 못했어요.") { application.preferencesRepository.setAiNotificationClassificationEnabled(enabled) }
@@ -398,6 +410,10 @@ private fun MoasseumApp(
     homeDashboardCards: Set<String>,
     onSaveHomeDashboardCards: suspend (Set<String>) -> Unit,
     noSpendChallenge: NoSpendChallengeSettings,
+    profileDisplayName: String,
+    readActivityNoticeIds: Set<String>,
+    onSaveDisplayName: (String) -> Unit,
+    onMarkActivityNoticesRead: (Set<String>) -> Unit,
     onSaveNoSpendChallenge: suspend (Boolean, Int) -> Unit,
     onSetAiNotificationClassificationEnabled: (Boolean) -> Unit,
     darkTheme: Boolean,
@@ -435,6 +451,8 @@ private fun MoasseumApp(
     val selectedDate by viewModel.date.collectAsStateWithLifecycle()
     val pendingCandidates by viewModel.pendingNotificationCandidates.collectAsStateWithLifecycle()
     val recurringRules by viewModel.recurringRules.collectAsStateWithLifecycle()
+    val activityNotices = remember(uiState, noSpendChallenge) { buildActivityNotices(uiState, noSpendChallenge) }
+    val unreadActivityNoticeCount = activityNotices.count { it.id !in readActivityNoticeIds }
     val context = LocalContext.current
     var showWhatsNew by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(application, BuildConfig.VERSION_NAME) {
@@ -1038,8 +1056,11 @@ private fun MoasseumApp(
                         onStartVoiceInput = ::startVoiceInput,
                         onPickReceipt = ::pickReceiptPhoto,
                         onTakeReceipt = ::takeReceiptPhoto,
-                        displayName = authState.user?.email?.substringBefore("@")?.takeIf(String::isNotBlank) ?: "모아씀",
-                        pendingCount = pendingCandidates.size,
+                        displayName = profileDisplayName.ifBlank {
+                            authState.user?.email?.substringBefore("@")?.takeIf(String::isNotBlank) ?: "모아씀"
+                        },
+                        onSaveDisplayName = onSaveDisplayName,
+                        pendingCount = pendingCandidates.size + unreadActivityNoticeCount,
                         homeDashboardCards = homeDashboardCards,
                         noSpendChallenge = noSpendChallenge,
                         scrollToTopRequest = homeScrollToTopRequest,
@@ -1076,6 +1097,8 @@ private fun MoasseumApp(
                 composable(ROUTE_NOTIFICATIONS) {
                     NotificationsScreen(
                         candidates = pendingCandidates,
+                        activityNotices = activityNotices,
+                        readActivityNoticeIds = readActivityNoticeIds,
                         onReview = { candidate ->
                             notificationPromptIds = listOf(candidate.id) + notificationPromptIds.filterNot { it == candidate.id }
                         },
@@ -1090,12 +1113,15 @@ private fun MoasseumApp(
                             notificationPromptIds = notificationPromptIds.filterNot { it in ids }
                             ids.forEach { PaymentNotificationNotifier.cancel(context, it) }
                         },
+                        onMarkRead = onMarkActivityNoticesRead,
                         onOpenSettings = { navigateTo(navController, ROUTE_MANAGE) },
                     )
                 }
                 composable(ROUTE_LEGACY_TOGETHER) {
                     NotificationsScreen(
                         candidates = pendingCandidates,
+                        activityNotices = activityNotices,
+                        readActivityNoticeIds = readActivityNoticeIds,
                         onReview = { candidate ->
                             notificationPromptIds = listOf(candidate.id) + notificationPromptIds.filterNot { it == candidate.id }
                         },
@@ -1110,6 +1136,7 @@ private fun MoasseumApp(
                             notificationPromptIds = notificationPromptIds.filterNot { it in ids }
                             ids.forEach { PaymentNotificationNotifier.cancel(context, it) }
                         },
+                        onMarkRead = onMarkActivityNoticesRead,
                         onOpenSettings = { navigateTo(navController, ROUTE_MANAGE) },
                     )
                 }
@@ -1368,16 +1395,45 @@ private fun MoasseumApp(
                         true
                     }
                 },
-                onSave = { amount, type, merchant, categoryKey, memo, paymentMethod, accountId ->
-                    val alreadySaving = savingTransaction
-                    if (!alreadySaving) savingTransaction = true
-                    val saved = !alreadySaving && viewModel.addTransaction(amount, type, merchant, categoryKey, memo, paymentMethod = paymentMethod, accountId = accountId, onComplete = { result ->
-                        savingTransaction = false
-                        if (result.isSuccess) closeAdd()
-                        coroutineScope.launch { snackbarHostState.showSnackbar(if (result.isSuccess) "거래가 저장됐어요" else result.exceptionOrNull()?.message ?: "저장에 실패했어요.") }
-                    })
-                    if (!saved && !alreadySaving) savingTransaction = false
-                    saved
+                onSave = { amount, type, merchant, categoryKey, memo, paymentMethod, accountId, occurredAt, installmentCount ->
+                    if (savingTransaction) {
+                        false
+                    } else if (installmentCount != null) {
+                        val total = parseAmount(amount)
+                        if (type != com.moasseum.app.domain.TransactionType.EXPENSE || total == null ||
+                            installmentCount !in 2..60 || total < installmentCount
+                        ) {
+                            false
+                        } else {
+                            savingTransaction = true
+                            coroutineScope.launch {
+                                val result = runCatching {
+                                    viewModel.addInstallmentPlan(total, installmentCount, occurredAt, categoryKey, merchant, memo, paymentMethod)
+                                }
+                                savingTransaction = false
+                                result.onSuccess {
+                                    closeAdd()
+                                    snackbarHostState.showSnackbar("할부 ${installmentCount}개월을 등록했어요")
+                                }.onFailure { error -> snackbarHostState.showSnackbar(error.message ?: "할부를 저장하지 못했어요.") }
+                            }
+                            true
+                        }
+                    } else {
+                        savingTransaction = true
+                        val saved = viewModel.addTransaction(
+                            amount, type, merchant, categoryKey, memo,
+                            occurredAt = occurredAt,
+                            paymentMethod = paymentMethod,
+                            accountId = accountId,
+                            onComplete = { result ->
+                                savingTransaction = false
+                                if (result.isSuccess) closeAdd()
+                                coroutineScope.launch { snackbarHostState.showSnackbar(if (result.isSuccess) "거래가 저장됐어요" else result.exceptionOrNull()?.message ?: "저장에 실패했어요.") }
+                            },
+                        )
+                        if (!saved) savingTransaction = false
+                        saved
+                    }
                 },
             )
         }

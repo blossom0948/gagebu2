@@ -55,6 +55,36 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.26" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_26_installments,
+                imageAspectRatio = 904f / 1100f,
+                title = "날짜 지정하고 할부로 기록",
+                description = "직접 입력에서 거래일을 고르고, 지출을 2~60개월로 나눠 등록할 수 있어요.",
+                imageDescription = "거래 기록 화면의 할부 개월과 거래일 선택",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_26_report,
+                imageAspectRatio = 904f / 1000f,
+                title = "6개월·요일별 소비 흐름",
+                description = "월별 지출 변화와 저축률, 카테고리·요일별 지출을 한 화면에서 확인해요.",
+                imageDescription = "월별 지출 추이와 요일별 지출 리포트",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_26_notifications,
+                imageAspectRatio = 904f / 780f,
+                title = "알림을 종류별로 모아보기",
+                description = "예산·챌린지 소식과 결제 후보를 나눠 보고, 소식은 읽음 처리할 수 있어요.",
+                imageDescription = "전체, 예산, 결제, 챌린지 알림 필터",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_26_profile,
+                imageAspectRatio = 904f / 700f,
+                title = "내 이름으로 홈 화면 꾸미기",
+                description = "홈 프로필 이름을 바꿔 보세요. 표시 이름은 이 기기에만 저장돼요.",
+                imageDescription = "기기 안에 저장하는 프로필 이름 편집 창",
+            ),
+        )
         "0.1.25" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_25_navigation,

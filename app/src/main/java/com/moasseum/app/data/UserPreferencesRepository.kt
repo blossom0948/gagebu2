@@ -90,6 +90,18 @@ class UserPreferencesRepository(
     val firstRunGuideCompleted: Flow<Boolean> =
         context.settingsDataStore.data.map { preferences -> preferences[FIRST_RUN_GUIDE_COMPLETED] ?: false }
 
+    val profileDisplayName: Flow<String> =
+        context.settingsDataStore.data.map { preferences -> preferences[PROFILE_DISPLAY_NAME].orEmpty() }
+
+    val readActivityNoticeIds: Flow<Set<String>> =
+        context.settingsDataStore.data.map { preferences ->
+            preferences[READ_ACTIVITY_NOTICE_IDS].orEmpty().lineSequence()
+                .filter { it.isNotBlank() && it.length <= 120 }
+                .toList()
+                .takeLast(MAX_READ_ACTIVITY_NOTICES)
+                .toSet()
+        }
+
     val aiNotificationClassificationEnabled: Flow<Boolean> =
         context.settingsDataStore.data.map { preferences -> preferences[AI_NOTIFICATION_CLASSIFICATION_ENABLED] ?: false }
 
@@ -247,6 +259,26 @@ class UserPreferencesRepository(
         context.settingsDataStore.edit { preferences -> preferences[FIRST_RUN_GUIDE_COMPLETED] = true }
     }
 
+    suspend fun saveProfileDisplayName(name: String) {
+        val normalized = name.trim()
+        require(normalized.length <= 24) { "이름은 24자 이내로 입력해 주세요." }
+        context.settingsDataStore.edit { preferences ->
+            if (normalized.isBlank()) preferences.remove(PROFILE_DISPLAY_NAME)
+            else preferences[PROFILE_DISPLAY_NAME] = normalized
+        }
+    }
+
+    suspend fun markActivityNoticesRead(ids: Set<String>) {
+        val normalized = ids.filter { it.length in 1..120 && it.all { ch -> ch.isLetterOrDigit() || ch in ":-_ ." } }
+        if (normalized.isEmpty()) return
+        context.settingsDataStore.edit { preferences ->
+            val previous = preferences[READ_ACTIVITY_NOTICE_IDS].orEmpty().lineSequence()
+                .filter(String::isNotBlank).toList()
+            preferences[READ_ACTIVITY_NOTICE_IDS] = (previous + normalized).distinct()
+                .takeLast(MAX_READ_ACTIVITY_NOTICES).joinToString("\n")
+        }
+    }
+
     suspend fun shouldShowReleaseNotes(currentVersion: String, isUpgradeInstall: Boolean): Boolean {
         require(currentVersion.matches(Regex("\\d+\\.\\d+\\.\\d+")))
         val lastSeenVersion = context.settingsDataStore.data.first()[LAST_SEEN_RELEASE_NOTES_VERSION]
@@ -384,6 +416,8 @@ class UserPreferencesRepository(
         val NOTIFICATION_ACCESS_PROMPT_SHOWN = booleanPreferencesKey("notification_access_prompt_shown")
         val NOTIFICATION_POST_PERMISSION_PROMPT_SHOWN = booleanPreferencesKey("notification_post_permission_prompt_shown")
         val FIRST_RUN_GUIDE_COMPLETED = booleanPreferencesKey("first_run_guide_completed")
+        val PROFILE_DISPLAY_NAME = stringPreferencesKey("profile_display_name")
+        val READ_ACTIVITY_NOTICE_IDS = stringPreferencesKey("read_activity_notice_ids")
         val LAST_SEEN_RELEASE_NOTES_VERSION = stringPreferencesKey("last_seen_release_notes_version")
         val AI_NOTIFICATION_CLASSIFICATION_ENABLED = booleanPreferencesKey("ai_notification_classification_enabled")
         val APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled")
@@ -406,6 +440,7 @@ class UserPreferencesRepository(
         const val MAX_CUSTOM_CATEGORIES = 20
         const val MAX_CATEGORY_BUDGETS = 39
         const val MAX_INCOME_TARGET_MONTHS = 120
+        const val MAX_READ_ACTIVITY_NOTICES = 200
         val SUPPORTED_CHALLENGE_GOALS = setOf(7, 14, 30)
     }
 }

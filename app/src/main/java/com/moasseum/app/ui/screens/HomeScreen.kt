@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.AssistChip
@@ -83,6 +84,8 @@ import com.moasseum.app.ui.theme.LocalFinanceColors
 import com.moasseum.app.ui.theme.LocalFinanceMotion
 import java.time.YearMonth
 import java.time.LocalDate
+import java.time.DayOfWeek
+import kotlin.math.roundToInt
 
 private enum class HomeTab(val label: String) {
     SUMMARY("요약"),
@@ -112,12 +115,14 @@ fun HomeScreen(
     onPickReceipt: () -> Unit,
     onTakeReceipt: () -> Unit,
     displayName: String,
+    onSaveDisplayName: (String) -> Unit = {},
     pendingCount: Int = 0,
     homeDashboardCards: Set<String> = HomeDashboardCards.defaults,
     noSpendChallenge: NoSpendChallengeSettings = NoSpendChallengeSettings(),
     scrollToTopRequest: Int = 0,
 ) {
     var selectedTabName by rememberSaveable { mutableStateOf(HomeTab.SUMMARY.name) }
+    var showProfileEditor by rememberSaveable { mutableStateOf(false) }
     val selectedTab = HomeTab.valueOf(selectedTabName)
     val listState = rememberLazyListState()
 
@@ -137,6 +142,7 @@ fun HomeScreen(
                 onOpenHelp = onOpenHelp,
                 onOpenNotifications = onOpenNotifications,
                 displayName = displayName,
+                onOpenProfile = { showProfileEditor = true },
                 pendingCount = pendingCount,
             )
         }
@@ -170,7 +176,7 @@ fun HomeScreen(
                 }
             }
 
-            HomeTab.INSIGHTS -> item { InsightsContent(uiState) }
+            HomeTab.INSIGHTS -> item { InsightsContent(uiState, noSpendChallenge, onOpenManage) }
             HomeTab.REPORT -> item { ReportContent(uiState, onExportPdf, onExportCsv) }
             HomeTab.AI -> item {
                 AiAnalysisContent(
@@ -182,6 +188,17 @@ fun HomeScreen(
                 )
             }
         }
+    }
+
+    if (showProfileEditor) {
+        DisplayNameDialog(
+            initialName = displayName,
+            onDismiss = { showProfileEditor = false },
+            onSave = { name ->
+                onSaveDisplayName(name)
+                showProfileEditor = false
+            },
+        )
     }
 }
 
@@ -230,6 +247,7 @@ private fun HomeHeader(
     onOpenHelp: () -> Unit,
     onOpenNotifications: () -> Unit,
     displayName: String,
+    onOpenProfile: () -> Unit,
     pendingCount: Int,
 ) {
     val colors = LocalFinanceColors.current
@@ -245,11 +263,12 @@ private fun HomeHeader(
         Box(
             modifier = Modifier
                 .size(38.dp)
-                .background(colors.accent, CircleShape),
+                .background(colors.accent, CircleShape)
+                .clickable(onClick = onOpenProfile),
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = "모",
+                text = displayName.trim().firstOrNull()?.toString() ?: "모",
                 color = MaterialTheme.colorScheme.onPrimary,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Black,
@@ -278,6 +297,39 @@ private fun HomeHeader(
         Spacer(Modifier.width(4.dp))
         HeaderIconButton(Icons.Rounded.Settings, "관리 설정", onOpenManage)
     }
+}
+
+@Composable
+private fun DisplayNameDialog(
+    initialName: String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    var name by rememberSaveable(initialName) { mutableStateOf(initialName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("프로필 이름") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it.take(24) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("표시 이름") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                )
+                Text("이 이름은 이 기기에만 저장돼요.", color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.labelMedium)
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(name.trim()) }) { Text("저장") } },
+        dismissButton = {
+            Row {
+                TextButton(onClick = { onSave("") }) { Text("기본 이름") }
+                TextButton(onClick = onDismiss) { Text("취소") }
+            }
+        },
+    )
 }
 
 @Composable
@@ -665,8 +717,19 @@ private fun CategoryBar(key: String, total: Long, maxValue: Long, allTotal: Long
 }
 
 @Composable
-private fun InsightsContent(uiState: LedgerUiState) {
+private fun InsightsContent(
+    uiState: LedgerUiState,
+    noSpendChallenge: NoSpendChallengeSettings,
+    onOpenManage: () -> Unit,
+) {
     val colors = LocalFinanceColors.current
+    val previousExpense = uiState.previousExpenseTotal
+    val change = uiState.expenseTotal - previousExpense
+    val pace = com.moasseum.app.domain.budgetPace(uiState)
+    val savingsRate = if (uiState.incomeTotal > 0L) {
+        (((uiState.incomeTotal - uiState.expenseTotal).toDouble() / uiState.incomeTotal) * 100.0)
+            .roundToInt().coerceIn(-999, 999).toString() + "%"
+    } else "수입 없음"
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         FinanceCard(highlighted = true) {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -689,6 +752,37 @@ private fun InsightsContent(uiState: LedgerUiState) {
                 InsightRow("기록한 거래", "${uiState.monthTransactions.size}건")
                 InsightRow("가장 많이 쓴 곳", uiState.categoryTotals.firstOrNull()?.let { categoryLabel(it.key) } ?: "아직 없음")
                 InsightRow("예산 소진율", uiState.budgetAmount?.let { "${(uiState.expenseTotal * 100 / it.coerceAtLeast(1)).coerceAtMost(999)}%" } ?: "예산 없음")
+                InsightRow(
+                    "지난달 대비",
+                    if (previousExpense == 0L) "비교 기록 없음" else "${if (change > 0L) "+" else "−"}${formatWon(kotlin.math.abs(change))}",
+                )
+                InsightRow("월말 예상 지출", pace.projectedExpense?.let(::formatWon) ?: "아직 계산 전")
+                InsightRow("저축률", savingsRate)
+            }
+        }
+        if (noSpendChallenge.enabled) {
+            val start = noSpendChallenge.startDate ?: LocalDate.now()
+            val streak = noSpendStreakDays(uiState.transactions, start)
+            FinanceCard(highlighted = streak >= noSpendChallenge.goalDays) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("무지출 챌린지", color = colors.accent, style = MaterialTheme.typography.labelLarge)
+                    Text("${streak.coerceAtMost(noSpendChallenge.goalDays)} / ${noSpendChallenge.goalDays}일", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    androidx.compose.material3.LinearProgressIndicator(
+                        progress = { (streak.toFloat() / noSpendChallenge.goalDays.coerceAtLeast(1)).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth().height(6.dp),
+                        color = if (streak >= noSpendChallenge.goalDays) colors.success else colors.accent,
+                        trackColor = colors.surfaceOverlay,
+                    )
+                }
+            }
+        }
+        FinanceCard {
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("챌린지 · 구독·고정비 · 연말정산", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Text("목표와 분석 도구", color = colors.textSecondary, style = MaterialTheme.typography.labelSmall)
+                }
+                TextButton(onClick = onOpenManage) { Text("관리") }
             }
         }
     }
@@ -706,36 +800,30 @@ private fun InsightRow(label: String, value: String) {
 @Composable
 private fun ReportContent(uiState: LedgerUiState, onExportPdf: () -> Unit, onExportCsv: () -> Unit) {
     val colors = LocalFinanceColors.current
+    val net = uiState.incomeTotal - uiState.expenseTotal
+    val remainingBudget = uiState.budgetAmount?.minus(uiState.expenseTotal)
+    val savingsRate = if (uiState.incomeTotal <= 0L) null else
+        ((net.toDouble() / uiState.incomeTotal.toDouble()) * 100.0).roundToInt().coerceIn(-999, 999)
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         FinanceCard {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("월간 리포트", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("월간 리포트", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(formatMonth(uiState.month), color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ReportMetric("지출", formatWon(uiState.expenseTotal), colors.expense, Modifier.weight(1f))
                     ReportMetric("수입", formatWon(uiState.incomeTotal), colors.income, Modifier.weight(1f))
                 }
-                Text("지출 카테고리 분포", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-                uiState.categoryTotals.take(5).forEach { total ->
-                    val ratio = if (uiState.expenseTotal == 0L) 0f else total.total.toFloat() / uiState.expenseTotal.toFloat()
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Box(Modifier.size(8.dp).background(categoryColor(total.key), CircleShape))
-                        Text(categoryLabel(total.key), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Box(
-                            Modifier
-                                .weight(1f)
-                                .height(8.dp)
-                                .background(colors.surfaceOverlay, RoundedCornerShape(8.dp)),
-                        ) {
-                            Box(Modifier.fillMaxWidth(ratio).height(8.dp).background(categoryColor(total.key), RoundedCornerShape(8.dp)))
-                        }
-                        Text("${(ratio * 100).toInt()}%", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-                    }
-                }
-                if (uiState.categoryTotals.isEmpty()) {
-                    Text("기록된 지출 없음", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ReportMetric("목표 잔액", remainingBudget?.let(::formatWon) ?: "목표 없음", if ((remainingBudget ?: 0L) >= 0L) colors.income else colors.expense, Modifier.weight(1f))
+                    ReportMetric("저축률", savingsRate?.let { "$it%" } ?: "수입 기록 없음", colors.accent, Modifier.weight(1f))
                 }
             }
         }
+        MonthlyTrendCard(uiState)
+        CategoryReportCard(uiState)
+        WeekdayReportCard(uiState)
         FinanceCard {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 OutlinedButton(onClick = onExportPdf, modifier = Modifier.fillMaxWidth()) {
@@ -749,6 +837,165 @@ private fun ReportContent(uiState: LedgerUiState, onExportPdf: () -> Unit, onExp
             }
         }
     }
+}
+
+@Composable
+private fun MonthlyTrendCard(uiState: LedgerUiState) {
+    val colors = LocalFinanceColors.current
+    val summaries = uiState.recentMonthlySummaries(6)
+    val maxExpense = summaries.maxOfOrNull { it.expenseTotal }?.coerceAtLeast(1L) ?: 1L
+    val current = summaries.lastOrNull()
+    val previous = summaries.getOrNull(summaries.lastIndex - 1)
+    val comparison = when {
+        previous == null || previous.expenseTotal == 0L -> "지난달 지출 기록 없음"
+        current == null -> ""
+        current.expenseTotal == previous.expenseTotal -> "지난달과 같아요"
+        else -> {
+            val difference = current.expenseTotal - previous.expenseTotal
+            val percent = ((difference.toDouble() / previous.expenseTotal.toDouble()) * 100.0).roundToInt().coerceIn(-999, 999)
+            "지난달보다 ${formatWon(kotlin.math.abs(difference))} ${if (difference > 0L) "더 썼어요" else "덜 썼어요"} · ${kotlin.math.abs(percent)}%"
+        }
+    }
+    FinanceCard {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("최근 6개월 지출", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(comparison, color = colors.textSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                summaries.forEach { summary ->
+                    val fraction = (summary.expenseTotal.toFloat() / maxExpense.toFloat()).coerceIn(0f, 1f)
+                    val animatedFraction by animateFloatAsState(
+                        targetValue = fraction,
+                        animationSpec = tween(if (LocalFinanceMotion.current.reduceMotion) 0 else 240),
+                        label = "monthly-trend-${summary.month}",
+                    )
+                    val isSelectedMonth = summary.month == uiState.month
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = summary.expenseTotal.takeIf { it > 0L }?.let(::compactWon) ?: "—",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isSelectedMonth) colors.textPrimary else colors.textSecondary,
+                            maxLines = 1,
+                        )
+                        Box(
+                            modifier = Modifier.fillMaxWidth().height(62.dp),
+                            contentAlignment = Alignment.BottomCenter,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.5f)
+                                    .fillMaxHeight(if (fraction == 0f) 0.04f else animatedFraction)
+                                    .clip(RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp))
+                                    .background(if (isSelectedMonth) colors.accent else colors.accentSoft),
+                            )
+                        }
+                        Text("${summary.month.monthValue}월", style = MaterialTheme.typography.labelSmall, color = colors.textSecondary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryReportCard(uiState: LedgerUiState) {
+    val colors = LocalFinanceColors.current
+    val previousTotals = uiState.recentMonthlySummaries(2).firstOrNull()?.categories.orEmpty()
+        .associate { it.key to it.total }
+    FinanceCard {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Text("지출 카테고리", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            uiState.categoryTotals.take(6).forEach { total ->
+                val ratio = if (uiState.expenseTotal == 0L) 0f else
+                    (total.total.toDouble() / uiState.expenseTotal.toDouble()).toFloat().coerceIn(0f, 1f)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Box(Modifier.size(8.dp).background(categoryColor(total.key), CircleShape))
+                    Text(categoryLabel(total.key), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(0.9f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Box(
+                        Modifier.weight(1.1f).height(7.dp).background(colors.surfaceOverlay, RoundedCornerShape(8.dp)),
+                    ) {
+                        Box(Modifier.fillMaxWidth(ratio).height(7.dp).background(categoryColor(total.key), RoundedCornerShape(8.dp)))
+                    }
+                    Text("${(ratio * 100).roundToInt()}%", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                }
+                val previous = previousTotals[total.key] ?: 0L
+                val difference = total.total - previous
+                Text(
+                    text = when {
+                        previous == 0L -> "지난달 기록 없음"
+                        difference == 0L -> "지난달과 같아요"
+                        else -> "지난달보다 ${formatWon(kotlin.math.abs(difference))} ${if (difference > 0L) "더 썼어요" else "덜 썼어요"}"
+                    },
+                    color = when {
+                        previous == 0L || difference == 0L -> colors.textSecondary
+                        difference > 0L -> colors.expense
+                        else -> colors.income
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(start = 17.dp),
+                )
+            }
+            if (uiState.categoryTotals.isEmpty()) Text("기록된 지출 없음", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+@Composable
+private fun WeekdayReportCard(uiState: LedgerUiState) {
+    val colors = LocalFinanceColors.current
+    val days = listOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY, DayOfWeek.SUNDAY)
+    val totals = uiState.monthTransactions.filter { it.type == com.moasseum.app.domain.TransactionType.EXPENSE }
+        .groupBy { it.occurredDate.dayOfWeek }.mapValues { (_, rows) -> rows.sumOf { it.amount } }
+    val maxExpense = totals.values.maxOrNull()?.coerceAtLeast(1L) ?: 1L
+    val labels = mapOf(
+        DayOfWeek.MONDAY to "월", DayOfWeek.TUESDAY to "화", DayOfWeek.WEDNESDAY to "수",
+        DayOfWeek.THURSDAY to "목", DayOfWeek.FRIDAY to "금", DayOfWeek.SATURDAY to "토", DayOfWeek.SUNDAY to "일",
+    )
+    FinanceCard {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Text("요일별 지출", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.Bottom) {
+                days.forEach { day ->
+                    val amount = totals[day] ?: 0L
+                    val target = (amount.toDouble() / maxExpense.toDouble()).toFloat().coerceIn(0f, 1f)
+                    val animated by animateFloatAsState(
+                        targetValue = target,
+                        animationSpec = tween(if (LocalFinanceMotion.current.reduceMotion) 0 else 240),
+                        label = "weekday-${day.value}",
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        Text(amount.takeIf { it > 0L }?.let(::compactWon) ?: "", style = MaterialTheme.typography.labelSmall, color = colors.textSecondary, maxLines = 1)
+                        Box(
+                            modifier = Modifier.fillMaxWidth(0.52f).height(54.dp)
+                                .background(colors.surfaceOverlay, RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp)),
+                            contentAlignment = Alignment.BottomCenter,
+                        ) {
+                            if (amount > 0L) Box(
+                                modifier = Modifier.fillMaxWidth().fillMaxHeight(animated.coerceAtLeast(0.06f))
+                                    .background(if (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY) colors.accentSoft else colors.accent, RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp)),
+                            )
+                        }
+                        Text(labels.getValue(day), style = MaterialTheme.typography.labelSmall, color = colors.textSecondary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun compactWon(amount: Long): String = when {
+    amount >= 100_000_000L -> "${amount / 100_000_000L}억"
+    amount >= 10_000L -> "${amount / 10_000L}만"
+    else -> "${amount}원"
 }
 
 @Composable
