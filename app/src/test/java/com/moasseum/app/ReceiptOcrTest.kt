@@ -320,4 +320,184 @@ class ReceiptOcrTest {
         assertEquals(5_500L, candidates.single().transaction.amount)
         assert(candidates.single().transaction.needsConfirmation.contains("type"))
     }
+
+    @Test
+    fun `split cancellation subtitle excludes only its own payment row`() {
+        val candidates = PhotoTransactionImport.extract(
+            """
+            10월 2일 금요일
+            -5,000원
+            취소 | 카카오T | 토스뱅크 체크카드
+            -3,700원
+            메가커피 | 토스뱅크 체크카드
+            """.trimIndent(),
+            today = LocalDate.of(2026, 10, 10),
+        )
+
+        assertEquals(1, candidates.size)
+        assertEquals("메가커피", candidates.single().transaction.merchant)
+        assertEquals(3_700L, candidates.single().transaction.amount)
+    }
+
+    @Test
+    fun `noisy Baedal OCR aliases canonicalize but ambiguous transfer names require review`() {
+        val candidates = PhotoTransactionImport.extract(
+            """
+            10월 2일 금요일
+            -2,650원
+            바배달의만족 리센느메이의시나몬롤 | 토스뱅크 체크카드
+            50,000원
+            정회진 내 토스뱅크계좌
+            """.trimIndent(),
+            today = LocalDate.of(2026, 10, 10),
+        )
+
+        assertEquals(2, candidates.size)
+        val delivery = candidates.single { it.transaction.amount == 2_650L }
+        assertEquals("배달의민족", delivery.transaction.merchant)
+        assertEquals("FOOD", delivery.transaction.categoryKey)
+        val transfer = candidates.single { it.transaction.amount == 50_000L }
+        assertEquals("정회진", transfer.transaction.merchant)
+        assert(transfer.transaction.needsConfirmation.contains("merchant"))
+    }
+
+    @Test
+    fun `lottery credit is not mistaken for a bank transfer and its category needs review`() {
+        val candidate = PhotoTransactionImport.extract(
+            "거래내역\n10월 1일\n30원\n체크카드 복권 당첨 내 토스뱅크 통장",
+            today = LocalDate.of(2026, 10, 10),
+        ).single()
+
+        assertEquals(TransactionType.INCOME, candidate.transaction.type)
+        assertEquals("복권 당첨", candidate.transaction.merchant)
+        assertEquals("OTHER", candidate.transaction.categoryKey)
+        assert(candidate.transaction.needsConfirmation.contains("category"))
+    }
+
+    @Test
+    fun `three Fold screenshots keep October dates merchant names and only unique completed transactions`() {
+        val today = LocalDate.of(2026, 10, 10)
+        val captureOne = PhotoTransactionImport.extract(
+            """
+            10
+            전체 카드 입출금 페이기타
+            토
+            27 28 29 30 1 2 3
+            4150500 51250 43000 493 +50000
+            -16450 -44080 -14411 14700
+            -5,000!
+            취소|카카오T|토스뱅크 체크카드
+            50,000%!
+            정회진내 토스뱅크계좌
+            1일 목요일
+            배탈민족 -2,650%
+            배달의민족리센느메이의시나몬롤외 1개|토스뱅크 체크카드
+            30원
+            체크카드 복권 당첨 내 토스뱅크 통장
+            -2,000
+            CU토스뱅크 체크카드
+            -1,700
+            하이푸드 |토스뱅크 체크카드
+            63원
+            통장 이자 내 토스뱅크 통장
+            N -8,061
+            네이버페이토스뱅크 체크카드
+            9월
+            30일 수요일
+            """.trimIndent(),
+            today = today,
+        ).map { it.copy(sourceImageId = "10281") }
+        val captureTwo = PhotoTransactionImport.extract(
+            """
+            10
+            전체 카드 입출금 페이기타
+            일 월 화 수 목 토
+            4 5 6 7 10
+            -14,550 -10700 -3,000 +500 +10,000 +6,000
+            -18,000 -15,000 -6,750
+            4일 일요일
+            -120,000
+            내계좌 이체 |아이통장 토스뱅크
+            -120,000
+            내 계좌 이체 | 토스뱅크 통장 아이통장
+            -14,550
+            네이버페이토스뱅크 체크카드
+            2일금요일
+            -500
+            내토스뱅크 통장 카드 캐시백 취소
+            52,800%
+            토스뱅크카드 취소| 쿠팡(쿠페이) 나이스
+            -3,700
+            메가커피|토스뱅크 체크카드
+            -6,000%
+            소문마라탕|토스뱅크 체크카드
+            -5,000%!
+            카카오T|토스뱅크 체크카드
+            1,300
+            송민영 내 토스뱅크계좌
+            """.trimIndent(),
+            today = today,
+        ).map { it.copy(sourceImageId = "10279") }
+        val captureThree = PhotoTransactionImport.extract(
+            """
+            10
+            전체 카드 입출금 페이기타
+            토
+            27 28 29 30 1 2 3
+            4708 4150500 41250 43000 493 +50000
+            735868 -16450 -44080 14411 -14700
+            내토스뱅크 통장 카드 캐시백 취소
+            52,800
+            토스뱅크카드 취소 |쿠팡(쿠페이)나이스
+            -3,700
+            메가커피| 토스뱅크 체크카드
+            -6,000
+            소문마라탕|토스뱅크 체크카드
+            -5,000
+            카카오T|토스뱅크 체크카드
+            1,300!
+            송민영 내 토스뱅크계좌
+            -5,000!
+            취소|카카오T | 토스뱅크 체크카드
+            50,000
+            정회진 내 토스뱅크계좌
+            1일 목요일
+            -2,650
+            배달의민족
+            배달의민족리센느메이의시나몬롤외 1개 |토스뱅크 체크카드
+            30원
+            체크카드 복권 당첨 내토스뱅크 통장
+            """.trimIndent(),
+            today = today,
+        ).map { it.copy(sourceImageId = "10283") }
+
+        val preview = PhotoTransactionImport.preview(captureOne + captureTwo + captureThree, emptyList())
+        assertEquals(12, preview.candidates.size)
+        val actual = preview.candidates.map {
+            "${it.transaction.occurredDate}|${it.transaction.type}|${it.transaction.amount}|${it.transaction.merchant}"
+        }.toSet()
+
+        assertEquals(7, preview.duplicateCount)
+        assertEquals(
+            setOf(
+                "2026-10-02|INCOME|50000|정회진",
+                "2026-10-01|EXPENSE|2650|배달의민족",
+                "2026-10-01|INCOME|30|복권 당첨",
+                "2026-10-01|EXPENSE|2000|CU",
+                "2026-10-01|EXPENSE|1700|하이푸드",
+                "2026-10-01|INCOME|63|통장 이자",
+                "2026-10-01|EXPENSE|8061|네이버페이",
+                "2026-10-04|EXPENSE|14550|네이버페이",
+                "2026-10-02|EXPENSE|3700|메가커피",
+                "2026-10-02|EXPENSE|6000|소문마라탕",
+                "2026-10-02|EXPENSE|5000|카카오T",
+                "2026-10-02|INCOME|1300|송민영",
+            ),
+            actual,
+        )
+        assertEquals("FOOD", preview.candidates.single { it.transaction.merchant == "소문마라탕" }.transaction.categoryKey)
+        assertEquals("FOOD", preview.candidates.single { it.transaction.merchant == "배달의민족" }.transaction.categoryKey)
+        assert(preview.candidates.single { it.transaction.amount == 8_061L }.transaction.needsConfirmation.contains("category"))
+        assert(preview.candidates.single { it.transaction.merchant == "정회진" }.transaction.needsConfirmation.contains("merchant"))
+    }
 }

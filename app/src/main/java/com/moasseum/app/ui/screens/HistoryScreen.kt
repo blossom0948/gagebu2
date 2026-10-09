@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.AddCircleOutline
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
@@ -108,6 +109,7 @@ fun HistoryScreen(
     onExportCsv: () -> Unit,
     onExportJson: () -> Unit,
     onImportCsv: () -> Unit,
+    onAddForDate: (LocalDate) -> Unit,
     initialTransactionId: Long? = null,
     onInitialTransactionHandled: () -> Unit = {},
     scrollToTopRequest: Int = 0,
@@ -264,10 +266,36 @@ fun HistoryScreen(
         }
         if (filteredTransactions.isEmpty()) {
             item {
-                EmptyState(
-                    title = if (search.isBlank() && dateFilter == null && paymentFilter == null && categoryFilterKey == "ALL" && filter == HistoryFilter.ALL) "아직 거래가 없어요" else "조건에 맞는 거래가 없어요",
-                    message = "중앙 + 버튼으로 기록하거나 날짜·검색·필터를 바꿔 보세요.",
-                )
+                val isEmptyMonth = uiState.monthTransactions.isEmpty() && search.isBlank() && dateFilter == null &&
+                    paymentFilter == null && categoryFilterKey == "ALL" && filter == HistoryFilter.ALL
+                if (isEmptyMonth) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 34.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(15.dp),
+                    ) {
+                        Text(
+                            "%04d.%02d 지출 기록이 없어요".format(Locale.ROOT, uiState.month.year, uiState.month.monthValue),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = LocalFinanceColors.current.textSecondary,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedButton(onClick = { onAddForDate(selectedDate) }) {
+                                Icon(Icons.Rounded.AddCircleOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(5.dp))
+                                Text("${selectedDate.monthValue}월 ${selectedDate.dayOfMonth}일에 추가", maxLines = 1)
+                            }
+                            OutlinedButton(onClick = onImportCsv) {
+                                Text("CSV 가져오기", maxLines = 1)
+                            }
+                        }
+                    }
+                } else {
+                    EmptyState(
+                        title = "조건에 맞는 거래가 없어요",
+                        message = "검색어나 필터를 바꿔 보세요.",
+                    )
+                }
             }
         } else if (sort.groupsByDate) {
             filteredTransactions.groupBy { it.occurredDate }.forEach { (date, transactions) ->
@@ -486,7 +514,7 @@ private fun CalendarCard(
                 }
             }
             TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.Start)) {
-                Text(if (expanded) "달력 접기" else "전체 보기", style = MaterialTheme.typography.labelMedium)
+                Text(if (expanded) "2주 보기" else "전체 보기", style = MaterialTheme.typography.labelMedium)
             }
         }
     }
@@ -506,13 +534,16 @@ private fun CalendarDay(
         modifier = modifier
             .heightIn(min = 40.dp)
             .padding(2.dp)
-            .clip(RoundedCornerShape(11.dp))
-            .then(if (date != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .background(if (selected) colors.accent else Color.Transparent),
+            .clip(CircleShape)
+            .then(if (date != null) Modifier.clickable(onClick = onClick) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
         if (date != null) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(
+                modifier = Modifier.size(40.dp).background(if (selected) colors.accent else Color.Transparent, CircleShape),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
                 Text(
                     date.dayOfMonth.toString(),
                     color = when {

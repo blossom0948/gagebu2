@@ -50,8 +50,8 @@ object PhotoTransactionImport {
     private val money = Regex("(?<![\\d/])([-+＋−]?\\s*(?:\\d{1,3}(?:,\\d{3})+|\\d{4,}|\\d{1,3}(?=\\s*원)))(?:\\s*원)?(?!\\d)")
     private val excludedLine = Regex("잔액|출금가능|사용가능|한도|누적|이번\\s*달.*(?:지출|사용)|이번달.*(?:지출|사용)|월간.*(?:지출|사용)|당월.*(?:지출|사용)|총\\s*지출|합계|총액|결제예정|청구예정|입금예정|출금예정|계좌번호|카드번호|승인번호|거래번호|주문번호|결제번호|인증번호|접수번호|취소|승인취소|할인|적립|포인트")
     private val nonMerchantLine = Regex("^(?:원|KRW|전체|내역|거래내역|이용내역|결제내역|입출금내역|최근|오늘|어제|상세|더보기|정렬|필터|검색|확인하기|토스|카카오페이|네이버페이|삼성페이|카드|신용카드|체크카드|신한카드|현대카드|국민카드|KB국민카드|우리카드|하나카드|롯데카드|삼성카드|NH농협카드|계좌|입금|출금|이체|결제|승인|취소|완료|잔액|포인트|수수료|혜택|월간|주간|예정|금액|가맹점|이용일|결제일|내역없음|총합계|(?:월|화|수|목|금|토|일)(?:요일)?|평소보다\\s*많이\\s*씀|캐시백\\s*가능한\\s*내역)(?:\\s.*)?$")
-    private val transactionActionSignal = Regex("승인|결제|입금|출금|송금|보냈|받았|급여|월급|환급|구매|납부")
-    private val transactionTypeSignal = Regex("입금|받았|수입|환급|급여|월급|예금이자|이자입금|결제|승인|출금|구매|사용|납부")
+    private val transactionActionSignal = Regex("승인|결제|입금|출금|송금|보냈|받았|급여|월급|환급|당첨|복권|구매|납부")
+    private val transactionTypeSignal = Regex("입금|받았|수입|환급|급여|월급|예금이자|이자입금|당첨|복권|결제|승인|출금|구매|사용|납부")
     private val financialPageSignal = Regex("카드.{0,4}(?:이용|승인|내역)|거래내역|이용내역|입출금|결제내역|송금내역")
 
     fun extract(
@@ -71,10 +71,9 @@ object PhotoTransactionImport {
 
         val results = mutableListOf<PhotoTransactionCandidate>()
         var activeDate: LocalDate? = null
-        var activeMonth = lines.firstNotNullOfOrNull { header ->
-            val parsedMonth = monthHeader.matchEntire(header)?.groupValues?.getOrNull(1)?.toIntOrNull()
-            parsedMonth?.takeIf { it in 1..12 && (header.trim().startsWith("←") || header.contains("월")) }
-        } ?: today.monthValue
+        // The visible month belongs to the top calendar header. A later `9월`
+        // section heading must not retroactively date earlier October rows.
+        var activeMonth = visibleMonth(lines, today)
         val firstSectionHeading = lines.indexOfFirst { dayHeading.containsMatchIn(it) }
         val inferredTopDate = if (firstSectionHeading > 0 && amountLines.any { it < firstSectionHeading }) {
             dateIn(lines[firstSectionHeading], today, activeMonth)?.plusDays(1)
@@ -83,9 +82,12 @@ object PhotoTransactionImport {
         }
         for (index in lines.indices) {
             monthHeader.matchEntire(lines[index])?.groupValues?.getOrNull(1)?.toIntOrNull()
-                ?.takeIf { it in 1..12 }
+                ?.takeIf { it in 1..12 && (lines[index].trim().startsWith("←") || lines[index].contains("월")) }
                 ?.let { parsedMonth ->
-                    if (lines[index].trim().startsWith("←") || lines[index].contains("월")) activeMonth = parsedMonth
+                    if (parsedMonth != activeMonth) {
+                        activeMonth = parsedMonth
+                        activeDate = null
+                    }
                 }
             dateIn(lines[index], today, activeMonth)?.let { activeDate = it }
             if (index !in amountLines) continue
@@ -102,6 +104,9 @@ object PhotoTransactionImport {
             val occurredDate = explicitDate ?: activeDate ?: inferredDate ?: today
             val transactionContext = (index..minOf(nextAmount - 1, index + 2, lines.lastIndex))
                 .map(lines::get).joinToString(" ")
+            // Cancellation labels are frequently OCR'd on the subtitle line,
+            // separate from the signed amount. Never import that row as spend.
+            if (hasCancellationInRow(lines, index, nextAmount)) continue
             if (isOwnAccountTransfer(transactionContext)) continue
             val transferDirection = inferTransferDirection(transactionContext)
             val type = inferType(amountMatch.value, transactionContext, transferDirection)
@@ -116,6 +121,7 @@ object PhotoTransactionImport {
                 transferDirection != null || transactionTypeSignal.containsMatchIn(evidenceContext)
             val needsConfirmation = buildList {
                 if (merchant == "알 수 없음") add("merchant")
+                if (transferDirection != null && merchant.matches(Regex("[가-힣]{2,4}"))) add("merchant")
                 if (explicitDate == null && activeDate == null && inferredDate == null) add("date")
                 if (inferredCategory == "OTHER") add("category")
                 if (!hasExplicitType) add("type")
@@ -143,6 +149,17 @@ object PhotoTransactionImport {
             )
         }
         return results
+    }
+
+    private fun hasCancellationInRow(lines: List<String>, amountIndex: Int, nextAmountIndex: Int): Boolean {
+        val end = minOf(amountIndex + 4, nextAmountIndex - 1, lines.lastIndex)
+        if (end < amountIndex + 1) return false
+        for (index in amountIndex + 1..end) {
+            val line = lines[index]
+            if (Regex("취소").containsMatchIn(line)) return true
+            if (hasDateBoundary(lines, index, index) || extractAmount(line) != null || excludedLine.containsMatchIn(line)) return false
+        }
+        return false
     }
 
     /** Receipt photos remain supported; a transaction-list screenshot can yield many rows. */
@@ -219,6 +236,17 @@ object PhotoTransactionImport {
 
     private data class AmountMatch(val amount: Long, val value: String)
 
+    private fun visibleMonth(lines: List<String>, today: LocalDate): Int {
+        return lines.take(6).mapIndexedNotNull { index, line ->
+            val month = monthHeader.matchEntire(line)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                ?.takeIf { it in 1..12 } ?: return@mapIndexedNotNull null
+            val explicitHeader = line.trim().startsWith("←") || line.contains("월")
+            val bareTopHeader = index == 0 && line.trim().matches(Regex("\\d{1,2}")) &&
+                lines.drop(1).take(4).any { it.contains("전체") || it.contains("입출금") || it.contains("카드") }
+            month.takeIf { explicitHeader || bareTopHeader }
+        }.firstOrNull() ?: today.monthValue
+    }
+
     private fun hasFinancialEvidence(lines: List<String>, index: Int, amount: AmountMatch, today: LocalDate): Boolean {
         val start = maxOf(index - 2, 0)
         val end = minOf(index + 2, lines.lastIndex)
@@ -290,7 +318,7 @@ object PhotoTransactionImport {
         if (sign == '-' || sign == '−') return TransactionType.EXPENSE
         if (transferDirection != null) return transferDirection
         if (lower.contains("캐시백") && hasOwnAccount(context)) return TransactionType.INCOME
-        val incomeSignal = listOf("입금", "받았", "수입", "환급", "급여", "월급", "예금이자", "이자입금").any(lower::contains)
+        val incomeSignal = listOf("입금", "받았", "수입", "환급", "급여", "월급", "예금이자", "이자입금", "당첨", "복권").any(lower::contains)
         val expenseSignal = listOf("결제", "승인", "출금", "구매", "사용", "납부").any(lower::contains)
         return if (incomeSignal && !expenseSignal) TransactionType.INCOME else TransactionType.EXPENSE
     }
@@ -359,14 +387,24 @@ object PhotoTransactionImport {
             .replace(Regex("(?:체크카드|신용카드)"), " ")
             .replace(Regex("(?:계좌\\s*이체|송금|입금|출금|받기|보내기)"), " ")
             .replace(Regex("^\\s*토스(?=[가-힣]{2,})"), " ")
-            .replace(Regex("[·|•:：()\\[\\]{}]"), " ")
+            .replace(Regex("[·|•:：()\\[\\]{}%!#*]"), " ")
             .replace(Regex("\\s+"), " ")
             .trim(' ', '-', '−', '+', '원')
         if (Regex("d\\.?\\s*tryx|디트릭스", RegexOption.IGNORE_CASE).containsMatchIn(line)) return "디트릭스"
+        canonicalMerchant(line)?.let { return it }
         if (line.length !in 2..60 || line.none(Char::isLetter)) return null
         if (nonMerchantLine.containsMatchIn(line) || excludedLine.containsMatchIn(line)) return null
         if (line.contains("원") && line.length <= 4) return null
         return line
+    }
+
+    private fun canonicalMerchant(value: String): String? {
+        val compact = value.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
+        return when {
+            Regex("(?:바|배)?배(?:달|탈)(?:의)?(?:민|만)족|바달(?:의)?(?:민|만)족").containsMatchIn(compact) -> "배달의민족"
+            compact.contains("네이버페이") -> "네이버페이"
+            else -> null
+        }
     }
 
     private fun isOwnAccountTransfer(context: String): Boolean =
@@ -377,6 +415,8 @@ object PhotoTransactionImport {
 
     /** Infer only clear person-to-own-account directions; ambiguous transfers remain unconfirmed. */
     private fun inferTransferDirection(context: String): TransactionType? {
+        // Rewards/interest are credits, but they are not person-to-person transfers.
+        if (Regex("복권|당첨|캐시백|포인트|이벤트").containsMatchIn(context)) return null
         val ownAccount = Regex("내\\s*(?:토스\\s*)?(?:뱅크\\s*)?(?:계좌|통장)")
         val own = ownAccount.find(context) ?: return null
         val before = context.substring(0, own.range.first)

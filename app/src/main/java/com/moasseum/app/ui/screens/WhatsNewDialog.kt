@@ -55,6 +55,15 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.30" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_28_photo_import,
+                imageAspectRatio = 904f / 950f,
+                title = "사진 거래를 더 꼼꼼히 확인",
+                description = "달력 합계·요일·취소 내역은 걸러내고, 겹친 거래는 한 건만 남겨요. 송금 상대나 결제처 분류가 애매한 항목은 확인 전 저장할 수 없어요. 사진 분석은 무료 ML Kit로 기기 안에서 처리해요.",
+                imageDescription = "가맹점과 금액을 검토하고 확인한 거래만 추가하는 사진 가져오기 화면",
+            ),
+        )
         "0.1.29" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_29_fold_home,

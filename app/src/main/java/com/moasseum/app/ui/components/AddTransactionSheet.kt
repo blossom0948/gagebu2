@@ -83,6 +83,7 @@ enum class AddMode {
 @Composable
 fun AddTransactionSheet(
     mode: AddMode,
+    initialDate: LocalDate = LocalDate.now(),
     paymentMethods: List<String>,
     accounts: List<com.moasseum.app.domain.Account>,
     saving: Boolean = false,
@@ -121,7 +122,7 @@ fun AddTransactionSheet(
         }
         when (mode) {
             AddMode.MENU -> AddMenu(onModeChange = onModeChange, onStartVoiceInput = onStartVoiceInput)
-            AddMode.DIRECT -> DirectTransactionForm(paymentMethods = paymentMethods, accounts = accounts, saving = saving, onModeChange = onModeChange, onDismiss = onDismiss, onSave = onSave)
+            AddMode.DIRECT -> DirectTransactionForm(initialDate = initialDate, paymentMethods = paymentMethods, accounts = accounts, saving = saving, onModeChange = onModeChange, onDismiss = onDismiss, onSave = onSave)
             AddMode.AI_INPUT, AddMode.AI_NOTICE -> AiInputForm(
                 paymentMethods = paymentMethods,
                 aiState = aiState,
@@ -490,6 +491,7 @@ private fun AddActionRow(
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 private fun DirectTransactionForm(
+    initialDate: LocalDate,
     paymentMethods: List<String>,
     accounts: List<com.moasseum.app.domain.Account>,
     saving: Boolean,
@@ -506,7 +508,7 @@ private fun DirectTransactionForm(
     var paymentMethod by rememberSaveable { mutableStateOf(paymentMethods.firstOrNull().orEmpty()) }
     var showError by rememberSaveable { mutableStateOf(false) }
     val type = TransactionType.valueOf(typeName)
-    var occurredDateText by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
+    var occurredDateText by rememberSaveable(initialDate.toString()) { mutableStateOf(initialDate.toString()) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     var isInstallment by rememberSaveable { mutableStateOf(false) }
     var installmentCountText by rememberSaveable { mutableStateOf("3") }

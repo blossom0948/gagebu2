@@ -157,7 +157,7 @@ object PaymentNotificationParser {
         return when {
             listOf("카페", "커피", "스타벅스", "아메리카노", "컴포즈커피", "메가커피", "빽다방", "이디야", "투썸", "더벤티", "cafe", "coffee").any { lower.contains(it) } -> "CAFE"
             listOf(
-                "식당", "치킨", "버거킹", "burger king", "푸드", "배달", "점심", "저녁", "마트", "이마트", "홈플러스", "롯데마트", "코스트코",
+                "식당", "마라탕", "치킨", "버거킹", "burger king", "푸드", "배달", "점심", "저녁", "마트", "이마트", "홈플러스", "롯데마트", "코스트코",
                 "트레이더스", "하나로마트", "노브랜드", "gs더프레시", "이마트에브리데이", "이마트24", "마켓컬리", "오아시스마켓",
                 "배달의민족", "쿠팡이츠", "요기요", "편의점", "cu", "gs25", "세븐일레븐", "food", "restaurant", "supermarket", "grocery",
             ).any { lower.contains(it) } -> "FOOD"

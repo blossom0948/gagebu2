@@ -643,6 +643,7 @@ private fun MoasseumApp(
     var aiAnalysisState by remember { mutableStateOf<SpendingAnalysisState>(SpendingAnalysisState.Idle) }
     var aiQuestionState by remember { mutableStateOf<SpendingQuestionState>(SpendingQuestionState.Idle) }
     var addOpen by rememberSaveable { mutableStateOf(false) }
+    var addInitialDate by rememberSaveable { mutableStateOf(java.time.LocalDate.now().toString()) }
     var pendingHistoryTransactionId by rememberSaveable { mutableStateOf<Long?>(null) }
     var savingTransaction by remember { mutableStateOf(false) }
     var addModeName by rememberSaveable { mutableStateOf(AddMode.MENU.name) }
@@ -974,6 +975,7 @@ private fun MoasseumApp(
         if (savingTransaction) return
         addOpen = false
         addModeName = AddMode.MENU.name
+        addInitialDate = java.time.LocalDate.now().toString()
         sharedPrefillText = null
         aiState = AiParseState.Idle
         photoImportState = PhotoImportState.Idle
@@ -1123,6 +1125,7 @@ private fun MoasseumApp(
                 addExpanded = addOpen,
                 onAdd = {
                     if (addOpen) closeAdd() else {
+                        addInitialDate = java.time.LocalDate.now().toString()
                         addOpen = true
                         addModeName = AddMode.MENU.name
                     }
@@ -1203,6 +1206,11 @@ private fun MoasseumApp(
                         onExportCsv = { exportCsvLauncher.launch("moasseum-${java.time.LocalDate.now()}.csv") },
                         onExportJson = { exportJsonLauncher.launch("moasseum-${java.time.LocalDate.now()}.json") },
                         onImportCsv = { importCsvLauncher.launch(arrayOf("text/*", "application/vnd.ms-excel")) },
+                        onAddForDate = { date ->
+                            addInitialDate = date.toString()
+                            addModeName = AddMode.DIRECT.name
+                            addOpen = true
+                        },
                         initialTransactionId = pendingHistoryTransactionId,
                         onInitialTransactionHandled = { pendingHistoryTransactionId = null },
                         scrollToTopRequest = historyScrollToTopRequest,
@@ -1426,6 +1434,7 @@ private fun MoasseumApp(
         ) {
             AddTransactionSheet(
                 mode = addMode,
+                initialDate = runCatching { java.time.LocalDate.parse(addInitialDate) }.getOrDefault(java.time.LocalDate.now()),
                 onModeChange = { if (!savingTransaction) addModeName = it.name },
                 onDismiss = { closeAdd() },
                 aiState = aiState,
