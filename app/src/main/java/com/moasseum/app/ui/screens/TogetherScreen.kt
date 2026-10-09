@@ -75,6 +75,8 @@ import com.moasseum.app.domain.SharedLedgerSettings
 import com.moasseum.app.domain.SharedMoneyMode
 import com.moasseum.app.domain.SharedPayerTotals
 import com.moasseum.app.domain.sharedPayerTotals
+import com.moasseum.app.domain.SharedSavingsGoalAmount
+import com.moasseum.app.domain.sharedSavingsProgress
 import com.moasseum.app.ui.components.categoryColor
 import com.moasseum.app.ui.components.categoryLabel
 import com.moasseum.app.ui.components.EmptyState
@@ -178,10 +180,10 @@ fun TogetherScreen(
                     verticalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
                     Text("우리 돈, 한눈에", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                    Text("파트너와 연결하면 함께 볼 수 있어요", style = MaterialTheme.typography.bodyMedium,
+                    Text("파트너와 목표와 지출을 함께 봐요", style = MaterialTheme.typography.bodyMedium,
                         color = colors.textSecondary, textAlign = TextAlign.Center)
-                    Text("공유할 거래는 직접 선택하고, 개인 기록은 그대로 두세요.", style = MaterialTheme.typography.labelMedium,
-                        color = colors.textSecondary, textAlign = TextAlign.Center)
+                    Text("무료 · 거래는 직접 선택해 공유", style = MaterialTheme.typography.labelMedium,
+                        color = colors.accent, textAlign = TextAlign.Center, fontWeight = FontWeight.SemiBold)
                     OutlinedButton(onClick = { showFeaturePreview = true }) { Text("함께 기능 미리보기") }
                 }
             }
@@ -212,7 +214,7 @@ fun TogetherScreen(
                             enabled = !busy,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Text(if (email == null) "로그인하고 시작" else "코드 생성하기")
+                            Text(if (email == null) "무료로 시작" else "코드 생성하기")
                         }
                     }
                 }
@@ -300,10 +302,11 @@ fun TogetherScreen(
                         modifier = Modifier.padding(13.dp))
                 }
             }
-            if (snapshot.memberCount == 2 && userId != null) item {
+            if (userId != null && (snapshot.memberCount == 2 || snapshot.settings.moneyMode == SharedMoneyMode.MONTHLY_SAVINGS)) item {
                 SharedPayerSummaryCard(
                     mode = snapshot.settings.moneyMode,
                     totals = sharedPayerTotals(monthlyTransactions, userId),
+                    goals = monthlyGoals,
                 )
             }
             item {
@@ -338,7 +341,8 @@ fun TogetherScreen(
             }
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("공동 목표", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(if (snapshot.settings.moneyMode == SharedMoneyMode.MONTHLY_SAVINGS) "이번 달 저축 목표" else "공동 목표",
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     TextButton(onClick = { editingGoalId = "" }) { Text("목표 추가") }
                 }
             }
@@ -544,7 +548,7 @@ private fun SharedMoneyModeCard(
 }
 
 @Composable
-private fun SharedPayerSummaryCard(mode: SharedMoneyMode, totals: SharedPayerTotals) {
+private fun SharedPayerSummaryCard(mode: SharedMoneyMode, totals: SharedPayerTotals, goals: List<SharedLedgerGoal>) {
     val colors = LocalFinanceColors.current
     FinanceCard {
         Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -554,6 +558,7 @@ private fun SharedPayerSummaryCard(mode: SharedMoneyMode, totals: SharedPayerTot
                     SharedMoneyMode.SEPARATE -> "이번 달 각자 결제"
                     SharedMoneyMode.INCOME_OVERVIEW -> "이번 달 수입 비교"
                     SharedMoneyMode.SHARED_FUND -> "공동 자금 합계"
+                    SharedMoneyMode.MONTHLY_SAVINGS -> "이번 달 함께 모으기"
                 },
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
@@ -567,6 +572,29 @@ private fun SharedPayerSummaryCard(mode: SharedMoneyMode, totals: SharedPayerTot
                     SharedMoneyMetric("나", totals.myIncome, colors.income)
                     SharedMoneyMetric("파트너", totals.partnerIncome, colors.income)
                     Text("공동 장부에 수입으로 공유한 거래 기준", style = MaterialTheme.typography.labelSmall, color = colors.textSecondary)
+                }
+                SharedMoneyMode.MONTHLY_SAVINGS -> {
+                    val progress = sharedSavingsProgress(goals.map { SharedSavingsGoalAmount(it.targetAmount, it.currentAmount) })
+                    if (progress.target > 0L) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("${formatWon(progress.current)} 모음", style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold, color = colors.accent, modifier = Modifier.weight(1f))
+                            Text("목표 ${formatWon(progress.target)}", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+                        }
+                        androidx.compose.foundation.layout.Box(
+                            Modifier.fillMaxWidth().height(7.dp).background(colors.surfaceOverlay, RoundedCornerShape(8.dp)),
+                        ) {
+                            androidx.compose.foundation.layout.Box(
+                                Modifier.fillMaxWidth(progress.fraction).height(7.dp)
+                                    .background(if (progress.fraction >= 1f) colors.success else colors.accent, RoundedCornerShape(8.dp)),
+                            )
+                        }
+                        Text("목표 금액과 현재 모은 금액은 공동 목표에서 함께 수정해요.",
+                            style = MaterialTheme.typography.labelSmall, color = colors.textSecondary)
+                    } else {
+                        Text("이번 달 공동 목표를 추가하면 저축 진행률을 볼 수 있어요.",
+                            style = MaterialTheme.typography.bodySmall, color = colors.textSecondary)
+                    }
                 }
                 else -> {
                     SharedMoneyMetric("내가 결제", totals.myExpense, colors.accent)

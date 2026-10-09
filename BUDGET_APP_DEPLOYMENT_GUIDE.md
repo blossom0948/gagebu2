@@ -451,10 +451,19 @@ v0.1.20 빌드는 unit 114개 통과, lint 오류 0(경고 21개), Release APK �
 
 ### 공동 장부 schema / 선택 공유 (2026-10-08)
 
+> 아래 항목은 2026-10-08 당시의 기록입니다. 최신 운영 적용 상태는 바로 다음 `2026-10-10 업데이트`를 확인하세요.
+
 - `supabase/migrations/202610080001_shared_ledger.sql`을 전용 `moasseum` Supabase SQL Editor에서 한 번 실행했다. 사전 검사에서는 대상 테이블이 없었고, 실행 후 `shared_*` 다섯 테이블 모두 RLS가 켜졌으며 초대 RPC 3개가 `SECURITY DEFINER`로 등록된 것을 확인했다. 초대 테이블은 직접 API 정책 없이 서버 RPC만 사용한다.
 - DB에는 개인 거래를 넣지 않았다. 앱은 사용자가 선택한 거래와 공동 화면에서 직접 저장한 항목만 올리며, 계좌 식별자·알림 원문·개인 예산·반복 규칙은 공유하지 않는다. 한 장부 최대 2명, 20자리 초대 코드 24시간 만료·1회 사용이다.
 - Room `5→6` Migration과 탭 UI·선택 공유·공동 월 합산/카테고리·목표/재정 설정·AI 분석/Q&A·PDF·할부·일괄 입력 코드를 추가했다. 공동 재정 항목은 해당 화면에서 직접 저장한 값만 동기화한다. v0.1.21 APK를 먼저 공개했지만 `202610080002_shared_goal_collaboration.sql`과 `202610080003_shared_finance_items.sql`은 아직 미적용이므로 공동 목표 진행액·공동 재정 저장은 사용할 수 없거나 오류가 날 수 있다. 두 계정 RLS 격리·오프라인 충돌·기존 DB 보존·실기기 UI도 미검증이다.
-- 후속 조치: 전용 `moasseum` Supabase SQL Editor에서 두 migration을 번호 순으로 적용하고 RLS/컬럼을 확인 → 공동 목표·재정 CRUD 및 두 계정 격리, 오프라인 동기화, 기존 Room 데이터 보존, 실기기 업데이트를 검증한다. APK는 이미 v0.1.21로 게시했으므로 migration 적용 후 별도 APK 재배포는 필요하지 않다. 추가 앱 코드는 기존 절차대로 versionCode를 올리고 같은 서명키로 빌드·해시 검증한 뒤 GitHub Release에 올린다.
+- 당시 계획: 전용 `moasseum` Supabase SQL Editor에서 두 migration을 적용하고 RLS/컬럼을 확인한 뒤 CRUD와 두 계정 격리를 검증한다. 현재 상태는 아래 최신 절을 따른다.
+
+### 최신 공동 장부 운영 상태 (2026-10-10)
+
+- 운영 `moasseum` Supabase에 migration `202610080002_shared_goal_collaboration.sql`부터 `202610100005_shared_monthly_savings_mode.sql`까지 적용했습니다. 이미 적용된 migration은 다시 실행하지 않습니다.
+- 목표 진행액 컬럼, 공동 재정 테이블/RLS, 설정 테이블과 연결 해제 함수, 허용된 돈 관리 방식 제약조건을 SQL Editor에서 확인했습니다. 개인 거래는 업로드·삭제하지 않았습니다.
+- 앞으로 공동 장부 스키마를 바꿀 때는 새 번호의 migration 파일을 먼저 만들고, 데이터 영향/RLS를 검토한 뒤 전용 프로젝트에 적용·검증합니다. 그 후 앱/Worker 계약에 맞춰 버전을 올리고, `:app:testDebugUnitTest`, `:app:lintDebug`, `:app:connectedDebugAndroidTest`, 서명 APK 빌드와 해시 검증을 거쳐 GitHub Release에 게시합니다.
+- 두 실제 계정 간 초대·수락, RLS 격리, 동시 편집 및 오프라인 재시도는 아직 검증 항목입니다. 앱 공개를 이런 E2E 검증 완료로 표현하지 않습니다.
 
 ---
 

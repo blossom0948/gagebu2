@@ -55,6 +55,15 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.32" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_32_together,
+                imageAspectRatio = 904f / 1230f,
+                title = "함께 쓰기도 무료로",
+                description = "새 ‘매월 저축’ 방식으로 공동 목표 진행률을 함께 관리해요. 무료로 시작하고, 거래는 직접 고른 것만 공유해요.",
+                imageDescription = "무료로 시작할 수 있고 공유할 거래를 직접 선택하는 모아씀 함께 화면",
+            ),
+        )
         "0.1.30" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_28_photo_import,
