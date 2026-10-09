@@ -5,7 +5,7 @@
 - AI 일괄 문장 처리를 앱과 인증 Worker에 연결했습니다. 여러 건 추가 후보를 검토/편집하고, 수정·삭제는 앱의 개인 장부에서 결과를 골라 승인해야 반영됩니다. 거래 행은 AI 서버로 보내지 않습니다.
 - 기념일 D-Day와 공동 데이터의 페이지네이션을 추가하고, 실제 Galaxy Z Fold4(Android 16)에서 QA 앱/홈 및 Android 계측 테스트를 확인했습니다.
 - Android 단위 142개, Galaxy 계측 11개 통과/원격 Auth 1개 건너뜀, Worker 테스트 17개 통과, lint 오류 0.
-- GitHub Release: v0.1.23 (APK SHA-256 `1615615b748111af10beabf18632ae3d9f28621e5cb2901c8d2bb3f9fae6244b`).
+- [GitHub Release v0.1.23](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.23) 공개 후 실제 Galaxy의 기존 모아씀 v0.1.18을 데이터 삭제 없이 업데이트했고, 앱이 정상 시작했습니다. APK SHA-256 `1615615b748111af10beabf18632ae3d9f28621e5cb2901c8d2bb3f9fae6244b`.
 - 아직 Weeple과 완전히 같지는 않습니다. 카카오 로그인, 커플 돈 관리 방식 선택, 파트너 연결 해제 정책 및 별도 두 계정의 실서버 검증이 남아 있습니다. Supabase migration 002/003도 적용하지 않았으므로 공동 목표 진행액 및 공동 재정 저장은 활성 상태가 아닙니다.
 
 ## 2026-10-09 후속 구현 — 미배포 작업 트리

@@ -20,9 +20,9 @@
 - `+ → 문장으로 여러 건 처리`에 AI 문장 해석을 연결했습니다. 서버에는 입력 문장만 전송하며 거래 행은 보내지 않습니다. 추가 후보는 수정 후 저장하고, 수정·삭제는 기기 내 개인 거래에서 찾은 대상을 사용자가 선택해야 반영됩니다.
 - 기념일 D-Day와 공동 장부 조회 페이지네이션을 추가했습니다.
 - Android 단위 142개 통과, Galaxy Android 16 계측 11개 통과/원격 로그인 1개 건너뜀, lint 오류 0(경고 24), Debug/AndroidTest/Release 빌드 성공. Worker typecheck 및 17개 테스트 통과.
-- Galaxy Z Fold4의 QA 앱에서 첫 실행 권한 안내와 홈을 확인했습니다. 앱 충돌은 발견하지 않았습니다. 본인용 프로덕션 앱은 아직 v0.1.18로 확인되어 있어 서명 Release 설치 후 데이터 보존도 확인합니다.
+- Galaxy Z Fold4의 QA 앱에서 첫 실행 권한 안내와 홈을 확인했고, 계측 테스트 11개가 통과했습니다. 이어 서명 Release APK를 설치해 프로덕션 앱을 v0.1.18에서 v0.1.23으로 업데이트했습니다. 패키지의 `firstInstallTime`이 유지되고 앱이 정상 시작되는 것을 확인했습니다. 금융 거래 내용은 열람·출력하지 않았습니다.
 - APK: `com.moasseum.app`, versionCode 23, versionName 0.1.23, 59,543,541 bytes, SHA-256 `1615615b748111af10beabf18632ae3d9f28621e5cb2901c8d2bb3f9fae6244b`. 서명 인증서는 기존 공개판과 동일합니다.
-- 이번 Android 공개판은 [릴리스 노트](docs/releases/v0.1.23.md)를 따릅니다. 증분 Supabase migration `202610080002`·`202610080003`은 적용하지 않았으므로 공동 목표 진행액/공동 재정 서버 저장은 아직 준비되지 않았습니다.
+- 이번 Android 공개판은 [GitHub Release v0.1.23](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.23) 및 [릴리스 노트](docs/releases/v0.1.23.md)를 따릅니다. 증분 Supabase migration `202610080002`·`202610080003`은 적용하지 않았으므로 공동 목표 진행액/공동 재정 서버 저장은 아직 준비되지 않았습니다.
 
 ## Weeple과 비교해 아직 별도 작업이 필요한 항목
 
