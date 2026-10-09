@@ -90,11 +90,9 @@ class PaymentNotificationListenerService : NotificationListenerService() {
                     when {
                         classification == null -> localCandidate
                         !classification.isFinancialTransaction -> {
-                            // Keep a notification with an unmistakable approval/deposit signal;
-                            // this avoids losing real bank alerts when the model is conservative.
-                            localCandidate?.takeIf {
-                                PaymentNotificationParser.hasStrongTransactionSignal(content.title, content.body)
-                            }
+                            // An explicit AI rejection is authoritative when the user enabled
+                            // false-positive filtering. Keep local fallback only for timeouts/errors.
+                            null
                         }
                         else -> PaymentNotificationParser.parse(
                             packageName = sbn.packageName,

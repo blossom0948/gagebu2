@@ -104,6 +104,7 @@ import com.moasseum.app.ui.screens.FirstRunGuide
 import com.moasseum.app.ui.screens.ManageScreen
 import com.moasseum.app.ui.screens.NotificationsScreen
 import com.moasseum.app.ui.screens.TogetherScreen
+import com.moasseum.app.ui.screens.QuickHelpDialog
 import com.moasseum.app.ui.screens.ReleaseNotesCatalog
 import com.moasseum.app.ui.screens.WhatsNewDialog
 import com.moasseum.app.data.SharedLedgerSnapshot
@@ -115,6 +116,8 @@ import com.moasseum.app.data.DEFAULT_CATEGORY_ORDER
 import com.moasseum.app.data.DEFAULT_PAYMENT_METHODS
 import com.moasseum.app.data.JsonBackup
 import com.moasseum.app.data.ReceiptOcr
+import com.moasseum.app.data.PhotoImportState
+import com.moasseum.app.data.PhotoTransactionImport
 import com.moasseum.app.domain.AiParseState
 import com.moasseum.app.domain.buildActivityNotices
 import com.moasseum.app.domain.HomeDashboardCards
@@ -478,6 +481,7 @@ private fun MoasseumApp(
     var postNotificationPermissionRequestStarted by rememberSaveable { mutableStateOf(false) }
     var guideDismissedThisSession by rememberSaveable { mutableStateOf(false) }
     var guideOpenedManually by rememberSaveable { mutableStateOf(false) }
+    var showQuickHelp by rememberSaveable { mutableStateOf(false) }
     val showFirstRunGuide = guideOpenedManually || (!firstRunGuideCompleted && !guideDismissedThisSession)
     fun closeFirstRunGuide() {
         guideOpenedManually = false
@@ -566,7 +570,7 @@ private fun MoasseumApp(
     var sharedAiAnalysisState by remember { mutableStateOf<SpendingAnalysisState>(SpendingAnalysisState.Idle) }
     var sharedAiQuestionState by remember { mutableStateOf<SpendingQuestionState>(SpendingQuestionState.Idle) }
     LaunchedEffect(currentRoute, authState.user?.id) {
-        if (currentRoute == ROUTE_TOGETHER && authState.user != null && !sharedBusy) {
+        if (authState.user != null && (currentRoute == ROUTE_TOGETHER || sharedSnapshot.ledgerId == null) && !sharedBusy) {
             sharedBusy = true
             sharedError = null
             try {
@@ -640,6 +644,8 @@ private fun MoasseumApp(
     var pendingHistoryTransactionId by rememberSaveable { mutableStateOf<Long?>(null) }
     var savingTransaction by remember { mutableStateOf(false) }
     var addModeName by rememberSaveable { mutableStateOf(AddMode.MENU.name) }
+    var photoImportState by remember { mutableStateOf<PhotoImportState>(PhotoImportState.Idle) }
+    var shareNewRecords by rememberSaveable { mutableStateOf(false) }
     var sharedPrefillText by rememberSaveable { mutableStateOf<String?>(null) }
     var sharedPrefillKey by rememberSaveable { mutableStateOf("") }
     var updateState by remember { mutableStateOf<UpdateCheckState>(UpdateCheckState.Idle) }
@@ -653,39 +659,63 @@ private fun MoasseumApp(
                 ?.firstOrNull()
         }
     }
-    fun recognizeReceipt(uri: android.net.Uri, temporaryFile: java.io.File? = null) {
-            aiState = AiParseState.Loading
-            addOpen = true
-            addModeName = AddMode.RECEIPT_NOTICE.name
-            coroutineScope.launch {
-                val result = withContext(Dispatchers.IO) {
-                    runCatching {
-                        val text = ReceiptOcr.recognize(context, uri)
-                        ReceiptOcr.candidateFromText(text)
-                            ?: error("금액을 찾지 못했어요. 선명한 영수증 사진을 다시 선택해 주세요.")
-                    }
+    fun processPhotoUris(uris: List<android.net.Uri>, temporaryFile: File? = null) {
+        if (uris.isEmpty()) {
+            temporaryFile?.delete()
+            return
+        }
+        val previousReview = photoImportState as? PhotoImportState.Review
+        addOpen = true
+        addModeName = AddMode.PHOTO_REVIEW.name
+        photoImportState = PhotoImportState.Loading(0, uris.size)
+        coroutineScope.launch {
+            val extracted = mutableListOf<com.moasseum.app.data.PhotoTransactionCandidate>()
+            var failedImages = 0
+            uris.forEachIndexed { index, uri ->
+                val result = try {
+                    Result.success(withContext(Dispatchers.IO) {
+                        PhotoTransactionImport.extractWithReceiptFallback(ReceiptOcr.recognize(context, uri))
+                    })
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Result.failure(error)
                 }
                 result.fold(
-                    onSuccess = { candidate ->
-                        aiState = AiParseState.Success(candidate)
-                        addModeName = AddMode.AI_INPUT.name
+                    onSuccess = { rows ->
+                        val imageId = java.util.UUID.randomUUID().toString()
+                        extracted += rows.map { it.copy(sourceImageId = imageId) }
                     },
-                    onFailure = { error -> aiState = AiParseState.Error(error.message ?: "영수증을 읽지 못했어요.") },
+                    onFailure = { failedImages++ },
                 )
-                temporaryFile?.delete()
+                photoImportState = PhotoImportState.Loading(index + 1, uris.size)
             }
+            val combined = previousReview?.candidates.orEmpty() + extracted
+            val preview = PhotoTransactionImport.preview(combined, uiState.transactions + sharedSnapshot.transactions)
+            val duplicateCount = (previousReview?.duplicateCount ?: 0) + preview.duplicateCount
+            val totalImages = (previousReview?.imageCount ?: 0) + uris.size
+            val totalFailures = (previousReview?.failedImageCount ?: 0) + failedImages
+            photoImportState = if (preview.candidates.isEmpty() && duplicateCount == 0) {
+                PhotoImportState.Error("거래 내역을 찾지 못했어요. 날짜와 금액이 선명하게 보이는 화면을 선택해 주세요.")
+            } else {
+                PhotoImportState.Review(preview.candidates, duplicateCount, totalImages, totalFailures)
+            }
+            temporaryFile?.delete()
+        }
     }
-    val receiptPhotoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) recognizeReceipt(uri)
+    val receiptPhotoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(20)) { uris ->
+        if (uris.isNotEmpty()) processPhotoUris(uris)
     }
     var receiptCameraPath by rememberSaveable { mutableStateOf<String?>(null) }
     val receiptCameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         val file = receiptCameraPath?.let { java.io.File(it) }
         receiptCameraPath = null
-        if (file != null && success) recognizeReceipt(androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file), file)
+        if (file != null && success) processPhotoUris(listOf(androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)), file)
         else file?.delete()
     }
     fun takeReceiptPhoto() {
+        addOpen = true
+        addModeName = AddMode.PHOTO_REVIEW.name
         runCatching {
             val folder = java.io.File(context.cacheDir, "receipt-capture").apply { mkdirs() }
             val file = java.io.File.createTempFile("receipt-", ".jpg", folder)
@@ -700,7 +730,7 @@ private fun MoasseumApp(
         navigateTo(navController, ROUTE_HOME)
         if (incoming.imageUri != null) {
             sharedPrefillText = null
-            recognizeReceipt(incoming.imageUri)
+            processPhotoUris(listOf(incoming.imageUri))
         } else {
             sharedPrefillText = incoming.text
             sharedPrefillKey = incoming.token.toString()
@@ -854,8 +884,8 @@ private fun MoasseumApp(
 
     fun pickReceiptPhoto() {
         addOpen = true
-        addModeName = AddMode.RECEIPT_NOTICE.name
-        aiState = AiParseState.Idle
+        addModeName = AddMode.PHOTO_REVIEW.name
+        if (photoImportState !is PhotoImportState.Review) photoImportState = PhotoImportState.Idle
         receiptPhotoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     }
 
@@ -933,6 +963,41 @@ private fun MoasseumApp(
         addModeName = AddMode.MENU.name
         sharedPrefillText = null
         aiState = AiParseState.Idle
+        photoImportState = PhotoImportState.Idle
+        shareNewRecords = false
+    }
+
+    fun completeTransactionSave(result: Result<Long>, successMessage: String) {
+        savingTransaction = false
+        result.fold(
+            onSuccess = { id ->
+                val shouldShare = shareNewRecords && sharedSnapshot.ledgerId != null
+                if (!shouldShare) {
+                    closeAdd()
+                    coroutineScope.launch { snackbarHostState.showSnackbar(successMessage) }
+                    return@fold
+                }
+                closeAdd()
+                sharedBusy = true
+                sharedError = null
+                coroutineScope.launch {
+                    try {
+                        sharedSnapshot = application.sharedLedgerRepository.shareTransactions(listOf(id))
+                        snackbarHostState.showSnackbar("저장하고 함께 공유했어요.")
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        sharedError = error.message ?: "공유를 동기화하지 못했어요."
+                        snackbarHostState.showSnackbar("개인 장부에는 저장했어요. 함께 공유는 연결 후 다시 동기화돼요.")
+                    } finally {
+                        sharedBusy = false
+                    }
+                }
+            },
+            onFailure = { error ->
+                coroutineScope.launch { snackbarHostState.showSnackbar(error.message ?: "거래 저장에 실패했어요.") }
+            },
+        )
     }
 
     fun continueWithDownloadedUpdate() {
@@ -1051,7 +1116,7 @@ private fun MoasseumApp(
                             }
                             navigateTo(navController, ROUTE_HISTORY)
                         },
-                        onOpenHelp = { guideOpenedManually = true },
+                        onOpenHelp = { showQuickHelp = true },
                         onOpenNotifications = { navigateTo(navController, ROUTE_NOTIFICATIONS) },
                         onStartVoiceInput = ::startVoiceInput,
                         onPickReceipt = ::pickReceiptPhoto,
@@ -1190,6 +1255,16 @@ private fun MoasseumApp(
                                 application.sharedLedgerRepository.deleteFinanceItem(itemId)
                             }
                         },
+                        onSaveSettings = { settings ->
+                            runSharedAction("함께 쓰는 방식을 저장했어요.") {
+                                application.sharedLedgerRepository.saveSettings(settings)
+                            }
+                        },
+                        onLeaveSharedLedger = {
+                            runSharedAction("공유 연결을 해제했어요.") {
+                                application.sharedLedgerRepository.leaveSharedLedger()
+                            }
+                        },
                         onExportReport = { month ->
                             sharedReportMonth = month
                             exportSharedPdfLauncher.launch("moasseum-together-${month}.pdf")
@@ -1205,7 +1280,7 @@ private fun MoasseumApp(
                 composable(ROUTE_MANAGE) {
                     ManageScreen(
                         onOpenAuth = { showAuth = true },
-                        onOpenGuide = { guideOpenedManually = true },
+                        onOpenGuide = { showQuickHelp = true },
                         accountStatus = authState.user?.email ?: if (application.authRepository.configured) "로그인 안 됨" else "서버 연결 필요",
                         scrollToTopRequest = manageScrollToTopRequest,
                         aiLoginRequired = authState.user == null,
@@ -1335,17 +1410,59 @@ private fun MoasseumApp(
                 onConfirmAi = { amount, type, merchant, categoryKey, memo, paymentMethod, occurredAt ->
                     val alreadySaving = savingTransaction
                     if (!alreadySaving) savingTransaction = true
-                    val saved = !alreadySaving && viewModel.addTransaction(amount, type, merchant, categoryKey, memo, occurredAt, paymentMethod, onComplete = { result ->
-                        savingTransaction = false
-                        if (result.isSuccess) closeAdd()
-                        coroutineScope.launch { snackbarHostState.showSnackbar(if (result.isSuccess) "AI 거래 후보를 저장했어요" else result.exceptionOrNull()?.message ?: "저장에 실패했어요.") }
-                    })
+                    val saved = !alreadySaving && viewModel.addTransaction(
+                        amount, type, merchant, categoryKey, memo, occurredAt, paymentMethod,
+                        onComplete = { result -> completeTransactionSave(result, "AI 거래 후보를 저장했어요") },
+                    )
                     if (!saved && !alreadySaving) savingTransaction = false
                     saved
                 },
                 onStartVoiceInput = ::startVoiceInput,
                 onPickReceipt = ::pickReceiptPhoto,
                 onTakeReceipt = ::takeReceiptPhoto,
+                photoImportState = photoImportState,
+                onAddPhotoCandidates = { candidates ->
+                    if (!savingTransaction && candidates.isNotEmpty()) {
+                        val shouldShare = shareNewRecords && sharedSnapshot.ledgerId != null
+                        savingTransaction = true
+                        coroutineScope.launch {
+                            val result = try {
+                                Result.success(viewModel.importPhotoTransactions(candidates))
+                            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                Result.failure(error)
+                            }
+                            savingTransaction = false
+                            result.onSuccess { saved ->
+                                closeAdd()
+                                if (shouldShare && saved.insertedIds.isNotEmpty()) {
+                                    sharedBusy = true
+                                    sharedError = null
+                                    try {
+                                        sharedSnapshot = application.sharedLedgerRepository.shareTransactions(saved.insertedIds)
+                                        snackbarHostState.showSnackbar("${saved.insertedCount}건 저장 후 함께 공유했어요${if (saved.duplicateCount > 0) " · 중복 ${saved.duplicateCount}건 제외" else ""}")
+                                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                        throw cancelled
+                                    } catch (error: Exception) {
+                                        sharedError = error.message ?: "공유를 동기화하지 못했어요."
+                                        snackbarHostState.showSnackbar("개인 장부에 ${saved.insertedCount}건 저장했어요. 함께 공유는 연결 후 동기화돼요.")
+                                    } finally {
+                                        sharedBusy = false
+                                    }
+                                } else {
+                                    snackbarHostState.showSnackbar(buildString {
+                                        append("${saved.insertedCount}건 추가")
+                                        if (saved.duplicateCount > 0) append(" · 중복 ${saved.duplicateCount}건 제외")
+                                    })
+                                }
+                            }.onFailure { error -> snackbarHostState.showSnackbar(error.message ?: "사진 내역을 저장하지 못했어요.") }
+                        }
+                    }
+                },
+                canShareOnSave = authState.user != null && sharedSnapshot.ledgerId != null,
+                shareOnSave = shareNewRecords,
+                onShareOnSaveChange = { shareNewRecords = it },
                 speechResult = speechResult,
                 onSpeechResultConsumed = { speechResult = null },
                 prefillText = sharedPrefillText,
@@ -1425,11 +1542,7 @@ private fun MoasseumApp(
                             occurredAt = occurredAt,
                             paymentMethod = paymentMethod,
                             accountId = accountId,
-                            onComplete = { result ->
-                                savingTransaction = false
-                                if (result.isSuccess) closeAdd()
-                                coroutineScope.launch { snackbarHostState.showSnackbar(if (result.isSuccess) "거래가 저장됐어요" else result.exceptionOrNull()?.message ?: "저장에 실패했어요.") }
-                            },
+                            onComplete = { result -> completeTransactionSave(result, "거래가 저장됐어요") },
                         )
                         if (!saved) savingTransaction = false
                         saved
@@ -1471,6 +1584,20 @@ private fun MoasseumApp(
                 NotificationAccess.openAppNotificationSettings(context)
             },
             onFinish = ::closeFirstRunGuide,
+        )
+    }
+    if (showQuickHelp && !showFirstRunGuide) {
+        QuickHelpDialog(
+            onDismiss = { showQuickHelp = false },
+            onAdd = {
+                showQuickHelp = false
+                addOpen = true
+                addModeName = AddMode.MENU.name
+            },
+            onHistory = { showQuickHelp = false; navigateTo(navController, ROUTE_HISTORY) },
+            onManage = { showQuickHelp = false; navigateTo(navController, ROUTE_MANAGE) },
+            onTogether = { showQuickHelp = false; navigateTo(navController, ROUTE_TOGETHER) },
+            onFirstRunGuide = { showQuickHelp = false; guideOpenedManually = true },
         )
     }
 

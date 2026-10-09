@@ -13,10 +13,11 @@ object PaymentNotificationParser {
     private val markedKoreanAmount = Regex("""(\d+(?:\.\d+)?)\s*(만|천)\s*원""")
     private val actionAmount = Regex("""(?:승인|결제|출금|입금|환급|송금|이체|사용)\s*(?:금액\s*)?[:：]?\s*(\d{1,3}(?:,\d{3})+)\s*원?(?![-/.]\d)""")
     private val explicitActionAmount = Regex("""(?:승인|결제|출금|입금|환급|송금|이체|사용)\s*금액\s*[:：]?\s*(\d{3,})(?![\d,])\s*원?(?![-/.]\d)""")
+    private val amountBeforeAction = Regex("""(?:[₩￦]\s*)?(\d{1,3}(?:,\d{3})+|\d{3,})\s*(?:원|KRW)?\s*(?:승인|결제완료|결제 완료|출금|입금|환급|송금완료|이체완료|입금완료|입금되었습니다|입금됐)(?!번호)""", RegexOption.IGNORE_CASE)
     private val hardExcludedContexts = listOf(
         "승인번호", "인증번호", "결제번호", "예약번호", "주문번호", "결제예정", "납부예정", "출금예정",
     )
-    private val softExcludedContexts = listOf("쿠폰", "할인", "혜택", "적립", "포인트", "이벤트", "특가")
+    private val promotionalContexts = listOf("쿠폰", "할인", "적립", "포인트", "이벤트", "특가")
     private val cancelledTerms = listOf("취소", "cancel", "거절", "실패", "reversed")
     private val expenseTerms = listOf(
         "승인", "결제완료", "결제 완료", "결제가 완료", "결제되었습니다", "결제됐", "결제", "출금",
@@ -53,7 +54,10 @@ object PaymentNotificationParser {
         if (hardExcludedContexts.any { normalized.contains(it, ignoreCase = true) }) return null
         val hasStrongTransactionSignal = strongTransactionTerms.any { normalized.contains(it, ignoreCase = true) }
         if (!hasStrongTransactionSignal) return null
-        if (softExcludedContexts.any { normalized.contains(it, ignoreCase = true) } && !hasStrongTransactionSignal) return null
+        if (promotionalContexts.any { normalized.contains(it, ignoreCase = true) } &&
+            amountBeforeAction.find(normalized) == null && actionAmount.find(normalized) == null &&
+            explicitActionAmount.find(normalized) == null
+        ) return null
 
         val amount = findMarkedAmount(normalized)
         amount ?: return null
@@ -96,11 +100,13 @@ object PaymentNotificationParser {
     }
 
     private fun findMarkedAmount(text: String): Long? {
+        amountBeforeAction.find(text)?.groupValues?.getOrNull(1)?.replace(",", "")?.toLongOrNull()?.let { return it }
+        explicitActionAmount.find(text)?.groupValues?.getOrNull(1)?.replace(",", "")?.toLongOrNull()?.let { return it }
+        actionAmount.find(text)?.groupValues?.getOrNull(1)?.replace(",", "")?.toLongOrNull()?.let { return it }
         markedKoreanAmount.find(text)?.let { amountValue(it.groupValues[1], it.groupValues[2])?.let { value -> return value } }
         wonAmount.find(text)?.groupValues?.getOrNull(1)?.replace(",", "")?.toLongOrNull()?.let { return it }
         symbolAmount.find(text)?.groupValues?.getOrNull(1)?.replace(",", "")?.toLongOrNull()?.let { return it }
-        explicitActionAmount.find(text)?.groupValues?.getOrNull(1)?.replace(",", "")?.toLongOrNull()?.let { return it }
-        return actionAmount.find(text)?.groupValues?.getOrNull(1)?.replace(",", "")?.toLongOrNull()
+        return null
     }
 
     private fun findAmount(text: String): Long? {

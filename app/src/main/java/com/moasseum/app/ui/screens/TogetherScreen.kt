@@ -71,6 +71,10 @@ import com.moasseum.app.domain.formatSignedWon
 import com.moasseum.app.domain.formatMonth
 import com.moasseum.app.domain.formatWon
 import com.moasseum.app.domain.daysUntilNextAnniversary
+import com.moasseum.app.domain.SharedLedgerSettings
+import com.moasseum.app.domain.SharedMoneyMode
+import com.moasseum.app.domain.SharedPayerTotals
+import com.moasseum.app.domain.sharedPayerTotals
 import com.moasseum.app.ui.components.categoryColor
 import com.moasseum.app.ui.components.categoryLabel
 import com.moasseum.app.ui.components.EmptyState
@@ -97,6 +101,8 @@ fun TogetherScreen(
     onDeleteGoal: (String) -> Unit,
     onSaveFinanceItem: (SharedFinanceItem) -> Unit,
     onDeleteFinanceItem: (String) -> Unit,
+    onSaveSettings: (SharedLedgerSettings) -> Unit,
+    onLeaveSharedLedger: () -> Unit,
     onExportReport: (YearMonth) -> Unit,
     aiAnalysisState: SpendingAnalysisState,
     aiQuestionState: SpendingQuestionState,
@@ -114,6 +120,8 @@ fun TogetherScreen(
     var editingFinanceItemId by rememberSaveable { mutableStateOf<String?>(null) }
     var deletingFinanceItemId by rememberSaveable { mutableStateOf<String?>(null) }
     var sharedQuestion by rememberSaveable { mutableStateOf("") }
+    var showMoneyModeMenu by rememberSaveable { mutableStateOf(false) }
+    var showLeaveConfirmation by rememberSaveable { mutableStateOf(false) }
     val selectedMonth = remember(selectedMonthKey) { runCatching { YearMonth.parse(selectedMonthKey) }.getOrDefault(YearMonth.now()) }
     val monthlyTransactions = remember(snapshot.transactions, selectedMonthKey) {
         snapshot.transactions.filter { YearMonth.from(it.occurredDate) == selectedMonth }
@@ -142,8 +150,7 @@ fun TogetherScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("함께", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text(email, style = MaterialTheme.typography.labelMedium, color = colors.textSecondary,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("공유 장부", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
                 }
                 if (busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
                 else TextButton(onClick = onRefresh) {
@@ -259,6 +266,9 @@ fun TogetherScreen(
                         if (snapshot.memberCount < 2 && snapshot.invite == null) {
                             TextButton(onClick = onCreateInvite, enabled = !busy) { Text("파트너 초대 코드 만들기") }
                         }
+                        TextButton(onClick = { showLeaveConfirmation = true }, enabled = !busy) {
+                            Text("공유 연결 해제", color = MaterialTheme.colorScheme.error)
+                        }
                     }
                 }
             }
@@ -272,6 +282,28 @@ fun TogetherScreen(
                     onNext = { selectedMonthKey = selectedMonth.plusMonths(1).toString() },
                     onSelectCurrent = { selectedMonthKey = YearMonth.now().toString() },
                     onExportReport = { onExportReport(selectedMonth) },
+                )
+            }
+            item {
+                SharedMoneyModeCard(
+                    settings = snapshot.settings,
+                    busy = busy || !snapshot.settingsSyncAvailable,
+                    menuExpanded = showMoneyModeMenu,
+                    onMenuExpanded = { showMoneyModeMenu = it },
+                    onSelectMode = { mode -> onSaveSettings(SharedLedgerSettings(mode)) },
+                )
+            }
+            if (!snapshot.settingsSyncAvailable) item {
+                FinanceCard {
+                    Text("공동 자금 설정을 사용하려면 서버 업데이트가 필요해요.",
+                        color = colors.textSecondary, style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(13.dp))
+                }
+            }
+            if (snapshot.memberCount == 2 && userId != null) item {
+                SharedPayerSummaryCard(
+                    mode = snapshot.settings.moneyMode,
+                    totals = sharedPayerTotals(monthlyTransactions, userId),
                 )
             }
             item {
@@ -455,6 +487,112 @@ fun TogetherScreen(
             },
             dismissButton = { TextButton(enabled = !busy, onClick = { deletingFinanceItemId = null }) { Text("취소") } },
         )
+    }
+    if (showLeaveConfirmation) {
+        AlertDialog(
+            onDismissRequest = { if (!busy) showLeaveConfirmation = false },
+            title = { Text("공유 연결을 해제할까요?") },
+            text = { Text("이 기기의 연결만 끊어요. 내가 공유한 기록은 파트너 장부에 남고, 내 기기의 거래는 개인 기록으로 전환됩니다. 공동 장부와 파트너 기록은 삭제하지 않아요.") },
+            confirmButton = {
+                TextButton(enabled = !busy, onClick = {
+                    showLeaveConfirmation = false
+                    onLeaveSharedLedger()
+                }) { Text("연결 해제", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(enabled = !busy, onClick = { showLeaveConfirmation = false }) { Text("취소") } },
+        )
+    }
+}
+
+@Composable
+private fun SharedMoneyModeCard(
+    settings: SharedLedgerSettings,
+    busy: Boolean,
+    menuExpanded: Boolean,
+    onMenuExpanded: (Boolean) -> Unit,
+    onSelectMode: (SharedMoneyMode) -> Unit,
+) {
+    val colors = LocalFinanceColors.current
+    FinanceCard {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text("함께 쓰는 방식", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(settings.moneyMode.description, style = MaterialTheme.typography.bodySmall, color = colors.textSecondary)
+            androidx.compose.foundation.layout.Box {
+                TextButton(onClick = { onMenuExpanded(true) }, enabled = !busy) {
+                    Text(settings.moneyMode.label, fontWeight = FontWeight.SemiBold)
+                    Icon(Icons.Rounded.ChevronRight, contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+                androidx.compose.material3.DropdownMenu(expanded = menuExpanded, onDismissRequest = { onMenuExpanded(false) }) {
+                    SharedMoneyMode.entries.forEach { mode ->
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = {
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(mode.label, fontWeight = FontWeight.SemiBold)
+                                    Text(mode.description, style = MaterialTheme.typography.labelSmall, color = colors.textSecondary)
+                                }
+                            },
+                            onClick = {
+                                onMenuExpanded(false)
+                                if (mode != settings.moneyMode) onSelectMode(mode)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SharedPayerSummaryCard(mode: SharedMoneyMode, totals: SharedPayerTotals) {
+    val colors = LocalFinanceColors.current
+    FinanceCard {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                when (mode) {
+                    SharedMoneyMode.EQUAL_SPLIT -> "이번 달 정산 참고"
+                    SharedMoneyMode.SEPARATE -> "이번 달 각자 결제"
+                    SharedMoneyMode.INCOME_OVERVIEW -> "이번 달 수입 비교"
+                    SharedMoneyMode.SHARED_FUND -> "공동 자금 합계"
+                },
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            when (mode) {
+                SharedMoneyMode.SHARED_FUND -> {
+                    SharedMoneyMetric("공유 지출", totals.expenseTotal, colors.expense)
+                    SharedMoneyMetric("공유 수입", totals.incomeTotal, colors.income)
+                }
+                SharedMoneyMode.INCOME_OVERVIEW -> {
+                    SharedMoneyMetric("나", totals.myIncome, colors.income)
+                    SharedMoneyMetric("파트너", totals.partnerIncome, colors.income)
+                    Text("공동 장부에 수입으로 공유한 거래 기준", style = MaterialTheme.typography.labelSmall, color = colors.textSecondary)
+                }
+                else -> {
+                    SharedMoneyMetric("내가 결제", totals.myExpense, colors.accent)
+                    SharedMoneyMetric("파트너가 결제", totals.partnerExpense, colors.textPrimary)
+                    if (mode == SharedMoneyMode.EQUAL_SPLIT) {
+                        val settlement = when {
+                            totals.partnerOwesMe > 0 -> "파트너가 나에게 ${formatWon(totals.partnerOwesMe)}"
+                            totals.iOwePartner > 0 -> "내가 파트너에게 ${formatWon(totals.iOwePartner)}"
+                            else -> "현재 50:50 기준 차액 없음"
+                        }
+                        HorizontalDivider(color = colors.divider)
+                        Text(settlement, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = colors.accent)
+                        Text("공유한 지출만 계산한 참고값이며 송금·정산은 하지 않아요.",
+                            style = MaterialTheme.typography.labelSmall, color = colors.textSecondary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SharedMoneyMetric(label: String, amount: Long, color: Color) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.bodySmall, color = LocalFinanceColors.current.textSecondary, modifier = Modifier.weight(1f))
+        Text(formatWon(amount), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = color)
     }
 }
 

@@ -7,7 +7,12 @@ import androidx.room.Query
 import androidx.room.Transaction
 import com.moasseum.app.domain.nextRecurringOccurrence
 import com.moasseum.app.domain.editedRecurringOccurrence
+import com.moasseum.app.data.PhotoImportSaveResult
+import com.moasseum.app.data.PhotoTransactionCandidate
+import com.moasseum.app.data.PhotoTransactionImport
+import com.moasseum.app.notification.PaymentNotificationParser
 import java.time.LocalDate
+import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.flow.Flow
 
@@ -91,6 +96,32 @@ interface FinanceDao {
 
     @Query("UPDATE transactions SET ownerId = :ownerId, sharingScope = 'SHARED', cloudId = COALESCE(cloudId, :cloudId), updatedAt = :now WHERE id = :id AND deletedAt IS NULL AND type != 'TRANSFER'")
     suspend fun shareTransaction(id: Long, ownerId: String, cloudId: String, now: Long): Int
+
+    @Transaction
+    suspend fun shareTransactions(ids: List<Long>, ownerId: String, now: Long): Int {
+        require(ids.isNotEmpty() && ids.size <= 500 && ids.distinct().size == ids.size)
+        var updated = 0
+        ids.forEach { id ->
+            val row = getTransaction(id) ?: error("공유할 거래를 찾지 못했어요.")
+            require(row.type == "EXPENSE" || row.type == "INCOME") { "계좌 이체는 공유할 수 없어요." }
+            updated += shareTransaction(id, ownerId, java.util.UUID.randomUUID().toString(), now)
+        }
+        check(updated == ids.size) { "일부 거래를 공유하도록 표시하지 못했어요." }
+        return updated
+    }
+
+    @Query("UPDATE transactions SET ownerId = 'local-user', ledgerId = 'personal', sharingScope = 'PRIVATE', cloudId = NULL, updatedAt = :now WHERE ownerId = :ownerId AND sharingScope = 'SHARED' AND ledgerId = 'personal'")
+    suspend fun makeOwnedSharedRowsPrivate(ownerId: String, now: Long): Int
+
+    @Query("DELETE FROM transactions WHERE ledgerId = :sharedLedgerId")
+    suspend fun clearSharedLedgerCache(sharedLedgerId: String): Int
+
+    @Transaction
+    suspend fun detachFromSharedLedger(ledgerId: String, ownerId: String, now: Long) {
+        require(ledgerId.matches(Regex("[0-9a-fA-F-]{36}")))
+        makeOwnedSharedRowsPrivate(ownerId, now)
+        clearSharedLedgerCache("shared:$ledgerId")
+    }
 
     @Query("UPDATE transactions SET ownerId = 'local-user', ledgerId = 'personal', sharingScope = 'PRIVATE', cloudId = NULL, updatedAt = :now WHERE id = :id AND sharingScope = 'SHARED'")
     suspend fun unshareTransaction(id: Long, now: Long): Int
@@ -177,6 +208,59 @@ interface FinanceDao {
                 it.merchant.isNotBlank() && it.ledgerId == "personal" && it.sharingScope == "PRIVATE"
         })
         insertTransactions(transactions)
+    }
+
+    @Query("SELECT * FROM transactions WHERE deletedAt IS NULL")
+    suspend fun activePersonalTransactionsForPhotoImport(): List<TransactionEntity>
+
+    @Transaction
+    suspend fun savePhotoTransactions(
+        candidates: List<PhotoTransactionCandidate>,
+        timezone: String,
+        now: Long,
+    ): PhotoImportSaveResult {
+        require(candidates.size in 1..500)
+        val known = activePersonalTransactionsForPhotoImport().toMutableList()
+        val acceptedFromPhotos = mutableListOf<PhotoTransactionCandidate>()
+        val insertedIds = mutableListOf<Long>()
+        var duplicates = 0
+        candidates.forEach { photo ->
+            val candidate = photo.transaction
+            require(candidate.type == com.moasseum.app.domain.TransactionType.EXPENSE ||
+                candidate.type == com.moasseum.app.domain.TransactionType.INCOME)
+            require(candidate.amount in 1..1_000_000_000_000L && candidate.merchant.isNotBlank())
+            if (known.any { row ->
+                    row.deletedAt == null && runCatching {
+                        Instant.ofEpochMilli(row.occurredAt).atZone(ZoneId.of(row.timezone)).toLocalDate()
+                    }.getOrNull()?.let { existingDate ->
+                        PhotoTransactionImport.isDuplicate(candidate, row.type, row.amount, existingDate, row.merchant)
+                    } == true
+                } || acceptedFromPhotos.any {
+                    it.sourceImageId != photo.sourceImageId && PhotoTransactionImport.sameTransaction(candidate, it.transaction)
+                }
+            ) {
+                duplicates++
+                return@forEach
+            }
+            val entity = TransactionEntity(
+                type = candidate.type.name,
+                amount = candidate.amount,
+                occurredAt = candidate.occurredDate.atStartOfDay(ZoneId.of(timezone)).toInstant().toEpochMilli(),
+                timezone = timezone,
+                categoryKey = candidate.categoryKey.takeIf { it != "OTHER" }
+                    ?: PaymentNotificationParser.inferCategoryFrom(candidate.merchant),
+                merchant = candidate.merchant.trim(),
+                memo = candidate.memo.trim(),
+                paymentMethod = photo.paymentMethod.ifBlank { "금융앱 캡처" },
+                source = "PHOTO_IMPORT",
+                createdAt = now,
+                updatedAt = now,
+            )
+            val id = insertTransaction(entity)
+            acceptedFromPhotos += photo
+            insertedIds += id
+        }
+        return PhotoImportSaveResult(insertedIds, duplicates)
     }
 
     @Query("UPDATE transactions SET deletedAt = :now, updatedAt = :now WHERE id IN (:ids) AND deletedAt IS NULL AND ledgerId = 'personal' AND sharingScope = 'PRIVATE' AND type != 'TRANSFER' AND installmentGroupId IS NULL")

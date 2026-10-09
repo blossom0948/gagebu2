@@ -6,6 +6,8 @@ import com.moasseum.app.data.local.FinanceDao
 import com.moasseum.app.data.local.TransactionEntity
 import com.moasseum.app.domain.Transaction
 import com.moasseum.app.domain.TransactionType
+import com.moasseum.app.domain.SharedLedgerSettings
+import com.moasseum.app.domain.SharedMoneyMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -70,6 +72,8 @@ data class SharedLedgerSnapshot(
     val goals: List<SharedLedgerGoal> = emptyList(),
     val financeItems: List<SharedFinanceItem> = emptyList(),
     val financeSyncAvailable: Boolean = true,
+    val settings: SharedLedgerSettings = SharedLedgerSettings(),
+    val settingsSyncAvailable: Boolean = true,
 )
 
 class SharedApiException(val statusCode: Int, message: String) : java.io.IOException(message)
@@ -141,22 +145,43 @@ class SharedLedgerRepository(
         return sync(identity, ledgerId)
     }
 
+    suspend fun saveSettings(settings: SharedLedgerSettings): SharedLedgerSnapshot {
+        val identity = identity()
+        val ledgerId = api.findLedger(identity.token, identity.userId)
+            ?: error("먼저 파트너와 공유 장부를 연결해 주세요.")
+        api.saveSettings(identity.token, ledgerId, identity.userId, settings)
+        return sync(identity, ledgerId)
+    }
+
+    suspend fun leaveSharedLedger(): SharedLedgerSnapshot {
+        val identity = identity()
+        val currentLedgerId = api.findLedger(identity.token, identity.userId)
+        val ledgerId = api.leave(identity.token) ?: currentLedgerId
+        if (ledgerId != null) dao.detachFromSharedLedger(ledgerId, identity.userId, System.currentTimeMillis())
+        return SharedLedgerSnapshot()
+    }
+
     suspend fun setShared(transactionId: Long, shared: Boolean): SharedLedgerSnapshot {
+        if (shared) return shareTransactions(listOf(transactionId))
         val identity = identity()
         val ledgerId = api.findLedger(identity.token, identity.userId)
             ?: error("먼저 함께 쓰기 초대장을 만들거나 초대 코드를 입력해 주세요.")
         val transaction = dao.getTransaction(transactionId)
             ?: error("거래를 찾지 못했어요. 목록을 새로고침해 주세요.")
         require(transaction.type in setOf("EXPENSE", "INCOME")) { "계좌 이체는 공유할 수 없어요." }
-        if (shared) {
-            val changed = dao.shareTransaction(transactionId, identity.userId, UUID.randomUUID().toString(), System.currentTimeMillis())
-            require(changed > 0) { "삭제된 거래는 공유할 수 없어요." }
-            // Intent is saved locally first. If the network fails, Retry uploads only this selected row.
-            return sync(identity, ledgerId)
-        }
         val current = dao.getTransaction(transactionId) ?: error("거래를 찾지 못했어요.")
         current.cloudId?.let { api.deleteTransaction(identity.token, ledgerId, it, identity.userId) }
         dao.unshareTransaction(transactionId, System.currentTimeMillis())
+        return sync(identity, ledgerId)
+    }
+
+    suspend fun shareTransactions(transactionIds: List<Long>): SharedLedgerSnapshot {
+        require(transactionIds.isNotEmpty() && transactionIds.size <= 500 && transactionIds.distinct().size == transactionIds.size)
+        val identity = identity()
+        val ledgerId = api.findLedger(identity.token, identity.userId)
+            ?: error("먼저 함께 쓰기 초대장을 만들거나 초대 코드를 입력해 주세요.")
+        // Only explicitly selected transaction IDs are marked for upload.
+        dao.shareTransactions(transactionIds, identity.userId, System.currentTimeMillis())
         return sync(identity, ledgerId)
     }
 
@@ -186,6 +211,10 @@ class SharedLedgerRepository(
         val financeItems = financeResult.getOrElse { error ->
             if (error is SharedApiException && error.statusCode == 404) emptyList() else throw error
         }
+        val settingsResult = runCatching { api.fetchSettings(identity.token, ledgerId) }
+        val settings = settingsResult.getOrElse { error ->
+            if (error is SharedApiException && error.statusCode == 404) SharedLedgerSettings() else throw error
+        }
         return SharedLedgerSnapshot(
             ledgerId = ledgerId,
             memberCount = api.countMembers(identity.token, ledgerId),
@@ -193,6 +222,8 @@ class SharedLedgerRepository(
             goals = api.fetchGoals(identity.token, ledgerId),
             financeItems = financeItems,
             financeSyncAvailable = financeResult.isSuccess,
+            settings = settings,
+            settingsSyncAvailable = settingsResult.isSuccess,
         )
     }
 
@@ -359,6 +390,40 @@ class SharedLedgerApi(
                 memo = row.optString("memo").take(300),
             )
         }
+    }
+
+    suspend fun fetchSettings(token: String, ledgerId: String): SharedLedgerSettings {
+        val rows = JSONArray(request(
+            "GET",
+            "shared_ledger_settings?select=money_mode&ledger_id=eq.${enc(ledgerId)}&limit=1",
+            token,
+        ))
+        val mode = rows.optJSONObject(0)?.optString("money_mode")
+            ?.let { runCatching { SharedMoneyMode.valueOf(it) }.getOrNull() }
+            ?: SharedMoneyMode.EQUAL_SPLIT
+        return SharedLedgerSettings(moneyMode = mode)
+    }
+
+    suspend fun saveSettings(token: String, ledgerId: String, userId: String, settings: SharedLedgerSettings) {
+        val body = JSONObject()
+            .put("ledger_id", ledgerId)
+            .put("money_mode", settings.moneyMode.name)
+            .put("updated_by", userId)
+            .put("updated_at", Instant.now().toString())
+        val saved = JSONArray(request(
+            "POST",
+            "shared_ledger_settings?on_conflict=ledger_id",
+            token,
+            body,
+            prefer = "resolution=merge-duplicates,return=representation",
+        ))
+        check(saved.length() == 1) { "공동 자금 방식을 저장하지 못했어요." }
+    }
+
+    suspend fun leave(token: String): String? {
+        val response = request("POST", "rpc/leave_shared_ledger", token, JSONObject())
+        val value = runCatching { org.json.JSONTokener(response).nextValue() }.getOrNull()
+        return (value as? String)?.let { runCatching { UUID.fromString(it).toString() }.getOrNull() }
     }
 
     suspend fun saveFinanceItem(token: String, ledgerId: String, ownerId: String, item: SharedFinanceItem) {

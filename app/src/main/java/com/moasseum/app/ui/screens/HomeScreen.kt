@@ -376,7 +376,7 @@ private fun QuickCaptureCard(
             }
             QuickCaptureAction(Icons.Rounded.KeyboardVoice, "음성으로 입력", onStartVoiceInput)
             QuickCaptureAction(Icons.Rounded.CameraAlt, "영수증 촬영", onTakeReceipt)
-            QuickCaptureAction(Icons.Rounded.PhotoLibrary, "사진에서 영수증 선택", onPickReceipt)
+            QuickCaptureAction(Icons.Rounded.PhotoLibrary, "사진에서 거래 가져오기", onPickReceipt)
         }
     }
 }

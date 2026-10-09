@@ -55,6 +55,22 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.27" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_27_photo,
+                imageAspectRatio = 904f / 1040f,
+                title = "금융앱 캡처 여러 장에서 거래 추가",
+                description = "토스 등 거래내역 화면을 한 번에 고르고, 이미 기록된 거래와 겹친 캡처는 제외해 새 내역만 검토 후 추가해요.",
+                imageDescription = "모아씀 새 기록 메뉴의 사진에서 거래 가져오기 항목",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_27_help,
+                imageAspectRatio = 904f / 1170f,
+                title = "필요한 기능으로 바로 이동",
+                description = "도움말에서 기록, 내역 수정, 예산·카드 관리, 파트너 공유 화면을 바로 열 수 있어요.",
+                imageDescription = "거래 기록·내역 수정·관리·파트너 공유로 연결되는 빠른 도움말",
+            ),
+        )
         "0.1.26" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_26_installments,

@@ -128,11 +128,11 @@ class FinanceRepository(
         source: String = "MANUAL",
         paymentMethod: String = "카드",
         accountId: String? = null,
-    ) {
+    ): Long {
         require(type != TransactionType.TRANSFER)
         val now = System.currentTimeMillis()
         val occurredAtMillis = occurredAt.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        dao.saveLinkedTransaction(
+        return dao.saveLinkedTransaction(
             TransactionEntity(
                 type = type.name,
                 amount = amount,
@@ -270,6 +270,11 @@ class FinanceRepository(
     }
 
     suspend fun importTransactions(rows: List<ImportedTransaction>): Int = dao.importRows(rows, TimeZone.getDefault().id, System.currentTimeMillis())
+
+    suspend fun importPhotoTransactions(candidates: List<PhotoTransactionCandidate>): PhotoImportSaveResult {
+        require(candidates.size in 1..500) { "사진에서 새 거래를 찾지 못했어요." }
+        return dao.savePhotoTransactions(candidates, TimeZone.getDefault().id, System.currentTimeMillis())
+    }
 
     suspend fun saveNotificationCandidate(candidate: NotificationCandidateEntity): Long? =
         dao.insertNotificationCandidate(candidate).takeIf { it > 0L }

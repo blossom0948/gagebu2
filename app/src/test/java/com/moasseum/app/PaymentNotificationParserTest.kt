@@ -87,6 +87,19 @@ class PaymentNotificationParserTest {
     }
 
     @Test
+    fun promotionOnlyAmountsAreRejectedButAnExplicitApprovalUsesTheApprovedAmount() {
+        assertNull(
+            PaymentNotificationParser.parse(
+                "com.shop", "결제 안내", "쿠폰 3,000원 할인 혜택이 적용되었어요. 결제가 완료되었습니다.", 1_000L,
+            ),
+        )
+        val candidate = PaymentNotificationParser.parse(
+            "com.bank", "카드 알림", "쿠폰 할인 3,000원 · 실제 승인 5,900원 스타벅스", 1_000L,
+        )
+        assertEquals(5_900L, candidate?.amount)
+    }
+
+    @Test
     fun aiConfirmedTransactionCanUseTransferDirectionAndAmount() {
         val candidate = PaymentNotificationParser.parse(
             packageName = "com.bank",

@@ -111,7 +111,7 @@ class LedgerViewModel(
         occurredAt: LocalDate = LocalDate.now(),
         paymentMethod: String = "카드",
         accountId: String? = null,
-        onComplete: (Result<Unit>) -> Unit = {},
+        onComplete: (Result<Long>) -> Unit = {},
     ): Boolean {
         val amount = parseAmount(amountInput)?.takeIf { it <= 1_000_000_000_000L } ?: return false
         if (merchant.isBlank()) return false
@@ -133,6 +133,9 @@ class LedgerViewModel(
 
     suspend fun addBatchTransactions(candidates: List<AiTransactionCandidate>, paymentMethod: String): Int =
         repository.addBatchTransactions(candidates, paymentMethod)
+
+    suspend fun importPhotoTransactions(candidates: List<com.moasseum.app.data.PhotoTransactionCandidate>): com.moasseum.app.data.PhotoImportSaveResult =
+        repository.importPhotoTransactions(candidates)
 
     suspend fun deleteBatchTransactions(ids: List<Long>): Int = repository.applyBatchDelete(ids)
 

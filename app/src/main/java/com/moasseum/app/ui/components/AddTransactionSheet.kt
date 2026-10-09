@@ -63,6 +63,8 @@ import com.moasseum.app.domain.formatDate
 import com.moasseum.app.domain.formatWon
 import com.moasseum.app.domain.parseAmount
 import com.moasseum.app.domain.Transaction
+import com.moasseum.app.data.PhotoImportState
+import com.moasseum.app.data.PhotoTransactionCandidate
 import com.moasseum.app.ui.components.categoryLabel
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import java.time.LocalDate
@@ -75,6 +77,7 @@ enum class AddMode {
     BATCH,
     AI_NOTICE,
     RECEIPT_NOTICE,
+    PHOTO_REVIEW,
 }
 
 @Composable
@@ -102,11 +105,19 @@ fun AddTransactionSheet(
         Result.failure(IllegalStateException("AI 일괄 해석을 사용할 수 없어요."))
     },
     onApplyBatch: (com.moasseum.app.data.BatchCommandAction, List<Long>, com.moasseum.app.data.BatchEditValues?) -> Boolean = { _, _, _ -> false },
+    photoImportState: PhotoImportState = PhotoImportState.Idle,
+    onAddPhotoCandidates: (List<PhotoTransactionCandidate>) -> Unit = {},
+    canShareOnSave: Boolean = false,
+    shareOnSave: Boolean = false,
+    onShareOnSaveChange: (Boolean) -> Unit = {},
 ) {
     val scrollState = rememberScrollState()
     LaunchedEffect(mode) { scrollState.scrollTo(0) }
     Column(Modifier.fillMaxWidth().verticalScroll(scrollState)) {
         if (saving) androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (canShareOnSave && mode in setOf(AddMode.DIRECT, AddMode.AI_INPUT, AddMode.PHOTO_REVIEW)) {
+            SaveDestinationSelector(shareOnSave, onShareOnSaveChange)
+        }
         when (mode) {
             AddMode.MENU -> AddMenu(onModeChange = onModeChange, onStartVoiceInput = onStartVoiceInput)
             AddMode.DIRECT -> DirectTransactionForm(paymentMethods = paymentMethods, accounts = accounts, saving = saving, onModeChange = onModeChange, onDismiss = onDismiss, onSave = onSave)
@@ -129,6 +140,13 @@ fun AddTransactionSheet(
                 onTakeReceipt = onTakeReceipt,
                 onBack = { onModeChange(AddMode.MENU) },
             )
+            AddMode.PHOTO_REVIEW -> PhotoImportReview(
+                state = photoImportState,
+                saving = saving,
+                onPickMore = onPickReceipt,
+                onSave = onAddPhotoCandidates,
+                onCancel = onDismiss,
+            )
             AddMode.BATCH -> BatchCommandSheet(
                 transactions = transactions,
                 paymentMethods = paymentMethods,
@@ -139,6 +157,22 @@ fun AddTransactionSheet(
                 onApply = onApplyBatch,
             )
         }
+    }
+}
+
+@Composable
+private fun SaveDestinationSelector(
+    shareOnSave: Boolean,
+    onSelectShared: (Boolean) -> Unit,
+) {
+    val colors = LocalFinanceColors.current
+    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("저장 위치", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = !shareOnSave, onClick = { onSelectShared(false) }, label = { Text("개인") })
+            FilterChip(selected = shareOnSave, onClick = { onSelectShared(true) }, label = { Text("함께 공유") })
+        }
+        if (shareOnSave) Text("저장 후 이 거래가 파트너와 공유됩니다.", style = MaterialTheme.typography.labelSmall, color = colors.textSecondary)
     }
 }
 
@@ -175,7 +209,7 @@ private fun AddMenu(onModeChange: (AddMode) -> Unit, onStartVoiceInput: () -> Un
         )
         AddActionRow(
             icon = Icons.Rounded.CameraAlt,
-            title = "영수증 가져오기",
+            title = "사진에서 거래 가져오기",
             message = "",
             onClick = { onModeChange(AddMode.RECEIPT_NOTICE) },
         )
@@ -660,8 +694,8 @@ private fun ReceiptInputNotice(
         Surface(color = colors.accentSoft, shape = RoundedCornerShape(16.dp)) {
             Icon(Icons.Rounded.CameraAlt, contentDescription = null, tint = colors.accent, modifier = Modifier.padding(14.dp).size(26.dp))
         }
-        Text("영수증 사진으로 기록", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("사진은 기기에서만 처리됩니다.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+        Text("사진에서 거래 가져오기", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("영수증이나 금융앱 내역을 여러 장 선택할 수 있어요. 사진은 기기에서만 처리됩니다.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         when (aiState) {
             AiParseState.Loading -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                 CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -671,7 +705,7 @@ private fun ReceiptInputNotice(
             else -> Unit
         }
         OutlinedButton(onClick = onPickReceipt, enabled = aiState !is AiParseState.Loading, modifier = Modifier.fillMaxWidth()) {
-            Text("사진 선택")
+            Text("앨범에서 여러 장 선택")
         }
         OutlinedButton(onClick = onTakeReceipt, enabled = aiState !is AiParseState.Loading, modifier = Modifier.fillMaxWidth()) { Text("카메라로 촬영") }
         TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("뒤로") }
