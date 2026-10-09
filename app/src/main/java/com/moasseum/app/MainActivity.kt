@@ -99,6 +99,8 @@ import com.moasseum.app.ui.screens.FirstRunGuide
 import com.moasseum.app.ui.screens.ManageScreen
 import com.moasseum.app.ui.screens.NotificationsScreen
 import com.moasseum.app.ui.screens.TogetherScreen
+import com.moasseum.app.ui.screens.ReleaseNotesCatalog
+import com.moasseum.app.ui.screens.WhatsNewDialog
 import com.moasseum.app.data.SharedLedgerSnapshot
 import com.moasseum.app.ui.theme.MoasseumTheme
 import com.moasseum.app.data.AiClient
@@ -424,6 +426,18 @@ private fun MoasseumApp(
     val pendingCandidates by viewModel.pendingNotificationCandidates.collectAsStateWithLifecycle()
     val recurringRules by viewModel.recurringRules.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    var showWhatsNew by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(application, BuildConfig.VERSION_NAME) {
+        @Suppress("DEPRECATION")
+        val installedPackage = context.packageManager.getPackageInfo(context.packageName, 0)
+        val upgraded = installedPackage.lastUpdateTime > installedPackage.firstInstallTime
+        val shouldShow = application.preferencesRepository.shouldShowReleaseNotes(BuildConfig.VERSION_NAME, upgraded)
+        if (shouldShow && ReleaseNotesCatalog.slides(BuildConfig.VERSION_NAME).isNotEmpty()) {
+            showWhatsNew = true
+        } else {
+            application.preferencesRepository.markReleaseNotesSeen(BuildConfig.VERSION_NAME)
+        }
+    }
     LaunchedEffect(appLockEnabled, appLockReleased) {
         if (appLockEnabled && !appLockReleased) onAuthenticateAppLock()
     }
@@ -1016,6 +1030,12 @@ private fun MoasseumApp(
                             notificationPromptIds = notificationPromptIds.filterNot { it == id }
                             PaymentNotificationNotifier.cancel(context, id)
                         },
+                        onDismissAll = {
+                            val ids = pendingCandidates.map { it.id }
+                            viewModel.dismissAllNotificationCandidates()
+                            notificationPromptIds = notificationPromptIds.filterNot { it in ids }
+                            ids.forEach { PaymentNotificationNotifier.cancel(context, it) }
+                        },
                         onOpenSettings = { navigateTo(navController, ROUTE_MANAGE) },
                     )
                 }
@@ -1029,6 +1049,12 @@ private fun MoasseumApp(
                             viewModel.dismissNotificationCandidate(id)
                             notificationPromptIds = notificationPromptIds.filterNot { it == id }
                             PaymentNotificationNotifier.cancel(context, id)
+                        },
+                        onDismissAll = {
+                            val ids = pendingCandidates.map { it.id }
+                            viewModel.dismissAllNotificationCandidates()
+                            notificationPromptIds = notificationPromptIds.filterNot { it in ids }
+                            ids.forEach { PaymentNotificationNotifier.cancel(context, it) }
                         },
                         onOpenSettings = { navigateTo(navController, ROUTE_MANAGE) },
                     )
@@ -1404,6 +1430,15 @@ private fun MoasseumApp(
                     androidx.compose.material3.Button(onClick = onAuthenticateAppLock) { Text("다시 인증") }
                 }
             }
+        }
+    }
+
+    if (showWhatsNew && !showFirstRunGuide && !showNotificationAccessPrompt && !addOpen &&
+        !showAccounts && !showAuth && notificationPromptIds.isEmpty() && !(appLockEnabled && !appLockReleased)
+    ) {
+        WhatsNewDialog(versionName = BuildConfig.VERSION_NAME) {
+            showWhatsNew = false
+            coroutineScope.launch { application.preferencesRepository.markReleaseNotesSeen(BuildConfig.VERSION_NAME) }
         }
     }
 }

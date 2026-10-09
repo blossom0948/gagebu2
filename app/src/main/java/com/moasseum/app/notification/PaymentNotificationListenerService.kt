@@ -75,7 +75,8 @@ class PaymentNotificationListenerService : NotificationListenerService() {
                     body = content.body,
                     postedAt = sbn.postTime,
                 )
-                val shouldAskAi = aiEnabled && PaymentNotificationParser.shouldInspectWithAi(content.title, content.body)
+                val shouldAskAi = localCandidate != null && aiEnabled &&
+                    PaymentNotificationParser.shouldInspectWithAi(content.title, content.body)
                 val candidate = if (!shouldAskAi) {
                     localCandidate
                 } else {

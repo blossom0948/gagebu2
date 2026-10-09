@@ -53,6 +53,44 @@ class FinanceIntegrationTest {
         } finally { database.close() }
     }
 
+    @Test fun supermarketNotificationIsCategorizedAndPendingAlertsCanBeClearedTogether() = runBlocking {
+        val database = Room.inMemoryDatabaseBuilder(context, FinanceDatabase::class.java).build()
+        try {
+            val dao = database.financeDao()
+            val repo = FinanceRepository(dao)
+            val martId = dao.insertNotificationCandidate(NotificationCandidateEntity(
+                packageName = "qa.synthetic.bank",
+                title = "카드 승인",
+                preview = "이마트 월계점 49,300원 승인",
+                merchant = "이마트 월계점",
+                amount = 49_300,
+                type = "EXPENSE",
+                categoryKey = "OTHER",
+                postedAt = System.currentTimeMillis(),
+                fingerprint = "QA-MART-CATEGORY",
+            ))
+            val pending = repo.observePendingNotificationCandidates().first()
+            assertEquals("FOOD", pending.single().categoryKey)
+            assertTrue(repo.acceptNotificationCandidate(martId))
+            assertEquals("FOOD", repo.observeTransactions().first().single().categoryKey)
+
+            val secondId = dao.insertNotificationCandidate(NotificationCandidateEntity(
+                packageName = "qa.synthetic.bank",
+                title = "카드 승인",
+                preview = "온라인 결제 1,200원 승인",
+                merchant = "온라인 결제",
+                amount = 1200,
+                type = "EXPENSE",
+                categoryKey = "OTHER",
+                postedAt = System.currentTimeMillis(),
+                fingerprint = "QA-BULK-DISMISS",
+            ))
+            assertEquals(1, repo.dismissAllNotificationCandidates())
+            assertEquals("DISMISSED", dao.getNotificationCandidate(secondId)!!.status)
+            assertTrue(repo.observePendingNotificationCandidates().first().isEmpty())
+        } finally { database.close() }
+    }
+
     @Test fun cardMethodsAndRemovedCategoryBudgetsStayConsistent() = runBlocking {
         val prefs = UserPreferencesRepository(context)
         val before = prefs.backupSettings()

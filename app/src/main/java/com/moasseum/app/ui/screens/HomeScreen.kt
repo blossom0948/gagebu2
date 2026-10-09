@@ -1,6 +1,7 @@
 package com.moasseum.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.clickable
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -18,6 +20,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -34,6 +38,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
@@ -763,10 +768,11 @@ private fun AiAnalysisContent(
                 Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(26.dp))
                 Text("${com.moasseum.app.domain.formatMonth(uiState.month)} AI 소비 분석", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(
-                    "월 합계·예산·카테고리 통계만 AI 서버로 전송합니다.",
+                    "거래처·메모 없이 최근 4개월 집계만 전송해요.",
                     color = colors.textSecondary,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.labelMedium,
                 )
+                RecentSpendingTrend(uiState)
                 when (state) {
                     SpendingAnalysisState.Idle -> {
                         if (uiState.expenseCount == 0) Text("이 달 거래를 기록하면 분석할 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
@@ -816,19 +822,33 @@ private fun SpendingQuestionCard(
 ) {
     val colors = LocalFinanceColors.current
     var question by rememberSaveable { mutableStateOf("") }
+    val quickQuestions = listOf("예산 얼마나 남았어?", "지난달보다 많이 썼어?", "가장 많이 쓴 항목은?")
     FinanceCard {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
                 Text("내 소비에 물어보기", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
-            Text("질문과 월별 집계를 AI 서버로 전송합니다.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            Text("최근 4개월의 합계와 카테고리만 사용해 답해요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(quickQuestions) { suggested ->
+                    AssistChip(
+                        onClick = {
+                            question = suggested
+                            if (uiState.monthTransactions.isNotEmpty()) onAsk(suggested)
+                        },
+                        enabled = uiState.monthTransactions.isNotEmpty() && state !is SpendingQuestionState.Loading,
+                        label = { Text(suggested, style = MaterialTheme.typography.labelMedium, maxLines = 1) },
+                        shape = RoundedCornerShape(12.dp),
+                    )
+                }
+            }
             OutlinedTextField(
                 value = question,
                 onValueChange = { question = it.take(200) },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("예: 이번 달 예산이 얼마나 남았어?") },
-                maxLines = 3,
+                maxLines = 2,
             )
             if (uiState.monthTransactions.isEmpty()) {
                 Text("거래를 기록하면 소비에 대해 질문할 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
@@ -854,6 +874,46 @@ private fun SpendingQuestionCard(
                 enabled = question.trim().isNotBlank() && uiState.monthTransactions.isNotEmpty() && state !is SpendingQuestionState.Loading,
                 label = "질문하기",
             )
+        }
+    }
+}
+
+@Composable
+private fun RecentSpendingTrend(uiState: LedgerUiState) {
+    val colors = LocalFinanceColors.current
+    val months = uiState.recentMonthlySummaries(monthCount = 4)
+    if (months.none { it.expenseCount > 0 }) return
+    val maxExpense = months.maxOf { it.expenseTotal }.coerceAtLeast(1L)
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text("최근 4개월 지출", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+        months.forEach { summary ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("${summary.month.monthValue}월", modifier = Modifier.width(28.dp), color = colors.textSecondary,
+                    style = MaterialTheme.typography.labelMedium)
+                val progress by animateFloatAsState(
+                    targetValue = (summary.expenseTotal.toFloat() / maxExpense.toFloat()).coerceIn(0f, 1f),
+                    animationSpec = tween(if (LocalFinanceMotion.current.reduceMotion) 0 else 240),
+                    label = "monthlyTrendProgress-${summary.month}",
+                )
+                Box(
+                    modifier = Modifier.weight(1f).height(6.dp)
+                        .clip(RoundedCornerShape(50)).background(colors.surfaceOverlay),
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth(progress).fillMaxHeight()
+                            .background(if (summary.month == uiState.month) colors.accent else colors.accent.copy(alpha = 0.56f)),
+                    )
+                }
+                Text(
+                    text = formatWon(summary.expenseTotal),
+                    modifier = Modifier.width(82.dp),
+                    color = colors.textPrimary,
+                    style = MaterialTheme.typography.labelMedium,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                )
+            }
         }
     }
 }

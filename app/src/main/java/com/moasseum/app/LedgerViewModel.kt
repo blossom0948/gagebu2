@@ -229,6 +229,10 @@ class LedgerViewModel(
         performOperation("알림 후보를 무시하지 못했어요.") { repository.dismissNotificationCandidate(id) }
     }
 
+    fun dismissAllNotificationCandidates() {
+        performOperation("알림 후보를 모두 지우지 못했어요.") { repository.dismissAllNotificationCandidates() }
+    }
+
     suspend fun updateBudget(amountInput: String) {
         val amount = requireNotNull(parseAmount(amountInput))
         val monthKey = selectedMonth.value.toString()

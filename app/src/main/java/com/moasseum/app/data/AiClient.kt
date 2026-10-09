@@ -238,7 +238,7 @@ class AiClient(
                 connection.setRequestProperty("Authorization", "Bearer $token")
             }
             val categories = JSONArray().apply {
-                state.categoryTotals.take(7).forEach { total ->
+                state.categoryTotals.take(19).forEach { total ->
                     put(JSONObject().apply {
                         put("categoryKey", total.key)
                         put("total", total.total)
@@ -246,6 +246,7 @@ class AiClient(
                     })
                 }
             }
+            val history = spendingHistoryJson(state)
             val request = JSONObject().apply {
                 put("schemaVersion", 1)
                 put("month", state.month.toString())
@@ -254,6 +255,7 @@ class AiClient(
                 put("budgetAmount", state.budgetAmount ?: JSONObject.NULL)
                 put("previousExpenseTotal", state.previousExpenseTotal)
                 put("categories", categories)
+                put("history", history)
             }
             connection.outputStream.use { output -> output.write(request.toString().toByteArray(Charsets.UTF_8)) }
             val responseCode = connection.responseCode
@@ -337,7 +339,7 @@ class AiClient(
                 connection.setRequestProperty("Authorization", "Bearer $token")
             }
             val categories = JSONArray().apply {
-                state.categoryTotals.take(7).forEach { total ->
+                state.categoryTotals.take(19).forEach { total ->
                     put(JSONObject().apply {
                         put("categoryKey", total.key)
                         put("total", total.total)
@@ -345,6 +347,7 @@ class AiClient(
                     })
                 }
             }
+            val history = spendingHistoryJson(state)
             val request = JSONObject().apply {
                 put("schemaVersion", 1)
                 put("question", question.take(200))
@@ -354,6 +357,7 @@ class AiClient(
                 put("budgetAmount", state.budgetAmount ?: JSONObject.NULL)
                 put("previousExpenseTotal", state.previousExpenseTotal)
                 put("categories", categories)
+                put("history", history)
             }
             connection.outputStream.use { output -> output.write(request.toString().toByteArray(Charsets.UTF_8)) }
             val responseCode = connection.responseCode
@@ -375,6 +379,27 @@ class AiClient(
             else -> "$label 응답 오류($status)"
         },
     )
+
+    private fun spendingHistoryJson(state: LedgerUiState): JSONArray = JSONArray().apply {
+        state.recentMonthlySummaries(monthCount = 4).dropLast(1).forEach { summary ->
+            put(JSONObject().apply {
+                put("month", summary.month.toString())
+                put("expenseTotal", summary.expenseTotal)
+                put("incomeTotal", summary.incomeTotal)
+                put("expenseCount", summary.expenseCount)
+                put("incomeCount", summary.incomeCount)
+                put("categories", JSONArray().apply {
+                    summary.categories.take(7).forEach { total ->
+                        put(JSONObject().apply {
+                            put("categoryKey", total.key)
+                            put("total", total.total)
+                            put("count", total.count)
+                        })
+                    }
+                })
+            })
+        }
+    }
 
     private fun parseResponse(responseText: String, today: LocalDate): AiTransactionCandidate {
         val root = JSONObject(responseText)

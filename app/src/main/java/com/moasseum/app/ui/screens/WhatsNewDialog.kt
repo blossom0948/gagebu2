@@ -1,0 +1,145 @@
+package com.moasseum.app.ui.screens
+
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.moasseum.app.R
+import com.moasseum.app.ui.theme.LocalFinanceColors
+
+data class ReleaseNoteSlide(
+    val imageResId: Int,
+    val imageAspectRatio: Float,
+    val title: String,
+    val description: String,
+    val imageDescription: String,
+)
+
+object ReleaseNotesCatalog {
+    fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.24" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_24_ai,
+                imageAspectRatio = 904f / 688f,
+                title = "최근 4개월 소비 흐름",
+                description = "월별 지출과 카테고리 합계를 AI가 비교해 변화와 반복 패턴을 짚어줘요. 거래처와 메모는 전송하지 않아요.",
+                imageDescription = "모아씀 AI 분석 화면의 최근 4개월 지출 흐름",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_24_alerts,
+                imageAspectRatio = 904f / 790f,
+                title = "알림 후보를 더 정확하고 간편하게",
+                description = "금액이 언급된 일반 알림은 걸러내고, 승인·입금·출금이 확인되는 거래 위주로 후보를 만들어요. 마트 상호는 식비로 분류하고 후보를 한 번에 정리할 수도 있어요.",
+                imageDescription = "모아씀 알림 후보함의 카테고리와 전체 정리 동작",
+            ),
+        )
+        else -> emptyList()
+    }
+}
+
+@Composable
+fun WhatsNewDialog(
+    versionName: String,
+    slides: List<ReleaseNoteSlide> = remember(versionName) { ReleaseNotesCatalog.slides(versionName) },
+    onDismiss: () -> Unit,
+) {
+    if (slides.isEmpty()) return
+    val colors = LocalFinanceColors.current
+    var selectedPage by rememberSaveable(versionName) { mutableIntStateOf(0) }
+    val safePage = selectedPage.coerceIn(slides.indices)
+    val slide = slides[safePage]
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().widthIn(max = 480.dp).padding(horizontal = 22.dp).heightIn(max = 680.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = colors.surfaceRaised,
+            tonalElevation = 4.dp,
+        ) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()).padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("v$versionName 신기능", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                AnimatedContent(
+                    targetState = safePage,
+                    transitionSpec = {
+                        val direction = if (targetState > initialState) 1 else -1
+                        (slideInHorizontally { it / 4 * direction } + fadeIn()) togetherWith
+                            (slideOutHorizontally { -it / 4 * direction } + fadeOut())
+                    },
+                    label = "release-note-slide",
+                ) { page ->
+                    val pageSlide = slides[page]
+                    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                        Image(
+                            painter = painterResource(pageSlide.imageResId),
+                            contentDescription = pageSlide.imageDescription,
+                            modifier = Modifier.fillMaxWidth().aspectRatio(pageSlide.imageAspectRatio)
+                                .clip(RoundedCornerShape(18.dp)).background(colors.surfaceBase),
+                            contentScale = ContentScale.Fit,
+                        )
+                        Text(pageSlide.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(pageSlide.description, style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
+                    }
+                }
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text("${safePage + 1} / ${slides.size}", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+                    Spacer(Modifier.weight(1f))
+                    if (safePage > 0) {
+                        TextButton(onClick = { selectedPage = safePage - 1 }) { Text("이전") }
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Button(
+                        onClick = if (safePage == slides.lastIndex) onDismiss else ({ selectedPage = safePage + 1 }),
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = MaterialTheme.colorScheme.onPrimary),
+                        shape = RoundedCornerShape(14.dp),
+                    ) {
+                        Text(if (safePage == slides.lastIndex) "확인" else "다음", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+    }
+}

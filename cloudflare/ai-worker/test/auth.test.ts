@@ -141,6 +141,72 @@ test('batch AI rejects an unbounded edit target', async () => {
     assert.equal((await response.json() as { error: { code: string } }).error.code, 'AI_SCHEMA_ERROR');
   });
 });
+
+test('spending analysis receives only validated historical aggregates', async () => {
+  await mockFetch(async (url, options) => {
+    if (String(url).startsWith(env.SUPABASE_URL)) return Response.json({ id: userId });
+    const body = JSON.parse(String(options?.body));
+    const prompt = body.contents[0].parts[0].text as string;
+    assert.match(prompt, /2026-07/);
+    assert.match(prompt, /"expenseTotal":45000/);
+    assert.match(prompt, /"categoryKey":"FOOD"/);
+    assert.match(prompt, /관측 수가 0인 달은 실제 무지출로 단정하지 마세요/);
+    return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify({
+      schemaVersion: 1,
+      summary: '최근 기록된 지출을 비교했어요.',
+      observations: ['식비 집계가 가장 커요.'],
+      suggestions: ['다음 달 예산을 확인해 보세요.'],
+    }) }] } }] });
+  }, async () => {
+    const response = await worker.fetch(request('/v1/analyze-spending', 'synthetic-token', {
+      schemaVersion: 1,
+      month: '2026-10',
+      expenseTotal: 52_000,
+      incomeTotal: 0,
+      budgetAmount: 100_000,
+      previousExpenseTotal: 45_000,
+      categories: [{ categoryKey: 'FOOD', total: 52_000, count: 4 }],
+      history: [{
+        month: '2026-07', expenseTotal: 45_000, incomeTotal: 0, expenseCount: 3, incomeCount: 0,
+        categories: [{ categoryKey: 'FOOD', total: 45_000, count: 3 }],
+      }],
+    }), env);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json() as { summary: string }).summary, '최근 기록된 지출을 비교했어요.');
+  });
+});
+
+test('spending analysis rejects future, duplicate, or malformed historical months before Gemini', async () => {
+  await mockFetch(async (url) => {
+    if (String(url).startsWith(env.SUPABASE_URL)) return Response.json({ id: userId });
+    throw new Error('Invalid history must not reach Gemini');
+  }, async () => {
+    const response = await worker.fetch(request('/v1/analyze-spending', 'synthetic-token', {
+      month: '2026-10', expenseTotal: 1, incomeTotal: 0, budgetAmount: null, previousExpenseTotal: 0,
+      categories: [],
+      history: [{ month: '2026-10', expenseTotal: 0, incomeTotal: 0, expenseCount: 0, incomeCount: 0, categories: [] }],
+    }), env);
+    assert.equal(response.status, 400);
+  });
+});
+
+test('spending questions can compare historical aggregates without transaction rows', async () => {
+  await mockFetch(async (url, options) => {
+    if (String(url).startsWith(env.SUPABASE_URL)) return Response.json({ id: userId });
+    const body = JSON.parse(String(options?.body));
+    assert.match(body.contents[0].parts[0].text, /2026-09/);
+    assert.doesNotMatch(body.contents[0].parts[0].text, /merchant|memo|transactionId/i);
+    return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify({ answer: '지난달보다 기록된 지출이 늘었어요.' }) }] } }] });
+  }, async () => {
+    const response = await worker.fetch(request('/v1/ask-spending', 'synthetic-token', {
+      question: '지난달보다 많이 썼어?', month: '2026-10', expenseTotal: 52_000, incomeTotal: 0,
+      budgetAmount: null, previousExpenseTotal: 45_000, categories: [],
+      history: [{ month: '2026-09', expenseTotal: 45_000, incomeTotal: 0, expenseCount: 3, incomeCount: 0, categories: [] }],
+    }), env);
+    assert.equal(response.status, 200);
+    assert.match((await response.json() as { answer: string }).answer, /지난달보다/);
+  });
+});
 test('batch AI rejects any mutation values attached to a delete plan', async () => {
   await mockFetch(async (url) => {
     if (String(url).startsWith(env.SUPABASE_URL)) return Response.json({ id: userId });

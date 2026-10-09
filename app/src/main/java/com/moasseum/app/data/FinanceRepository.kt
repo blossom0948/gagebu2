@@ -17,6 +17,7 @@ import com.moasseum.app.domain.firstRecurringOccurrence
 import com.moasseum.app.domain.installmentSchedule
 import com.moasseum.app.domain.toDomain
 import com.moasseum.app.notification.NotificationSourcePolicy
+import com.moasseum.app.notification.PaymentNotificationParser
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.LocalDate
@@ -70,7 +71,14 @@ class FinanceRepository(
     fun observePendingNotificationCandidates(): Flow<List<NotificationCandidate>> =
         dao.observePendingNotificationCandidates().map { candidates ->
             candidates.filterNot { NotificationSourcePolicy.isExcluded(it.packageName) }
-                .map(NotificationCandidateEntity::toDomain)
+                .map { entity ->
+                    entity.toDomain().let { candidate ->
+                        candidate.copy(
+                            categoryKey = candidate.categoryKey.takeIf { it != "OTHER" }
+                                ?: PaymentNotificationParser.inferCategoryFrom("${candidate.merchant} ${candidate.title} ${candidate.preview}"),
+                        )
+                    }
+                }
         }
 
     suspend fun dismissExcludedNotificationCandidates() =
@@ -154,7 +162,8 @@ class FinanceRepository(
                 amount = candidate.amount,
                 occurredAt = candidate.occurredDate.atStartOfDay(ZoneId.of(timezone)).toInstant().toEpochMilli(),
                 timezone = timezone,
-                categoryKey = candidate.categoryKey,
+                categoryKey = candidate.categoryKey.takeIf { it != "OTHER" }
+                    ?: PaymentNotificationParser.inferCategoryFrom("${candidate.merchant} ${candidate.memo}"),
                 merchant = candidate.merchant.trim(),
                 memo = candidate.memo.trim(),
                 paymentMethod = paymentMethod,
@@ -279,7 +288,8 @@ class FinanceRepository(
                 type = candidate.type,
                 occurredAt = occurredAt,
                 timezone = TimeZone.getDefault().id,
-                categoryKey = candidate.categoryKey,
+                categoryKey = candidate.categoryKey.takeIf { it != "OTHER" }
+                    ?: PaymentNotificationParser.inferCategoryFrom("${candidate.merchant} ${candidate.title} ${candidate.preview}"),
                 merchant = candidate.merchant,
                 memo = "알림에서 가져온 거래",
                 source = "NOTIFICATION",
@@ -293,6 +303,8 @@ class FinanceRepository(
     suspend fun dismissNotificationCandidate(id: Long) {
         dao.updateNotificationCandidateStatus(id, "DISMISSED")
     }
+
+    suspend fun dismissAllNotificationCandidates(): Int = dao.dismissAllPendingNotificationCandidates()
 
     suspend fun clearAllLocalRecords() {
         dao.clearAllLocalRecords()

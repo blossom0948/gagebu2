@@ -159,6 +159,15 @@ data class CategoryTotal(
     val count: Int,
 )
 
+data class MonthlySpendingSummary(
+    val month: YearMonth,
+    val expenseTotal: Long,
+    val incomeTotal: Long,
+    val expenseCount: Int,
+    val incomeCount: Int,
+    val categories: List<CategoryTotal>,
+)
+
 data class SpendingAnalysis(
     val summary: String,
     val observations: List<String>,
@@ -187,6 +196,28 @@ data class LedgerUiState(
     val carriedBudgetAmount: Long = 0,
     val budgetRollover: Boolean = false,
 ) {
+    /** Monthly aggregates only; callers can share these without sending transaction details. */
+    fun recentMonthlySummaries(monthCount: Int = 4): List<MonthlySpendingSummary> {
+        require(monthCount in 1..24)
+        return (monthCount - 1 downTo 0).map { offset ->
+            val targetMonth = month.minusMonths(offset.toLong())
+            val rows = transactions.filter { YearMonth.from(it.occurredDate) == targetMonth }
+            val expenses = rows.filter { it.type == TransactionType.EXPENSE }
+            val incomes = rows.filter { it.type == TransactionType.INCOME }
+            val categories = expenses.groupBy(Transaction::categoryKey)
+                .map { (key, values) -> CategoryTotal(key, values.sumOf(Transaction::amount), values.size) }
+                .sortedByDescending(CategoryTotal::total)
+            MonthlySpendingSummary(
+                month = targetMonth,
+                expenseTotal = expenses.sumOf(Transaction::amount),
+                incomeTotal = incomes.sumOf(Transaction::amount),
+                expenseCount = expenses.size,
+                incomeCount = incomes.size,
+                categories = categories,
+            )
+        }
+    }
+
     val monthTransactions: List<Transaction>
         get() = transactions.filter { it.occurredDate.let { date -> YearMonth.from(date) == month } }
 

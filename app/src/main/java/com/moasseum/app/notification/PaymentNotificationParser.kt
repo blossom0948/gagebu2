@@ -13,15 +13,25 @@ object PaymentNotificationParser {
     private val markedKoreanAmount = Regex("""(\d+(?:\.\d+)?)\s*(만|천)\s*원""")
     private val actionAmount = Regex("""(?:승인|결제|출금|입금|환급|송금|이체|사용)\s*(?:금액\s*)?[:：]?\s*(\d{1,3}(?:,\d{3})+)\s*원?(?![-/.]\d)""")
     private val explicitActionAmount = Regex("""(?:승인|결제|출금|입금|환급|송금|이체|사용)\s*금액\s*[:：]?\s*(\d{3,})(?![\d,])\s*원?(?![-/.]\d)""")
-    private val amountActionTerms = listOf("승인", "결제", "출금", "입금", "송금", "환급", "급여", "월급", "이체", "사용내역", "이용내역", "받았", "충전")
     private val hardExcludedContexts = listOf(
         "승인번호", "인증번호", "결제번호", "예약번호", "주문번호", "결제예정", "납부예정", "출금예정",
     )
     private val softExcludedContexts = listOf("쿠폰", "할인", "혜택", "적립", "포인트", "이벤트", "특가")
     private val cancelledTerms = listOf("취소", "cancel", "거절", "실패", "reversed")
+    private val expenseTerms = listOf(
+        "승인", "결제완료", "결제 완료", "결제가 완료", "결제되었습니다", "결제됐", "결제", "출금",
+        "사용내역", "사용 내역", "이용내역", "이용 내역", "매입", "구매완료", "구매 완료",
+        "payment", "purchase", "withdrawal", "보냈", "송금완료", "이체완료", "출금완료",
+    )
+    private val incomeTerms = listOf(
+        "입금", "급여", "월급", "환급", "받았", "받음", "보낸 분", "보낸분", "보낸사람", "송금인",
+        "매출", "deposit", "salary", "refund", "송금받", "이체받", "입금완료", "입금되었습니다", "입금됐",
+    )
     private val strongTransactionTerms = listOf(
-        "승인", "결제완료", "결제 완료", "출금", "입금", "환급", "급여", "월급", "송금완료", "이체완료",
-        "payment", "purchase", "withdrawal", "deposit", "salary", "refund",
+        "승인", "결제완료", "결제 완료", "결제가 완료", "결제되었습니다", "결제됐", "출금", "입금", "환급",
+        "급여", "월급", "송금완료", "이체완료", "입금완료", "입금되었습니다", "입금됐", "출금완료",
+        "구매완료", "구매 완료", "보낸 분", "보낸분", "보낸사람", "송금인", "payment", "purchase",
+        "withdrawal", "deposit", "salary", "refund",
     )
 
     fun parse(
@@ -36,20 +46,14 @@ object PaymentNotificationParser {
         if (normalized.isBlank()) return null
 
         if (cancelledTerms.any { normalized.contains(it, ignoreCase = true) }) return null
-        val expenseSignal = listOf(
-            "승인", "결제", "출금", "사용", "이용", "매입", "구매", "payment", "purchase", "withdrawal",
-            "보냈", "송금완료", "이체완료", "출금완료",
-        )
-            .any { normalized.contains(it, ignoreCase = true) }
-        val incomeSignal = listOf(
-            "입금", "급여", "월급", "환급", "받았", "받음", "매출", "deposit", "salary", "refund", "송금받", "이체받",
-            "입금완료",
-        )
-            .any { normalized.contains(it, ignoreCase = true) }
-        if (aiConfirmedType == null && (!expenseSignal && !incomeSignal)) return null
-        if (aiConfirmedType == null && hardExcludedContexts.any { normalized.contains(it, ignoreCase = true) }) return null
+        val expenseSignal = expenseTerms.any { normalized.contains(it, ignoreCase = true) }
+        val incomeSignal = incomeTerms.any { normalized.contains(it, ignoreCase = true) }
+        // AI can refine direction, but a number or chat message alone is never transaction evidence.
+        if (!expenseSignal && !incomeSignal) return null
+        if (hardExcludedContexts.any { normalized.contains(it, ignoreCase = true) }) return null
         val hasStrongTransactionSignal = strongTransactionTerms.any { normalized.contains(it, ignoreCase = true) }
-        if (aiConfirmedType == null && softExcludedContexts.any { normalized.contains(it, ignoreCase = true) } && !hasStrongTransactionSignal) return null
+        if (!hasStrongTransactionSignal) return null
+        if (softExcludedContexts.any { normalized.contains(it, ignoreCase = true) } && !hasStrongTransactionSignal) return null
 
         val amount = findMarkedAmount(normalized)
         amount ?: return null
@@ -66,7 +70,7 @@ object PaymentNotificationParser {
             merchant = merchant.take(80),
             amount = amount,
             type = type,
-            categoryKey = inferCategory(normalized),
+            categoryKey = inferCategoryFrom(normalized),
             postedAt = postedAt,
             fingerprint = fingerprint,
         )
@@ -81,10 +85,9 @@ object PaymentNotificationParser {
         val hasAmount = findAmount(normalized) != null
         if (!hasAmount) return false
         val hasCurrency = wonAmount.containsMatchIn(normalized) || symbolAmount.containsMatchIn(normalized) || koreanAmount.containsMatchIn(normalized)
-        val hasMoneyContext = amountActionTerms.any { normalized.contains(it, ignoreCase = true) }
         val hasTransactionSignal = strongTransactionTerms.any { normalized.contains(it, ignoreCase = true) }
         val hasActionAmount = actionAmount.containsMatchIn(normalized) || explicitActionAmount.containsMatchIn(normalized)
-        return (hasCurrency || hasActionAmount) && (hasTransactionSignal || hasMoneyContext)
+        return (hasCurrency || hasActionAmount) && hasTransactionSignal
     }
 
     fun hasStrongTransactionSignal(title: String, body: String): Boolean {
@@ -143,13 +146,17 @@ object PaymentNotificationParser {
             ?: "알림 거래"
     }
 
-    private fun inferCategory(text: String): String {
+    fun inferCategoryFrom(text: String): String {
         val lower = text.lowercase(Locale.KOREAN)
         return when {
             listOf("카페", "커피", "스타벅스", "아메리카노", "cafe", "coffee").any { lower.contains(it) } -> "CAFE"
-            listOf("식당", "치킨", "배달", "점심", "저녁", "마트", "편의점", "food", "restaurant").any { lower.contains(it) } -> "FOOD"
+            listOf(
+                "식당", "치킨", "배달", "점심", "저녁", "마트", "이마트", "홈플러스", "롯데마트", "코스트코",
+                "트레이더스", "하나로마트", "노브랜드", "gs더프레시", "이마트에브리데이", "마켓컬리", "오아시스마켓",
+                "편의점", "cu", "gs25", "세븐일레븐", "food", "restaurant", "supermarket", "grocery",
+            ).any { lower.contains(it) } -> "FOOD"
             listOf("택시", "버스", "지하철", "주유", "교통", "uber", "taxi", "transport").any { lower.contains(it) } -> "TRANSPORT"
-            listOf("쇼핑", "온라인", "쿠팡", "무신사", "shopping", "store").any { lower.contains(it) } -> "SHOPPING"
+            listOf("쇼핑", "온라인", "쿠팡", "무신사", "다이소", "shopping", "store").any { lower.contains(it) } -> "SHOPPING"
             listOf("월세", "전세", "관리비", "주거", "housing").any { lower.contains(it) } -> "HOUSING"
             listOf("통신비", "휴대폰 요금", "인터넷 요금", "통신", "communication").any { lower.contains(it) } -> "COMMUNICATION"
             listOf("병원", "약국", "건강", "의료", "hospital", "pharmacy").any { lower.contains(it) } -> "HEALTH"
@@ -163,7 +170,7 @@ object PaymentNotificationParser {
             listOf("보험료", "보험", "insurance").any { lower.contains(it) } -> "INSURANCE"
             listOf("이자", "수수료", "금융", "finance").any { lower.contains(it) } -> "FINANCE"
             listOf("넷플릭스", "유튜브 프리미엄", "게임", "영화", "leisure").any { lower.contains(it) } -> "LEISURE"
-            listOf("전기", "가스", "생필품", "생활용품", "living").any { lower.contains(it) } -> "LIVING"
+            listOf("전기", "가스", "생필품", "생활용품", "생활용품점", "living").any { lower.contains(it) } -> "LIVING"
             else -> "OTHER"
         }
     }

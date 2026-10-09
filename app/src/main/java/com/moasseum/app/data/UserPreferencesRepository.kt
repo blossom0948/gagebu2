@@ -247,6 +247,21 @@ class UserPreferencesRepository(
         context.settingsDataStore.edit { preferences -> preferences[FIRST_RUN_GUIDE_COMPLETED] = true }
     }
 
+    suspend fun shouldShowReleaseNotes(currentVersion: String, isUpgradeInstall: Boolean): Boolean {
+        require(currentVersion.matches(Regex("\\d+\\.\\d+\\.\\d+")))
+        val lastSeenVersion = context.settingsDataStore.data.first()[LAST_SEEN_RELEASE_NOTES_VERSION]
+        return com.moasseum.app.update.ReleaseNotesPolicy.shouldShow(
+            currentVersion = currentVersion,
+            lastSeenVersion = lastSeenVersion,
+            isUpgradeInstall = isUpgradeInstall,
+        )
+    }
+
+    suspend fun markReleaseNotesSeen(version: String) {
+        require(version.matches(Regex("\\d+\\.\\d+\\.\\d+")))
+        context.settingsDataStore.edit { preferences -> preferences[LAST_SEEN_RELEASE_NOTES_VERSION] = version }
+    }
+
     suspend fun setAiNotificationClassificationEnabled(enabled: Boolean) {
         context.settingsDataStore.edit { preferences -> preferences[AI_NOTIFICATION_CLASSIFICATION_ENABLED] = enabled }
     }
@@ -369,6 +384,7 @@ class UserPreferencesRepository(
         val NOTIFICATION_ACCESS_PROMPT_SHOWN = booleanPreferencesKey("notification_access_prompt_shown")
         val NOTIFICATION_POST_PERMISSION_PROMPT_SHOWN = booleanPreferencesKey("notification_post_permission_prompt_shown")
         val FIRST_RUN_GUIDE_COMPLETED = booleanPreferencesKey("first_run_guide_completed")
+        val LAST_SEEN_RELEASE_NOTES_VERSION = stringPreferencesKey("last_seen_release_notes_version")
         val AI_NOTIFICATION_CLASSIFICATION_ENABLED = booleanPreferencesKey("ai_notification_classification_enabled")
         val APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled")
         val FINANCE_REMINDERS_ENABLED = booleanPreferencesKey("finance_reminders_enabled")
