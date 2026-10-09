@@ -3,6 +3,8 @@ package com.moasseum.app.domain
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.LocalDate
+import java.time.MonthDay
+import java.time.temporal.ChronoUnit
 import java.time.DayOfWeek
 import java.time.ZoneId
 import java.time.YearMonth
@@ -54,6 +56,17 @@ fun noSpendStreakDays(
         day = day.minusDays(1)
     }
     return streak
+}
+
+/** Days to the next valid occurrence of a recurring MM-DD date, including leap-day dates. */
+fun daysUntilNextAnniversary(dateKey: String, today: LocalDate = LocalDate.now()): Long? {
+    val monthDay = runCatching { MonthDay.parse("--$dateKey") }.getOrNull() ?: return null
+    for (year in today.year..(today.year + 8)) {
+        if (!monthDay.isValidYear(year)) continue
+        val occurrence = runCatching { monthDay.atYear(year) }.getOrNull() ?: continue
+        if (!occurrence.isBefore(today)) return ChronoUnit.DAYS.between(today, occurrence)
+    }
+    return null
 }
 
 data class AiTransactionCandidate(

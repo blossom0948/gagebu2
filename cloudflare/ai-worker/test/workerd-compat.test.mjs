@@ -18,6 +18,17 @@ test('actual Workerd runtime supports authenticated fetch without forwarding red
       }
       assert.ok(request.url.startsWith('https://generativelanguage.googleapis.com/'));
       modelCalls++;
+      if (request.body && new URL(request.url).searchParams.get('key')) {
+        // API keys are sent only as headers; this branch intentionally does not inspect secrets.
+      }
+      const requestBody = await request.clone().json().catch(() => ({}));
+      if (new URL(request.url).pathname.includes('generateContent') &&
+          requestBody.generationConfig?.responseSchema?.properties?.action) {
+        return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify({ schemaVersion: 1, action: 'ADD', candidates: [
+          { type: 'EXPENSE', amount: 1200, occurredDate: '2026-10-05', categoryKey: 'FOOD', merchant: 'QA 점심', memo: '', confidence: { amount: 0.9, date: 0.8, category: 0.7 }, needsConfirmation: [] },
+        ], target: { type: 'ANY', amount: 0, categoryKey: '', merchantTokens: [], from: '', through: '' },
+        edit: { amount: 0, merchant: '', categoryKey: '', type: 'NONE', occurredDate: '', memo: '' } }) }] } }] });
+      }
       return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify({ amount: 1000, merchant: 'QA', type: 'EXPENSE' }) }] } }] });
     },
   }));
@@ -26,10 +37,14 @@ test('actual Workerd runtime supports authenticated fetch without forwarding red
     assert.equal((await mf.dispatchFetch('https://qa.worker.invalid/v1/parse-transaction', options(false))).status, 401);
     const accepted = await mf.dispatchFetch('https://qa.worker.invalid/v1/parse-transaction', options(true));
     assert.equal(accepted.status, 200); assert.equal((await accepted.json()).amount, 1000); assert.equal(modelCalls, 1);
+    const batch = await mf.dispatchFetch('https://qa.worker.invalid/v1/parse-batch-command', {
+      ...options(true), body: JSON.stringify({ text: '점심 1200원', today: '2026-10-05', timezone: 'Asia/Seoul' }),
+    });
+    assert.equal(batch.status, 200); assert.equal((await batch.json()).candidates[0].amount, 1200); assert.equal(modelCalls, 2);
     authStatus = 403;
     assert.equal((await mf.dispatchFetch('https://qa.worker.invalid/v1/parse-transaction', options(true))).status, 401);
     authStatus = 302;
     assert.equal((await mf.dispatchFetch('https://qa.worker.invalid/v1/parse-transaction', options(true))).status, 503);
-    assert.equal(modelCalls, 1);
+    assert.equal(modelCalls, 2);
   } finally { await mf.dispose(); }
 });

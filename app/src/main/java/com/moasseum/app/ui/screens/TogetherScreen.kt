@@ -67,6 +67,7 @@ import com.moasseum.app.domain.formatDate
 import com.moasseum.app.domain.formatSignedWon
 import com.moasseum.app.domain.formatMonth
 import com.moasseum.app.domain.formatWon
+import com.moasseum.app.domain.daysUntilNextAnniversary
 import com.moasseum.app.ui.components.categoryColor
 import com.moasseum.app.ui.components.categoryLabel
 import com.moasseum.app.ui.components.EmptyState
@@ -724,7 +725,10 @@ private fun SharedFinanceItemCard(
                     Text(item.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                     val detail = when (item.kind) {
-                        SharedFinanceKind.ANNIVERSARY -> "기념일 · ${item.dateKey}"
+                        SharedFinanceKind.ANNIVERSARY -> {
+                            val days = item.dateKey?.let { daysUntilNextAnniversary(it, java.time.LocalDate.now()) }
+                            "기념일 · ${item.dateKey} · ${days?.let { if (it == 0L) "D-Day" else "D-$it" } ?: "날짜 확인"}"
+                        }
                         SharedFinanceKind.LIVING_BUDGET -> "생활비 예산 · ${item.monthKey}"
                         else -> "${item.kind.label} · 매월 ${item.dueDay}일"
                     }

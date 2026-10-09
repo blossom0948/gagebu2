@@ -1255,6 +1255,7 @@ private fun MoasseumApp(
                         true
                     }
                 },
+                onParseBatchWithAi = { text -> aiClient.parseBatchCommand(text, uiState.transactions) },
                 onApplyBatch = { action, ids, edit ->
                     if (savingTransaction || ids.isEmpty()) false else {
                         savingTransaction = true

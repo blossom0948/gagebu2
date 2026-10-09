@@ -131,10 +131,45 @@ object BatchCommandParser {
         today: LocalDate,
     ): BatchCommandPlan.Change {
         val target = parseTarget(targetText, today)
-        require(target.amount != null || target.categoryKey != null || target.merchantTokens.isNotEmpty() || target.from != null) {
-            "대상을 좁혀 주세요. 예: 삭제: 오늘 카페 지출 / 수정: 스타벅스 -> 금액 5000원"
+        return previewChange(action, target, edit, transactions)
+    }
+
+    /** Applies a validated query plan to local rows only; no transaction rows leave the device. */
+    fun previewChange(
+        action: BatchCommandAction,
+        target: BatchTarget,
+        edit: BatchEditValues?,
+        transactions: List<Transaction>,
+    ): BatchCommandPlan.Change {
+        require(action == BatchCommandAction.UPDATE || action == BatchCommandAction.DELETE) { "수정 또는 삭제만 미리 볼 수 있어요." }
+        require(target.amount == null || target.amount in 1..1_000_000_000_000L) { "검색 금액을 확인해 주세요." }
+        require(target.categoryKey == null || target.categoryKey in categoryTerms.keys) { "검색 카테고리를 확인해 주세요." }
+        require(target.merchantTokens.size <= 4 && target.merchantTokens.all { it.trim().length in 2..60 }) {
+            "검색 가맹점 조건을 확인해 주세요."
         }
-        if (action == BatchCommandAction.UPDATE) require(edit != null) { "바꿀 금액·가맹점·카테고리를 적어 주세요." }
+        require(target.from == null || target.through == null || !target.from.isAfter(target.through)) {
+            "검색 날짜 범위를 확인해 주세요."
+        }
+        require(target.amount != null || target.categoryKey != null || target.merchantTokens.isNotEmpty() ||
+            target.from != null || target.through != null) {
+            "대상을 좁혀 주세요. 예: 오늘 카페 지출 또는 특정 가맹점"
+        }
+        if (action == BatchCommandAction.UPDATE) {
+            require(edit != null) { "바꿀 금액·가맹점·카테고리를 적어 주세요." }
+            require(edit.amount == null || edit.amount in 1..1_000_000_000_000L) { "변경할 금액을 확인해 주세요." }
+            require(edit.merchant == null || edit.merchant.trim().length in 1..120) { "변경할 가맹점을 확인해 주세요." }
+            require(edit.categoryKey == null || edit.categoryKey in categoryTerms.keys) { "변경할 카테고리를 확인해 주세요." }
+            require(edit.type == null || edit.type == TransactionType.EXPENSE || edit.type == TransactionType.INCOME) {
+                "수입 또는 지출 유형만 변경할 수 있어요."
+            }
+            require(edit.memo == null || edit.memo.length <= 300) { "메모는 300자 이내로 입력해 주세요." }
+            require(
+                edit.amount != null || edit.merchant != null || edit.categoryKey != null ||
+                    edit.type != null || edit.occurredDate != null || edit.memo != null,
+            ) { "변경할 내용을 확인해 주세요." }
+        } else {
+            require(edit == null) { "삭제 요청에 변경 내용이 포함되어 있어요." }
+        }
         val matches = transactions.asSequence()
             .filter { it.ledgerId == "personal" && it.sharingScope != "SHARED" && it.type != TransactionType.TRANSFER }
             .filter { it.installmentGroupId == null }

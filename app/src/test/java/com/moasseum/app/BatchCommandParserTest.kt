@@ -3,6 +3,8 @@ package com.moasseum.app
 import com.moasseum.app.data.BatchCommandAction
 import com.moasseum.app.data.BatchCommandParser
 import com.moasseum.app.data.BatchCommandPlan
+import com.moasseum.app.data.BatchEditValues
+import com.moasseum.app.data.BatchTarget
 import com.moasseum.app.domain.Transaction
 import com.moasseum.app.domain.TransactionType
 import java.time.LocalDate
@@ -66,6 +68,43 @@ class BatchCommandParserTest {
         val row = transaction(1, 4_500, "카페", "CAFE", today)
         val error = runCatching { BatchCommandParser.parse("삭제: 지출", listOf(row), today) }.exceptionOrNull()
         assertTrue(error is IllegalArgumentException)
+    }
+
+    @Test fun aiQueryPlanRunsOnlyAgainstEligibleLocalRows() {
+        val privateRow = transaction(1, 4_500, "스타벅스", "CAFE", today)
+        val otherMerchant = transaction(2, 4_500, "개인 카페", "CAFE", today)
+        val sharedRow = transaction(3, 4_500, "스타벅스", "CAFE", today, ledger = "shared:ledger", scope = "SHARED")
+        val plan = BatchCommandParser.previewChange(
+            action = BatchCommandAction.UPDATE,
+            target = BatchTarget(
+                type = TransactionType.EXPENSE,
+                categoryKey = "CAFE",
+                merchantTokens = listOf("스타벅스"),
+                from = today,
+                through = today,
+            ),
+            edit = BatchEditValues(amount = 5_000),
+            transactions = listOf(privateRow, otherMerchant, sharedRow),
+        )
+
+        assertEquals(listOf(1L), plan.matches.map { it.id })
+        assertEquals(5_000L, plan.edit?.amount)
+    }
+
+    @Test fun aiPlanRejectsUnboundedSearchAndTransferEdits() {
+        val unbounded = runCatching {
+            BatchCommandParser.previewChange(BatchCommandAction.DELETE, BatchTarget(), null, emptyList())
+        }.exceptionOrNull()
+        assertTrue(unbounded is IllegalArgumentException)
+        val transferEdit = runCatching {
+            BatchCommandParser.previewChange(
+                BatchCommandAction.UPDATE,
+                BatchTarget(merchantTokens = listOf("스타벅스")),
+                BatchEditValues(type = TransactionType.TRANSFER),
+                emptyList(),
+            )
+        }.exceptionOrNull()
+        assertTrue(transferEdit is IllegalArgumentException)
     }
 
     @Test fun exactIsoDateDoesNotBecomeAnAmountFilter() {

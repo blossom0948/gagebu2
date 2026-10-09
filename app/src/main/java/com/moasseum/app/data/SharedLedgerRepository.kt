@@ -271,23 +271,24 @@ class SharedLedgerApi(
 
     suspend fun fetchGoals(token: String, ledgerId: String): List<SharedLedgerGoal> {
         val rows = try {
-            JSONArray(request(
-                "GET",
-                "shared_goals?select=id,owner_id,title,target_amount,current_amount,month_key&ledger_id=eq.${enc(ledgerId)}&order=month_key.desc&limit=120",
+            fetchPagedRows(
                 token,
-            ))
+                "shared_goals?select=id,owner_id,title,target_amount,current_amount,month_key&ledger_id=eq.${enc(ledgerId)}&order=month_key.desc,id.asc",
+                pageSize = 120,
+                maxRows = 5_000,
+            )
         } catch (error: SharedApiException) {
             if (error.statusCode != 400) throw error
             // Keep the rest of a shared ledger usable when the additive goal
             // progress migration has not reached the server yet.
-            JSONArray(request(
-                "GET",
-                "shared_goals?select=id,owner_id,title,target_amount,month_key&ledger_id=eq.${enc(ledgerId)}&order=month_key.desc&limit=120",
+            fetchPagedRows(
                 token,
-            ))
+                "shared_goals?select=id,owner_id,title,target_amount,month_key&ledger_id=eq.${enc(ledgerId)}&order=month_key.desc,id.asc",
+                pageSize = 120,
+                maxRows = 5_000,
+            )
         }
-        return (0 until rows.length()).map { index ->
-            val row = rows.getJSONObject(index)
+        return rows.map { row ->
             SharedLedgerGoal(
                 id = UUID.fromString(row.getString("id")).toString(),
                 ownerId = UUID.fromString(row.getString("owner_id")).toString(),
@@ -339,13 +340,13 @@ class SharedLedgerApi(
     }
 
     suspend fun fetchFinanceItems(token: String, ledgerId: String): List<SharedFinanceItem> {
-        val rows = JSONArray(request(
-            "GET",
-            "shared_finance_items?select=id,owner_id,kind,title,amount,due_day,month_key,date_key,memo&ledger_id=eq.${enc(ledgerId)}&order=kind.asc,title.asc&limit=300",
+        val rows = fetchPagedRows(
             token,
-        ))
-        return (0 until rows.length()).map { index ->
-            val row = rows.getJSONObject(index)
+            "shared_finance_items?select=id,owner_id,kind,title,amount,due_day,month_key,date_key,memo&ledger_id=eq.${enc(ledgerId)}&order=kind.asc,title.asc,id.asc",
+            pageSize = 200,
+            maxRows = 3_000,
+        )
+        return rows.map { row ->
             SharedFinanceItem(
                 id = UUID.fromString(row.getString("id")).toString(),
                 ownerId = UUID.fromString(row.getString("owner_id")).toString(),
@@ -451,13 +452,13 @@ class SharedLedgerApi(
 
     suspend fun fetchTransactions(token: String, ledgerId: String): List<RemoteSharedTransaction> {
         val columns = "ledger_id,transaction_id,owner_id,type,amount,occurred_at,timezone,category_key,merchant,memo,payment_method,updated_at,deleted_at"
-        val response = JSONArray(request(
-            "GET",
-            "shared_transactions?select=$columns&ledger_id=eq.${enc(ledgerId)}&order=updated_at.asc&limit=1000",
+        val rows = fetchPagedRows(
             token,
-        ))
-        return (0 until response.length()).map { index ->
-            val item = response.getJSONObject(index)
+            "shared_transactions?select=$columns&ledger_id=eq.${enc(ledgerId)}&order=transaction_id.asc",
+            pageSize = 1_000,
+            maxRows = 20_000,
+        )
+        return rows.map { item ->
             RemoteSharedTransaction(
                 ledgerId = item.getString("ledger_id"),
                 transactionId = UUID.fromString(item.getString("transaction_id")).toString(),
@@ -473,6 +474,26 @@ class SharedLedgerApi(
                 updatedAt = Instant.parse(item.getString("updated_at")).toEpochMilli(),
                 deletedAt = item.optString("deleted_at").takeIf { it.isNotBlank() && it != "null" }?.let { Instant.parse(it).toEpochMilli() },
             )
+        }
+    }
+
+    private suspend fun fetchPagedRows(
+        token: String,
+        basePath: String,
+        pageSize: Int,
+        maxRows: Int,
+    ): List<JSONObject> {
+        require(pageSize in 1..1_000 && maxRows >= pageSize)
+        val result = ArrayList<JSONObject>()
+        var offset = 0
+        while (true) {
+            val page = JSONArray(request("GET", "$basePath&limit=$pageSize&offset=$offset", token))
+            require(result.size + page.length() <= maxRows) {
+                "공유 기록이 너무 많아 한 번에 불러오지 못했어요. 기간별 조회가 필요합니다."
+            }
+            for (index in 0 until page.length()) result += page.getJSONObject(index)
+            if (page.length() < pageSize) return result
+            offset += pageSize
         }
     }
 

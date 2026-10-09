@@ -92,6 +92,9 @@ fun AddTransactionSheet(
     prefillKey: String = "",
     transactions: List<Transaction> = emptyList(),
     onAddBatch: (List<AiTransactionCandidate>, String) -> Boolean = { _, _ -> false },
+    onParseBatchWithAi: suspend (String) -> Result<com.moasseum.app.data.BatchCommandPlan> = {
+        Result.failure(IllegalStateException("AI 일괄 해석을 사용할 수 없어요."))
+    },
     onApplyBatch: (com.moasseum.app.data.BatchCommandAction, List<Long>, com.moasseum.app.data.BatchEditValues?) -> Boolean = { _, _, _ -> false },
 ) {
     val scrollState = rememberScrollState()
@@ -126,6 +129,7 @@ fun AddTransactionSheet(
                 saving = saving,
                 onDismiss = onDismiss,
                 onAdd = onAddBatch,
+                onParseWithAi = onParseBatchWithAi,
                 onApply = onApplyBatch,
             )
         }

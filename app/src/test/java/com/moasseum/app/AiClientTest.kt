@@ -44,4 +44,15 @@ class AiClientTest {
 
         assertEquals("CAFE", candidate.categoryKey)
     }
+
+    @Test
+    fun `AI batch parsing requires an authenticated request and never silently changes records`() = runBlocking {
+        val result = AiClient(
+            baseUrl = "https://moasseum-ai-worker.example.workers.dev",
+            bearerTokenProvider = { null },
+        ).parseBatchCommand("점심 8천원 그리고 커피 4,500원", emptyList())
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("로그인"))
+    }
 }

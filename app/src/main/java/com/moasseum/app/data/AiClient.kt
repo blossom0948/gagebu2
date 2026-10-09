@@ -45,6 +45,108 @@ class AiClient(
             }
         }
 
+    suspend fun parseBatchCommand(
+        text: String,
+        transactions: List<com.moasseum.app.domain.Transaction>,
+        today: LocalDate = LocalDate.now(),
+    ): Result<BatchCommandPlan> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val trimmedText = text.trim()
+                require(trimmedText.isNotBlank()) { "문장을 입력해 주세요." }
+                require(trimmedText.length <= 500) { "문장은 500자 이내로 입력해 주세요." }
+                require(baseUrl.isNotBlank()) { "AI 서버 주소가 설정되지 않았어요." }
+                val token = bearerTokenProvider()?.takeIf(String::isNotBlank)
+                    ?: error("AI로 여러 거래를 해석하려면 로그인해 주세요.")
+                val endpoint = "${baseUrl.trimEnd('/')}/v1/parse-batch-command"
+                val connection = (URL(endpoint).openConnection() as? HttpURLConnection)
+                    ?: throw IOException("AI 서버 주소를 확인해 주세요.")
+                if (connection.url.protocol != "https") {
+                    connection.disconnect()
+                    throw IOException("AI 서버는 HTTPS 주소만 사용할 수 있어요.")
+                }
+                try {
+                    connection.requestMethod = "POST"
+                    connection.instanceFollowRedirects = false
+                    connection.connectTimeout = 12_000
+                    connection.readTimeout = 35_000
+                    connection.doOutput = true
+                    connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                    connection.setRequestProperty("Authorization", "Bearer $token")
+                    val request = JSONObject().apply {
+                        put("schemaVersion", 1)
+                        put("text", trimmedText)
+                        put("today", today.toString())
+                        put("timezone", ZoneId.systemDefault().id)
+                    }
+                    connection.outputStream.use { output -> output.write(request.toString().toByteArray(Charsets.UTF_8)) }
+                    val responseCode = connection.responseCode
+                    val stream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
+                    val responseText = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                    if (responseCode !in 200..299) throw serverError(responseCode, "AI 여러 거래 해석")
+                    val root = JSONObject(responseText)
+                    require(root.optInt("schemaVersion") == 1) { "AI 응답 버전을 확인하지 못했어요." }
+                    when (root.optString("action")) {
+                        "ADD" -> {
+                            val candidates = root.optJSONArray("candidates") ?: error("AI가 거래 후보를 만들지 못했어요.")
+                            require(candidates.length() in 1..30) { "AI가 만든 거래 후보 수를 확인해 주세요." }
+                            BatchCommandPlan.Add((0 until candidates.length()).map { index ->
+                                parseCandidate(candidates.getJSONObject(index), today)
+                            })
+                        }
+                        "UPDATE", "DELETE" -> {
+                            val action = if (root.optString("action") == "UPDATE") BatchCommandAction.UPDATE else BatchCommandAction.DELETE
+                            val targetJson = root.optJSONObject("target") ?: error("AI가 검색 조건을 만들지 못했어요.")
+                            val type = when (targetJson.optString("type")) {
+                                "EXPENSE" -> TransactionType.EXPENSE
+                                "INCOME" -> TransactionType.INCOME
+                                "ANY" -> null
+                                else -> error("AI 검색 유형을 확인해 주세요.")
+                            }
+                            val merchantTokensJson = targetJson.optJSONArray("merchantTokens") ?: JSONArray()
+                            val merchantTokens = (0 until merchantTokensJson.length()).map { index ->
+                                merchantTokensJson.getString(index).trim().also { require(it.length in 2..60) }
+                            }.distinct().also { require(it.size <= 4) }
+                            val categoryKey = targetJson.optString("categoryKey").takeIf(String::isNotBlank)
+                            require(categoryKey == null || categoryKey in ALLOWED_CATEGORIES) { "AI 검색 카테고리를 확인해 주세요." }
+                            val target = BatchTarget(
+                                type = type,
+                                amount = targetJson.optLong("amount").let { if (it == 0L) null else it },
+                                categoryKey = categoryKey,
+                                merchantTokens = merchantTokens,
+                                from = targetJson.optString("from").takeIf(String::isNotBlank)?.let(LocalDate::parse),
+                                through = targetJson.optString("through").takeIf(String::isNotBlank)?.let(LocalDate::parse),
+                            )
+                            val edit = if (action == BatchCommandAction.UPDATE) {
+                                val editJson = root.optJSONObject("edit") ?: error("AI가 변경할 항목을 만들지 못했어요.")
+                                val editType = when (editJson.optString("type")) {
+                                    "EXPENSE" -> TransactionType.EXPENSE
+                                    "INCOME" -> TransactionType.INCOME
+                                    "NONE" -> null
+                                    else -> error("AI 변경 유형을 확인해 주세요.")
+                                }
+                                val editCategory = editJson.optString("categoryKey").takeIf(String::isNotBlank)
+                                require(editCategory == null || editCategory in ALLOWED_CATEGORIES) { "AI 변경 카테고리를 확인해 주세요." }
+                                BatchEditValues(
+                                    amount = editJson.optLong("amount").let { if (it == 0L) null else it },
+                                    merchant = editJson.optString("merchant").trim().takeIf(String::isNotBlank),
+                                    categoryKey = editCategory,
+                                    type = editType,
+                                    occurredDate = editJson.optString("occurredDate").takeIf(String::isNotBlank)?.let(LocalDate::parse),
+                                    memo = editJson.optString("memo").takeIf(String::isNotBlank),
+                                )
+                            } else null
+                            BatchCommandParser.previewChange(action, target, edit, transactions)
+                        }
+                        "UNSUPPORTED" -> error("AI가 안전하게 해석하지 못했어요. 기기에서 문장을 바꿔 다시 확인해 주세요.")
+                        else -> error("AI가 요청 종류를 확인하지 못했어요.")
+                    }
+                } finally {
+                    connection.disconnect()
+                }
+            }
+        }
+
     suspend fun analyzeSpending(state: LedgerUiState): Result<SpendingAnalysis> =
         withContext(Dispatchers.IO) {
             runCatching {
@@ -266,15 +368,25 @@ class AiClient(
         }
     }
 
-    private fun serverError(status: Int, label: String) = IOException(if (status == 401) "로그인이 만료됐어요. 관리 → 로그인·계정에서 다시 로그인해 주세요." else "$label 응답 오류($status)")
+    private fun serverError(status: Int, label: String) = IOException(
+        when (status) {
+            401 -> "로그인이 만료됐어요. 관리 → 로그인·계정에서 다시 로그인해 주세요."
+            422 -> "AI가 안전하게 해석하지 못했어요. 문장을 짧게 바꾸거나 기기에서 다시 해석해 주세요."
+            else -> "$label 응답 오류($status)"
+        },
+    )
 
     private fun parseResponse(responseText: String, today: LocalDate): AiTransactionCandidate {
         val root = JSONObject(responseText)
         val json = root.optJSONObject("data") ?: root
+        return parseCandidate(json, today)
+    }
+
+    private fun parseCandidate(json: JSONObject, today: LocalDate): AiTransactionCandidate {
         val amount = json.optLong("amount", 0L)
         val occurredDate = json.optString("occurredDate").takeIf(String::isNotBlank)?.let(LocalDate::parse) ?: today
         val merchant = json.optString("merchant").trim()
-        require(amount > 0L) { "AI가 금액을 찾지 못했어요." }
+        require(amount in 1..1_000_000_000_000L) { "AI가 금액을 찾지 못했어요." }
         require(merchant.isNotBlank()) { "AI가 가맹점을 찾지 못했어요." }
 
         val confidence = json.optJSONObject("confidence")
@@ -282,10 +394,10 @@ class AiClient(
             val values = json.optJSONArray("needsConfirmation") ?: return@buildList
             for (index in 0 until values.length()) add(values.optString(index))
         }.filter(String::isNotBlank)
-        val type = if (json.optString("type").uppercase(Locale.ROOT) == TransactionType.INCOME.name) {
-            TransactionType.INCOME
-        } else {
-            TransactionType.EXPENSE
+        val type = when (json.optString("type").uppercase(Locale.ROOT)) {
+            TransactionType.INCOME.name -> TransactionType.INCOME
+            TransactionType.EXPENSE.name -> TransactionType.EXPENSE
+            else -> error("AI가 거래 유형을 확인하지 못했어요.")
         }
         val category = json.optString("categoryKey").takeIf { it in ALLOWED_CATEGORIES } ?: "OTHER"
         return AiTransactionCandidate(
