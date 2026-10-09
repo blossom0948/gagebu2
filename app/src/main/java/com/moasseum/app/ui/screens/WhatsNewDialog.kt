@@ -55,6 +55,22 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.25" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_25_navigation,
+                imageAspectRatio = 904f / 704f,
+                title = "하단 메뉴를 다시 누르면 맨 위로",
+                description = "대시보드·소비내역·함께·관리에서 선택된 메뉴를 한 번 더 누르면 화면 맨 위로 이동해요.",
+                imageDescription = "대시보드 최근 내역과 선택된 하단 메뉴",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_25_sync,
+                imageAspectRatio = 904f / 704f,
+                title = "연결되면 함께 장부를 새로고침",
+                description = "공유 장부를 보는 중 인터넷 연결이 복구되면 최신 내용을 자동으로 다시 불러와요.",
+                imageDescription = "함께 장부 기능 화면",
+            ),
+        )
         "0.1.24" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_24_ai,

@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
@@ -51,6 +52,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -147,6 +149,7 @@ fun ManageScreen(
     onOpenAuth: () -> Unit,
     onOpenGuide: () -> Unit,
     accountStatus: String,
+    scrollToTopRequest: Int = 0,
 ) {
     var showBudgetDialog by rememberSaveable { mutableStateOf(false) }
     var showCategoryDialog by rememberSaveable { mutableStateOf(false) }
@@ -170,7 +173,12 @@ fun ManageScreen(
     var showYearEndDialog by rememberSaveable { mutableStateOf(false) }
     var selectedReportYear by rememberSaveable { mutableStateOf(java.time.LocalDate.now().year) }
     val colors = LocalFinanceColors.current
+    val listState = rememberLazyListState()
+    LaunchedEffect(scrollToTopRequest) {
+        if (scrollToTopRequest > 0) listState.animateScrollToItem(0)
+    }
     LazyColumn(
+        state = listState,
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -42,6 +44,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -99,6 +102,8 @@ fun TogetherScreen(
     aiQuestionState: SpendingQuestionState,
     onAnalyzeShared: (YearMonth) -> Unit,
     onAskShared: (String, YearMonth) -> Unit,
+    scrollToTopRequest: Int = 0,
+    isOnline: Boolean = true,
 ) {
     val colors = LocalFinanceColors.current
     var code by rememberSaveable { mutableStateOf("") }
@@ -124,7 +129,12 @@ fun TogetherScreen(
             (it.ownerId == "local-user" || it.ownerId == userId) && it.type != TransactionType.TRANSFER
         }
     }
+    val listState = rememberLazyListState()
+    LaunchedEffect(scrollToTopRequest) {
+        if (scrollToTopRequest > 0) listState.animateScrollToItem(0)
+    }
     LazyColumn(
+        state = listState,
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -138,6 +148,18 @@ fun TogetherScreen(
                 if (busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
                 else TextButton(onClick = onRefresh) {
                     Icon(Icons.Rounded.Refresh, contentDescription = "새로고침", modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+        if (!isOnline && email != null && snapshot.ledgerId != null) item {
+            FinanceCard(highlighted = true) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(Icons.Rounded.CloudOff, contentDescription = null, tint = colors.accent, modifier = Modifier.size(18.dp))
+                    Text("오프라인 · 연결되면 자동 동기화", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
                 }
             }
         }

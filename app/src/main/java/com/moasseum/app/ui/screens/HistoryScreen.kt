@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -105,6 +106,7 @@ fun HistoryScreen(
     onImportCsv: () -> Unit,
     initialTransactionId: Long? = null,
     onInitialTransactionHandled: () -> Unit = {},
+    scrollToTopRequest: Int = 0,
 ) {
     var filterName by rememberSaveable { mutableStateOf(HistoryFilter.ALL.name) }
     var categoryFilterKey by rememberSaveable { mutableStateOf("ALL") }
@@ -137,6 +139,11 @@ fun HistoryScreen(
     ))
     val availableMethods = (paymentMethods + uiState.transactions.map { it.paymentMethod }).distinct().sorted()
     val detailTransaction = detailId?.let { id -> uiState.transactions.firstOrNull { it.id == id } }
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(scrollToTopRequest) {
+        if (scrollToTopRequest > 0) listState.animateScrollToItem(0)
+    }
 
     LaunchedEffect(initialTransactionId, uiState.transactions) {
         val id = initialTransactionId ?: return@LaunchedEffect
@@ -147,6 +154,7 @@ fun HistoryScreen(
     }
 
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),

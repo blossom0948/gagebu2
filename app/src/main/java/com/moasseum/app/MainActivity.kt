@@ -4,6 +4,9 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
 import android.speech.RecognizerIntent
@@ -58,8 +61,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -114,6 +119,7 @@ import com.moasseum.app.domain.AiParseState
 import com.moasseum.app.domain.HomeDashboardCards
 import com.moasseum.app.domain.NoSpendChallengeSettings
 import com.moasseum.app.domain.NotificationCandidate
+import com.moasseum.app.domain.NetworkReconnectGate
 import com.moasseum.app.domain.SpendingAnalysisState
 import com.moasseum.app.domain.SpendingQuestionState
 import com.moasseum.app.notification.NotificationAccess
@@ -421,6 +427,10 @@ private fun MoasseumApp(
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: ROUTE_HOME
+    var homeScrollToTopRequest by rememberSaveable { mutableIntStateOf(0) }
+    var historyScrollToTopRequest by rememberSaveable { mutableIntStateOf(0) }
+    var togetherScrollToTopRequest by rememberSaveable { mutableIntStateOf(0) }
+    var manageScrollToTopRequest by rememberSaveable { mutableIntStateOf(0) }
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val selectedDate by viewModel.date.collectAsStateWithLifecycle()
     val pendingCandidates by viewModel.pendingNotificationCandidates.collectAsStateWithLifecycle()
@@ -571,6 +581,39 @@ private fun MoasseumApp(
                 sharedBusy = false
             }
         }
+    }
+    val connectivityManager = remember(context) { context.getSystemService(ConnectivityManager::class.java) }
+    val reconnectGate = remember(connectivityManager) {
+        NetworkReconnectGate(initiallyAvailable = hasValidatedInternet(connectivityManager))
+    }
+    var isInternetValidated by remember(connectivityManager) {
+        mutableStateOf(hasValidatedInternet(connectivityManager))
+    }
+    val sharedRefreshOnReconnect = rememberUpdatedState(newValue = {
+        if (currentRoute == ROUTE_TOGETHER && authState.user != null && !sharedBusy) {
+            runSharedAction { application.sharedLedgerRepository.refresh() }
+        }
+    })
+    DisposableEffect(connectivityManager, context) {
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                val available = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                val reconnected = reconnectGate.update(available)
+                ContextCompat.getMainExecutor(context).execute {
+                    isInternetValidated = available
+                    if (reconnected) sharedRefreshOnReconnect.value()
+                }
+            }
+
+            override fun onLost(network: Network) {
+                val available = hasValidatedInternet(connectivityManager)
+                reconnectGate.update(available)
+                ContextCompat.getMainExecutor(context).execute { isInternetValidated = available }
+            }
+        }
+        connectivityManager.registerDefaultNetworkCallback(callback)
+        onDispose { runCatching { connectivityManager.unregisterNetworkCallback(callback) } }
     }
     var aiState by remember { mutableStateOf<AiParseState>(AiParseState.Idle) }
     var aiAnalysisState by remember { mutableStateOf<SpendingAnalysisState>(SpendingAnalysisState.Idle) }
@@ -935,7 +978,16 @@ private fun MoasseumApp(
         bottomBar = {
             BottomNavBar(
                 currentRoute = currentRoute,
-                onNavigate = { route -> navigateTo(navController, route) },
+                onNavigate = { route ->
+                    if (route == currentRoute) {
+                        when (route) {
+                            ROUTE_HOME -> homeScrollToTopRequest++
+                            ROUTE_HISTORY -> historyScrollToTopRequest++
+                            ROUTE_TOGETHER -> togetherScrollToTopRequest++
+                            ROUTE_MANAGE -> manageScrollToTopRequest++
+                        }
+                    } else navigateTo(navController, route)
+                },
                 addExpanded = addOpen,
                 onAdd = {
                     if (addOpen) closeAdd() else {
@@ -990,6 +1042,7 @@ private fun MoasseumApp(
                         pendingCount = pendingCandidates.size,
                         homeDashboardCards = homeDashboardCards,
                         noSpendChallenge = noSpendChallenge,
+                        scrollToTopRequest = homeScrollToTopRequest,
                     )
                 }
                 composable(ROUTE_HISTORY) {
@@ -1017,6 +1070,7 @@ private fun MoasseumApp(
                         onImportCsv = { importCsvLauncher.launch(arrayOf("text/*", "application/vnd.ms-excel")) },
                         initialTransactionId = pendingHistoryTransactionId,
                         onInitialTransactionHandled = { pendingHistoryTransactionId = null },
+                        scrollToTopRequest = historyScrollToTopRequest,
                     )
                 }
                 composable(ROUTE_NOTIFICATIONS) {
@@ -1117,6 +1171,8 @@ private fun MoasseumApp(
                         aiQuestionState = sharedAiQuestionState,
                         onAnalyzeShared = ::generateSharedSpendingAnalysis,
                         onAskShared = ::askSharedSpendingQuestion,
+                        scrollToTopRequest = togetherScrollToTopRequest,
+                        isOnline = isInternetValidated,
                     )
                 }
                 composable(ROUTE_MANAGE) {
@@ -1124,6 +1180,7 @@ private fun MoasseumApp(
                         onOpenAuth = { showAuth = true },
                         onOpenGuide = { guideOpenedManually = true },
                         accountStatus = authState.user?.email ?: if (application.authRepository.configured) "로그인 안 됨" else "서버 연결 필요",
+                        scrollToTopRequest = manageScrollToTopRequest,
                         aiLoginRequired = authState.user == null,
                         onSetBudgetRollover = viewModel::setBudgetRollover,
                         onExportBackup = { exportJsonLauncher.launch("moasseum-full-${java.time.LocalDate.now()}.json") },
@@ -1563,4 +1620,11 @@ private fun navigateTo(navController: NavHostController, route: String) {
         launchSingleTop = true
         restoreState = true
     }
+}
+
+private fun hasValidatedInternet(connectivityManager: ConnectivityManager): Boolean {
+    val activeNetwork = connectivityManager.activeNetwork ?: return false
+    val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+    return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+        capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
 }

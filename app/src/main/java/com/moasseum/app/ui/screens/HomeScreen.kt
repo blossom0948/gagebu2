@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -50,6 +51,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -113,11 +115,18 @@ fun HomeScreen(
     pendingCount: Int = 0,
     homeDashboardCards: Set<String> = HomeDashboardCards.defaults,
     noSpendChallenge: NoSpendChallengeSettings = NoSpendChallengeSettings(),
+    scrollToTopRequest: Int = 0,
 ) {
     var selectedTabName by rememberSaveable { mutableStateOf(HomeTab.SUMMARY.name) }
     val selectedTab = HomeTab.valueOf(selectedTabName)
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(scrollToTopRequest) {
+        if (scrollToTopRequest > 0) listState.animateScrollToItem(0)
+    }
 
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp),
