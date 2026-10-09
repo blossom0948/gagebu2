@@ -55,6 +55,22 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.28" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_28_photo_import,
+                imageAspectRatio = 904f / 950f,
+                title = "사진 여러 장에서 새 거래만 골라 기록",
+                description = "캡처 속 거래를 모두 확인하고 가맹점·유형·금액·날짜·카테고리·결제 수단·메모를 고칠 수 있어요. 이미 기록된 중복은 제외하고, 확인이 필요한 인식 결과는 검토 전 저장하지 않아요.",
+                imageDescription = "여러 금융앱 캡처에서 기존 중복 거래를 제외하고 새 거래 두 건을 검토하는 화면",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_28_year_end,
+                imageAspectRatio = 904f / 1100f,
+                title = "한 해 소비를 흐름별로 정리",
+                description = "연간 수입·지출과 월별 흐름, 카테고리·결제 수단별 합계를 확인해요. 이체는 합계에서 제외하며 세액·공제·환급액은 계산하지 않아요.",
+                imageDescription = "연간 수입·지출, 월별 흐름, 카테고리 및 결제 수단 합계를 보여주는 자료 정리 화면",
+            ),
+        )
         "0.1.27" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_27_photo,

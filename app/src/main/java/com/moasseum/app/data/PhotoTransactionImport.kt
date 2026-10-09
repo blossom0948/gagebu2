@@ -47,7 +47,7 @@ object PhotoTransactionImport {
     private val monthDayText = Regex("(?<!\\d)(\\d{1,2})\\s*월\\s*(\\d{1,2})\\s*일?")
     private val monthDayPunctuation = Regex("(?<!\\d)(\\d{1,2})\\s*[./-]\\s*(\\d{1,2})(?!\\s*[:.])")
     private val money = Regex("(?<![\\d/])([-+＋−]?\\s*(?:\\d{1,3}(?:,\\d{3})+|\\d{4,}|\\d{1,3}(?=\\s*원)))(?:\\s*원)?(?!\\d)")
-    private val excludedLine = Regex("잔액|출금가능|사용가능|한도|누적|이번\\s*달.*(?:지출|사용)|이번달.*(?:지출|사용)|월간.*(?:지출|사용)|당월.*(?:지출|사용)|총\\s*지출|합계|총액|결제예정|청구예정|취소|승인취소|할인|적립|포인트|캐시백")
+    private val excludedLine = Regex("잔액|출금가능|사용가능|한도|누적|이번\\s*달.*(?:지출|사용)|이번달.*(?:지출|사용)|월간.*(?:지출|사용)|당월.*(?:지출|사용)|총\\s*지출|합계|총액|결제예정|청구예정|입금예정|출금예정|계좌번호|카드번호|승인번호|거래번호|주문번호|결제번호|인증번호|접수번호|취소|승인취소|할인|적립|포인트|캐시백")
     private val nonMerchantLine = Regex("^(?:원|KRW|전체|내역|거래내역|이용내역|결제내역|입출금내역|최근|오늘|어제|상세|더보기|정렬|필터|검색|토스|카카오페이|네이버페이|삼성페이|카드|신용카드|체크카드|신한카드|현대카드|국민카드|KB국민카드|우리카드|하나카드|롯데카드|삼성카드|NH농협카드|계좌|입금|출금|이체|결제|승인|취소|완료|잔액|포인트|수수료|혜택|월간|주간|예정)(?:\\s.*)?$")
 
     fun extract(
@@ -211,11 +211,11 @@ object PhotoTransactionImport {
     private fun inferType(amountText: String, context: String): TransactionType {
         val lower = context.lowercase()
         val sign = amountText.trim().firstOrNull()
-        return if (sign == '+' || sign == '＋' || listOf("입금", "받았", "수입", "환급", "충전", "급여").any(lower::contains)) {
-            TransactionType.INCOME
-        } else {
-            TransactionType.EXPENSE
-        }
+        if (sign == '+' || sign == '＋') return TransactionType.INCOME
+        if (sign == '-' || sign == '−') return TransactionType.EXPENSE
+        val incomeSignal = listOf("입금", "받았", "수입", "환급", "급여", "월급", "예금이자", "이자입금").any(lower::contains)
+        val expenseSignal = listOf("결제", "승인", "출금", "구매", "사용", "납부").any(lower::contains)
+        return if (incomeSignal && !expenseSignal) TransactionType.INCOME else TransactionType.EXPENSE
     }
 
     private fun merchantFrom(

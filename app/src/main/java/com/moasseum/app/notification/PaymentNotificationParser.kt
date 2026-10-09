@@ -155,14 +155,14 @@ object PaymentNotificationParser {
     fun inferCategoryFrom(text: String): String {
         val lower = text.lowercase(Locale.KOREAN)
         return when {
-            listOf("카페", "커피", "스타벅스", "아메리카노", "cafe", "coffee").any { lower.contains(it) } -> "CAFE"
+            listOf("카페", "커피", "스타벅스", "아메리카노", "컴포즈커피", "메가커피", "빽다방", "이디야", "투썸", "더벤티", "cafe", "coffee").any { lower.contains(it) } -> "CAFE"
             listOf(
                 "식당", "치킨", "배달", "점심", "저녁", "마트", "이마트", "홈플러스", "롯데마트", "코스트코",
-                "트레이더스", "하나로마트", "노브랜드", "gs더프레시", "이마트에브리데이", "마켓컬리", "오아시스마켓",
-                "편의점", "cu", "gs25", "세븐일레븐", "food", "restaurant", "supermarket", "grocery",
+                "트레이더스", "하나로마트", "노브랜드", "gs더프레시", "이마트에브리데이", "이마트24", "마켓컬리", "오아시스마켓",
+                "배달의민족", "쿠팡이츠", "요기요", "편의점", "cu", "gs25", "세븐일레븐", "food", "restaurant", "supermarket", "grocery",
             ).any { lower.contains(it) } -> "FOOD"
-            listOf("택시", "버스", "지하철", "주유", "교통", "uber", "taxi", "transport").any { lower.contains(it) } -> "TRANSPORT"
-            listOf("쇼핑", "온라인", "쿠팡", "무신사", "다이소", "shopping", "store").any { lower.contains(it) } -> "SHOPPING"
+            listOf("택시", "버스", "지하철", "주유", "교통", "카카오t", "티머니", "고속도로", "ktx", "srt", "uber", "taxi", "transport").any { lower.contains(it) } -> "TRANSPORT"
+            listOf("쇼핑", "온라인", "쿠팡", "무신사", "다이소", "지마켓", "11번가", "옥션", "네이버쇼핑", "shopping", "store").any { lower.contains(it) } -> "SHOPPING"
             listOf("월세", "전세", "관리비", "주거", "housing").any { lower.contains(it) } -> "HOUSING"
             listOf("통신비", "휴대폰 요금", "인터넷 요금", "통신", "communication").any { lower.contains(it) } -> "COMMUNICATION"
             listOf("병원", "약국", "건강", "의료", "hospital", "pharmacy").any { lower.contains(it) } -> "HEALTH"
@@ -170,13 +170,13 @@ object PaymentNotificationParser {
             listOf("전시", "공연", "박물관", "문화", "culture").any { lower.contains(it) } -> "CULTURE"
             listOf("여행", "항공권", "숙박", "호텔", "travel").any { lower.contains(it) } -> "TRAVEL"
             listOf("경조사", "축의금", "조의금", "선물", "gift").any { lower.contains(it) } -> "GIFT"
-            listOf("미용실", "헤어", "네일", "화장품", "beauty").any { lower.contains(it) } -> "BEAUTY"
+            listOf("미용실", "헤어", "네일", "화장품", "올리브영", "beauty").any { lower.contains(it) } -> "BEAUTY"
             listOf("반려견", "반려묘", "동물병원", "펫", "pet").any { lower.contains(it) } -> "PET"
-            listOf("구독", "멤버십", "정기결제", "subscription").any { lower.contains(it) } -> "SUBSCRIPTION"
+            listOf("구독", "멤버십", "정기결제", "넷플릭스", "유튜브 프리미엄", "디즈니+", "스포티파이", "멜론", "웨이브", "티빙", "왓챠", "쿠팡 와우", "subscription").any { lower.contains(it) } -> "SUBSCRIPTION"
             listOf("보험료", "보험", "insurance").any { lower.contains(it) } -> "INSURANCE"
             listOf("이자", "수수료", "금융", "finance").any { lower.contains(it) } -> "FINANCE"
-            listOf("넷플릭스", "유튜브 프리미엄", "게임", "영화", "leisure").any { lower.contains(it) } -> "LEISURE"
-            listOf("전기", "가스", "생필품", "생활용품", "생활용품점", "living").any { lower.contains(it) } -> "LIVING"
+            listOf("게임", "영화", "놀이공원", "공연", "leisure").any { lower.contains(it) } -> "LEISURE"
+            listOf("전기", "한국전력", "한전", "도시가스", "수도요금", "생필품", "생활용품", "생활용품점", "living").any { lower.contains(it) } -> "LIVING"
             else -> "OTHER"
         }
     }

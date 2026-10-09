@@ -81,6 +81,16 @@ class PaymentNotificationParserTest {
     }
 
     @Test
+    fun commonSubscriptionAndDailyMerchantsUseSpecificCategories() {
+        assertEquals("SUBSCRIPTION", PaymentNotificationParser.inferCategoryFrom("넷플릭스 정기결제"))
+        assertEquals("SUBSCRIPTION", PaymentNotificationParser.inferCategoryFrom("유튜브 프리미엄"))
+        assertEquals("BEAUTY", PaymentNotificationParser.inferCategoryFrom("올리브영"))
+        assertEquals("CAFE", PaymentNotificationParser.inferCategoryFrom("메가커피"))
+        assertEquals("TRANSPORT", PaymentNotificationParser.inferCategoryFrom("티머니 교통카드"))
+        assertEquals("LIVING", PaymentNotificationParser.inferCategoryFrom("한국전력 전기요금"))
+    }
+
+    @Test
     fun couponAndApprovalNumberAreNotSavedAsTransactions() {
         assertNull(PaymentNotificationParser.parse("com.shop", "결제 혜택", "3,000원 쿠폰 할인", 1_000L))
         assertNull(PaymentNotificationParser.parse("com.bank", "거래 안내", "승인번호 123456", 1_000L))

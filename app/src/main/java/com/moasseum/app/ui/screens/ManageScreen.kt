@@ -637,13 +637,8 @@ private fun YearEndSummaryDialog(
     onDismiss: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
-    val yearTransactions = remember(transactions, year) {
-        transactions.filter { it.occurredDate.year == year }
-    }
-    val expenses = yearTransactions.filter { it.type == TransactionType.EXPENSE }
-    val income = yearTransactions.filter { it.type == TransactionType.INCOME }
-    val categoryTotals = expenses.groupBy { it.categoryKey }.mapValues { (_, rows) -> rows.sumOf { it.amount } }
-        .entries.sortedByDescending { it.value }
+    val summary = remember(transactions, year) { com.moasseum.app.domain.annualFinanceSummary(transactions, year) }
+    val maxMonthlyExpense = summary.months.maxOfOrNull { it.expenseTotal }?.coerceAtLeast(1L) ?: 1L
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("연말정산 자료 정리") },
@@ -656,20 +651,47 @@ private fun YearEndSummaryDialog(
                 }
                 FinanceCard {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        SummaryLine("연간 지출", formatWon(expenses.sumOf { it.amount }), colors.expense)
-                        SummaryLine("연간 수입", formatWon(income.sumOf { it.amount }), colors.income)
-                        SummaryLine("거래 수", "${yearTransactions.size}건", colors.textPrimary)
+                        SummaryLine("연간 지출", formatWon(summary.expenseTotal), colors.expense)
+                        SummaryLine("연간 수입", formatWon(summary.incomeTotal), colors.income)
+                        SummaryLine("수입·지출 기록", "${summary.transactionCount}건", colors.textPrimary)
+                    }
+                }
+                if (summary.transferCount > 0) Text("이체 ${summary.transferCount}건은 수입·지출 합계에서 제외했어요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                Text("월별 흐름", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                val activeMonths = summary.months.filter { it.transactionCount > 0 }
+                if (activeMonths.isEmpty()) Text("기록이 없습니다.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                activeMonths.forEach { month ->
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("${month.month}월", modifier = Modifier.width(40.dp), style = MaterialTheme.typography.labelMedium)
+                            Text("지출 ${formatWon(month.expenseTotal)}", modifier = Modifier.weight(1f), color = colors.expense, style = MaterialTheme.typography.labelMedium)
+                            Text("수입 ${formatWon(month.incomeTotal)}", color = colors.income, style = MaterialTheme.typography.labelMedium)
+                        }
+                        LinearProgressIndicator(
+                            progress = { (month.expenseTotal.toFloat() / maxMonthlyExpense).coerceIn(0f, 1f) },
+                            modifier = Modifier.fillMaxWidth().padding(start = 40.dp),
+                            color = colors.accent,
+                            trackColor = colors.surfaceOverlay,
+                        )
                     }
                 }
                 Text("지출 카테고리", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                if (categoryTotals.isEmpty()) Text("기록이 없습니다.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
-                categoryTotals.forEach { (key, amount) ->
+                if (summary.categories.isEmpty()) Text("기록이 없습니다.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                summary.categories.forEach { item ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(categoryLabel(key), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                        Text(formatWon(amount), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text(categoryLabel(item.key), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                        Text("${formatWon(item.total)} · ${item.count}건", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                     }
                 }
-                Text("환급액·소득공제는 계산하지 않습니다. 카드사·현금영수증 자료와 함께 확인하세요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                Text("결제 수단별 지출", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                if (summary.paymentMethods.isEmpty()) Text("기록이 없습니다.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                summary.paymentMethods.forEach { item ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(item.paymentMethod, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                        Text("${formatWon(item.total)} · ${item.count}건", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                Text("기록을 정리하는 기능이며 세액·공제·환급액은 계산하지 않아요. 실제 정산은 국세청 자료를 확인하세요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             }
         },
         confirmButton = { TextButton(onClick = { onExport(year) }) { Text("${year}년 CSV 내보내기", color = colors.accent) } },

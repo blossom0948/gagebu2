@@ -65,6 +65,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -379,6 +380,11 @@ private fun BottomNavItem(
         animationSpec = tween(motion.fast),
         label = "bottomNavHighlight",
     )
+    val iconScale by animateFloatAsState(
+        targetValue = if (selected) 1f else 0.94f,
+        animationSpec = tween(motion.fast),
+        label = "bottomNavIconScale",
+    )
     Column(
         modifier = modifier
             .heightIn(min = 64.dp)
@@ -399,7 +405,7 @@ private fun BottomNavItem(
             BadgedBox(badge = {
                 if (badgeCount > 0) Badge { Text(if (badgeCount > 99) "99+" else "$badgeCount") }
             }) {
-                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(19.dp))
+                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(19.dp).scale(iconScale))
             }
         }
         Spacer(Modifier.height(1.dp))

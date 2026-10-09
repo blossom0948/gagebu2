@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,6 +21,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -50,7 +52,7 @@ private data class PhotoImportDraft(val candidate: PhotoTransactionCandidate, va
 fun PhotoImportReview(
     state: PhotoImportState,
     saving: Boolean,
-    onPickMore: (Set<String>) -> Unit,
+    onPickMore: (List<PhotoTransactionCandidate>, Set<String>) -> Unit,
     onSave: (List<PhotoTransactionCandidate>) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -69,15 +71,22 @@ fun PhotoImportReview(
             Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("내역을 읽지 못했어요", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(state.message, color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
-                OutlinedButton(onClick = { onPickMore(emptySet()) }, modifier = Modifier.fillMaxWidth()) { Text("다른 사진 선택") }
+                OutlinedButton(onClick = { onPickMore(emptyList(), emptySet()) }, modifier = Modifier.fillMaxWidth()) { Text("다른 사진 선택") }
                 TextButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text("닫기") }
             }
         }
         is PhotoImportState.Review -> {
             var drafts by remember(state.candidates, state.unselectedCandidateIds) {
-                mutableStateOf(state.candidates.map { PhotoImportDraft(it, it.id !in state.unselectedCandidateIds) })
+                mutableStateOf(state.candidates.map {
+                    PhotoImportDraft(
+                        it,
+                        selected = it.candidateCanBeSaved() && it.id !in state.unselectedCandidateIds,
+                    )
+                })
             }
             var editingIndex by remember(state) { mutableStateOf<Int?>(null) }
+            val selectableDrafts = drafts.filter { it.candidate.candidateCanBeSaved() }
+            val allSelectableDraftsSelected = selectableDrafts.isNotEmpty() && selectableDrafts.all { it.selected }
             Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -100,10 +109,15 @@ fun PhotoImportReview(
                 if (drafts.isNotEmpty()) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text("추가할 내역", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                        TextButton(enabled = !saving, onClick = {
-                            val selectAll = drafts.any { !it.selected }
-                            drafts = drafts.map { it.copy(selected = selectAll) }
-                        }) { Text(if (drafts.all { it.selected }) "전체 해제" else "전체 선택") }
+                        TextButton(enabled = !saving && selectableDrafts.isNotEmpty(), onClick = {
+                            val selectAll = selectableDrafts.any { !it.selected }
+                            drafts = drafts.map { draft ->
+                                draft.copy(selected = draft.candidate.candidateCanBeSaved() && selectAll)
+                            }
+                        }) { Text(if (allSelectableDraftsSelected) "전체 해제" else "전체 선택") }
+                    }
+                    if (drafts.any { !it.candidate.candidateCanBeSaved() }) {
+                        Text("확인 필요 내역은 ‘수정’에서 확인한 뒤 추가할 수 있어요.", color = colors.warning, style = MaterialTheme.typography.labelSmall)
                     }
                     Column(
                         Modifier.fillMaxWidth().heightIn(max = 390.dp).verticalScroll(rememberScrollState()),
@@ -128,7 +142,10 @@ fun PhotoImportReview(
                     }
                 }
                 OutlinedButton(enabled = !saving, onClick = {
-                    onPickMore(drafts.filterNot { it.selected }.mapTo(mutableSetOf()) { it.candidate.id })
+                    onPickMore(
+                        drafts.map { it.candidate },
+                        drafts.filterNot { it.selected }.mapTo(mutableSetOf()) { it.candidate.id },
+                    )
                 }, modifier = Modifier.fillMaxWidth()) { Text("사진 더 선택") }
                 Button(
                     enabled = !saving && drafts.any { it.selected },
@@ -164,14 +181,17 @@ private fun PhotoCandidateCard(
 ) {
     val colors = LocalFinanceColors.current
     Surface(color = colors.surfaceRaised, shape = RoundedCornerShape(15.dp), modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onToggle).padding(start = 5.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+        Row(Modifier.fillMaxWidth().clickable(enabled = enabled && draft.candidate.candidateCanBeSaved(), onClick = onToggle).padding(start = 5.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = draft.selected, onCheckedChange = { onToggle() }, enabled = enabled)
+            Checkbox(checked = draft.selected, onCheckedChange = { onToggle() }, enabled = enabled && draft.candidate.candidateCanBeSaved())
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(draft.candidate.transaction.merchant, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${formatDate(draft.candidate.transaction.occurredDate)} · ${draft.candidate.paymentMethod} · ${categoryLabel(draft.candidate.transaction.categoryKey)}",
+                Text("${if (draft.candidate.transaction.type.name == "INCOME") "수입" else "지출"} · ${formatDate(draft.candidate.transaction.occurredDate)} · ${draft.candidate.paymentMethod} · ${categoryLabel(draft.candidate.transaction.categoryKey)}",
                     style = MaterialTheme.typography.labelSmall, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (draft.candidate.transaction.needsConfirmation.isNotEmpty()) {
+                    Text("인식 결과 확인 필요", style = MaterialTheme.typography.labelSmall, color = colors.warning)
+                }
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 Text(formatWon(draft.candidate.transaction.amount), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
@@ -195,27 +215,54 @@ private fun PhotoCandidateEditDialog(
     var merchant by remember(draft) { mutableStateOf(original.merchant) }
     var amount by remember(draft) { mutableStateOf(original.amount.toString()) }
     var date by remember(draft) { mutableStateOf(original.occurredDate.toString()) }
+    var type by remember(draft) { mutableStateOf(original.type) }
+    var categoryKey by remember(draft) { mutableStateOf(original.categoryKey) }
+    var paymentMethod by remember(draft) { mutableStateOf(draft.candidate.paymentMethod) }
+    var memo by remember(draft) { mutableStateOf(original.memo) }
     val parsedAmount = amount.filter(Char::isDigit).toLongOrNull()?.takeIf { it in 1..1_000_000_000_000L }
     val parsedDate = runCatching { LocalDate.parse(date.trim()) }.getOrNull()
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("인식 결과 수정") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = type.name == "EXPENSE", onClick = { type = com.moasseum.app.domain.TransactionType.EXPENSE }, label = { Text("지출") })
+                    FilterChip(selected = type.name == "INCOME", onClick = { type = com.moasseum.app.domain.TransactionType.INCOME }, label = { Text("수입") })
+                }
                 FinanceTextField(value = merchant, onValueChange = { merchant = it.take(80) }, label = { Text("가맹점") }, singleLine = true)
                 FinanceTextField(value = amount, onValueChange = { amount = it.filter(Char::isDigit).take(13) }, label = { Text("금액") }, singleLine = true)
                 FinanceTextField(value = date, onValueChange = { date = it.take(10) }, label = { Text("날짜 (YYYY-MM-DD)") }, singleLine = true)
-                Text(if (original.type.name == "INCOME") "수입" else "지출", color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.labelMedium)
+                Text("카테고리", color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.labelMedium)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    allCategorySpecs().forEach { spec ->
+                        FilterChip(
+                            selected = categoryKey == spec.key,
+                            onClick = { categoryKey = spec.key },
+                            label = { Text(categoryLabel(spec.key)) },
+                            leadingIcon = { Icon(spec.icon, contentDescription = null, tint = spec.color, modifier = Modifier.size(15.dp)) },
+                        )
+                    }
+                }
+                FinanceTextField(value = paymentMethod, onValueChange = { paymentMethod = it.take(40) }, label = { Text("결제 수단") }, singleLine = true)
+                FinanceTextField(value = memo, onValueChange = { memo = it.take(120) }, label = { Text("메모") }, singleLine = true)
             }
         },
         confirmButton = {
             TextButton(enabled = merchant.isNotBlank() && parsedAmount != null && parsedDate != null, onClick = {
                 val candidate = draft.candidate.copy(transaction = original.copy(
                     merchant = merchant.trim(), amount = requireNotNull(parsedAmount), occurredDate = requireNotNull(parsedDate),
-                ))
-                onSave(draft.copy(candidate = candidate))
+                    type = type,
+                    categoryKey = categoryKey,
+                    memo = memo.trim(),
+                    needsConfirmation = emptyList(),
+                    categoryConfidence = 1.0,
+                ), paymentMethod = paymentMethod.trim().ifBlank { "금융앱 캡처" })
+                onSave(draft.copy(candidate = candidate, selected = draft.selected || original.needsConfirmation.isNotEmpty()))
             }) { Text("저장") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
     )
 }
+
+private fun PhotoTransactionCandidate.candidateCanBeSaved(): Boolean = transaction.needsConfirmation.isEmpty()

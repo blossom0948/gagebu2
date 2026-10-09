@@ -14,6 +14,27 @@ class FinanceInsightsTest {
     private fun rule(id: Long, next: String, day: Int, active: Boolean = true, type: TransactionType = TransactionType.EXPENSE) =
         RecurringRule(id, type, 10000, "구독$id", day, LocalDate.parse(next), "LIVING", "", "카드", active)
 
+    @Test fun `annual organizer excludes transfers and groups spending by month and payment method`() {
+        val rows = listOf(
+            transaction(1, "2026-01-05", 1_000),
+            transaction(2, "2026-01-06", 2_000, method = "현금"),
+            transaction(3, "2026-01-07", 3_000, type = TransactionType.INCOME),
+            transaction(4, "2026-01-08", 99_000, type = TransactionType.TRANSFER),
+            transaction(5, "2025-12-31", 77_000),
+        )
+
+        val summary = annualFinanceSummary(rows, 2026)
+
+        assertEquals(3_000L, summary.expenseTotal)
+        assertEquals(3_000L, summary.incomeTotal)
+        assertEquals(3, summary.transactionCount)
+        assertEquals(1, summary.transferCount)
+        assertEquals(2, summary.categories.single().count)
+        assertEquals(listOf("현금", "생활비 카드"), summary.paymentMethods.map { it.paymentMethod })
+        assertEquals(3, summary.months.first().transactionCount)
+        assertEquals(0, summary.months.last().transactionCount)
+    }
+
     @Test fun `previous calendar month includes both endpoints and only linked expenses`() {
         val card = PaymentCard("1", "생활비 카드", 25)
         val usage = cardUsage(card, YearMonth.of(2026, 10), listOf(

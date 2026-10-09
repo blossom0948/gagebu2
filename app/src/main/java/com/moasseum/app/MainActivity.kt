@@ -1059,7 +1059,9 @@ private fun MoasseumApp(
     }
 
     BackHandler(enabled = addOpen) { closeAdd() }
-    val transitionDuration = if (reduceMotion) 0 else 160
+    // Weeple's primary tabs settle almost immediately on-device; keep this
+    // crossfade short so navigation feels responsive without a hard flash.
+    val transitionDuration = if (reduceMotion) 0 else 120
 
     Scaffold(
         containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background,
@@ -1427,9 +1429,12 @@ private fun MoasseumApp(
                 onPickReceipt = ::pickReceiptPhoto,
                 onTakeReceipt = ::takeReceiptPhoto,
                 photoImportState = photoImportState,
-                onPickMorePhotos = { unselectedIds ->
+                onPickMorePhotos = { candidates, unselectedIds ->
                     (photoImportState as? PhotoImportState.Review)?.let { review ->
-                        photoImportState = review.copy(unselectedCandidateIds = unselectedIds)
+                        photoImportState = review.copy(
+                            candidates = candidates,
+                            unselectedCandidateIds = unselectedIds,
+                        )
                     }
                     pickReceiptPhoto()
                 },

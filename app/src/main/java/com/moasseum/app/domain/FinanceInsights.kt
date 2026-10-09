@@ -35,6 +35,59 @@ fun cardUsage(card: PaymentCard, dueMonth: YearMonth, transactions: List<Transac
 
 data class UpcomingFixedExpense(val rule: RecurringRule, val date: LocalDate)
 
+data class AnnualMonthSummary(
+    val month: Int,
+    val expenseTotal: Long,
+    val incomeTotal: Long,
+    val transactionCount: Int,
+)
+
+data class AnnualPaymentMethodTotal(val paymentMethod: String, val total: Long, val count: Int)
+
+data class AnnualFinanceSummary(
+    val year: Int,
+    val expenseTotal: Long,
+    val incomeTotal: Long,
+    val transactionCount: Int,
+    val transferCount: Int,
+    val categories: List<CategoryTotal>,
+    val paymentMethods: List<AnnualPaymentMethodTotal>,
+    val months: List<AnnualMonthSummary>,
+)
+
+/** A year-end record organizer; this is not a tax deduction or refund estimate. */
+fun annualFinanceSummary(transactions: List<Transaction>, year: Int): AnnualFinanceSummary {
+    require(year in 1900..9999)
+    val yearRows = transactions.filter { it.occurredDate.year == year }
+    val expenses = yearRows.filter { it.type == TransactionType.EXPENSE }
+    val incomes = yearRows.filter { it.type == TransactionType.INCOME }
+    val months = (1..12).map { month ->
+        val rows = yearRows.filter { it.occurredDate.monthValue == month }
+        val monthExpenses = rows.filter { it.type == TransactionType.EXPENSE }
+        val monthIncomes = rows.filter { it.type == TransactionType.INCOME }
+        AnnualMonthSummary(
+            month = month,
+            expenseTotal = monthExpenses.sumOf(Transaction::amount),
+            incomeTotal = monthIncomes.sumOf(Transaction::amount),
+            transactionCount = monthExpenses.size + monthIncomes.size,
+        )
+    }
+    return AnnualFinanceSummary(
+        year = year,
+        expenseTotal = expenses.sumOf(Transaction::amount),
+        incomeTotal = incomes.sumOf(Transaction::amount),
+        transactionCount = expenses.size + incomes.size,
+        transferCount = yearRows.count { it.type == TransactionType.TRANSFER },
+        categories = expenses.groupBy(Transaction::categoryKey)
+            .map { (key, rows) -> CategoryTotal(key, rows.sumOf(Transaction::amount), rows.size) }
+            .sortedByDescending(CategoryTotal::total),
+        paymentMethods = expenses.groupBy { it.paymentMethod.ifBlank { "미분류" } }
+            .map { (method, rows) -> AnnualPaymentMethodTotal(method, rows.sumOf(Transaction::amount), rows.size) }
+            .sortedByDescending(AnnualPaymentMethodTotal::total),
+        months = months,
+    )
+}
+
 data class RecurringExpensePattern(
     val merchant: String,
     val averageAmount: Long,

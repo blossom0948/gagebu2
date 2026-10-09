@@ -93,6 +93,35 @@ class ReceiptOcrTest {
     }
 
     @Test
+    fun `multi photo preview keeps all new rows and excludes existing and cross photo duplicates`() {
+        val firstCapture = PhotoTransactionImport.extract(
+            "10월 9일\n스타벅스 강남점\n-4,500원\n10월 8일\n쿠팡\n-19,900원",
+            today = LocalDate.of(2026, 10, 9),
+        ).map { it.copy(sourceImageId = "bank-a") }
+        val secondCapture = PhotoTransactionImport.extract(
+            "10월 9일\n스타벅스\n-4,500원\n10월 7일\n올리브영\n-30,000원",
+            today = LocalDate.of(2026, 10, 9),
+        ).map { it.copy(sourceImageId = "bank-b") }
+        val existing = Transaction(
+            id = 9,
+            type = TransactionType.EXPENSE,
+            amount = 19_900,
+            occurredAt = LocalDate.of(2026, 10, 8).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(),
+            categoryKey = "SHOPPING",
+            merchant = "쿠팡",
+            memo = "",
+            paymentMethod = "카드",
+            source = "MANUAL",
+        )
+
+        val preview = PhotoTransactionImport.preview(firstCapture + secondCapture, listOf(existing))
+
+        assertEquals(2, preview.candidates.size)
+        assertEquals(listOf("스타벅스 강남점", "올리브영"), preview.candidates.map { it.transaction.merchant })
+        assertEquals(2, preview.duplicateCount)
+    }
+
+    @Test
     fun `screenshot parser ignores balances and cancelled amounts`() {
         val candidates = PhotoTransactionImport.extract(
             "10.09\n스타벅스\n-4,500원\n잔액 100,000원\n결제 취소 8,000원\n월간 지출 200,000원",
@@ -101,6 +130,20 @@ class ReceiptOcrTest {
 
         assertEquals(1, candidates.size)
         assertEquals(4_500L, candidates.single().transaction.amount)
+    }
+
+    @Test
+    fun `screenshot parser honors explicit signs and ignores reference numbers`() {
+        val candidates = PhotoTransactionImport.extract(
+            "계좌번호 1234-5678-9012\n카페\n+1,000원\n편의점\n-1,000원",
+            today = LocalDate.of(2026, 10, 9),
+        )
+
+        assertEquals(2, candidates.size)
+        assertEquals(TransactionType.INCOME, candidates[0].transaction.type)
+        assertEquals(TransactionType.EXPENSE, candidates[1].transaction.type)
+        assertEquals("카페", candidates[0].transaction.merchant)
+        assertEquals("편의점", candidates[1].transaction.merchant)
     }
 
     @Test
