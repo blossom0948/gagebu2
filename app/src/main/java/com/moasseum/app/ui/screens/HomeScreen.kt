@@ -19,10 +19,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -59,6 +61,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -124,19 +127,25 @@ fun HomeScreen(
     var selectedTabName by rememberSaveable { mutableStateOf(HomeTab.SUMMARY.name) }
     var showProfileEditor by rememberSaveable { mutableStateOf(false) }
     val selectedTab = HomeTab.valueOf(selectedTabName)
-    val listState = rememberLazyListState()
+    val listState = rememberLazyGridState()
+    // The Fold4 inner display is about 690dp wide in portrait. Keep the cover
+    // screen unchanged and use two dashboard columns only when the usable
+    // window is genuinely wide enough for them.
+    val expandedLayout = LocalConfiguration.current.screenWidthDp >= 640
 
     LaunchedEffect(scrollToTopRequest) {
         if (scrollToTopRequest > 0) listState.animateScrollToItem(0)
     }
 
-    LazyColumn(
+    LazyVerticalGrid(
+        columns = if (expandedLayout) GridCells.Adaptive(minSize = 320.dp) else GridCells.Fixed(1),
         state = listState,
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 24.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (expandedLayout) 10.dp else 0.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
-        item {
+        item(span = { GridItemSpan(maxLineSpan) }) {
             HomeHeader(
                 onOpenManage = onOpenManage,
                 onOpenHelp = onOpenHelp,
@@ -146,7 +155,7 @@ fun HomeScreen(
                 pendingCount = pendingCount,
             )
         }
-        item {
+        item(span = { GridItemSpan(maxLineSpan) }) {
             QuickCaptureCard(
                 onAdd = onAdd,
                 onStartVoiceInput = onStartVoiceInput,
@@ -154,7 +163,7 @@ fun HomeScreen(
                 onTakeReceipt = onTakeReceipt,
             )
         }
-        item {
+        item(span = { GridItemSpan(maxLineSpan) }) {
             HomeTabs(
                 selected = selectedTab,
                 onSelect = { selectedTabName = it.name },
@@ -162,12 +171,12 @@ fun HomeScreen(
         }
         when (selectedTab) {
             HomeTab.SUMMARY -> {
-                item { MonthlySummaryCard(uiState, onOpenManage, onSelectMonth) }
+                item(span = { GridItemSpan(maxLineSpan) }) { MonthlySummaryCard(uiState, onOpenManage, onSelectMonth) }
                 if (noSpendChallenge.enabled && HomeDashboardCards.NO_SPEND_CHALLENGE in homeDashboardCards) {
-                    item { NoSpendChallengeCard(uiState, noSpendChallenge) }
+                    item(span = { GridItemSpan(maxLineSpan) }) { NoSpendChallengeCard(uiState, noSpendChallenge) }
                 }
-                if (HomeDashboardCards.TODAY_WEEK in homeDashboardCards) item { TodayAndWeekCard(uiState) }
-                if (HomeDashboardCards.TODAY_INSIGHT in homeDashboardCards) item { TodayInsightCard(uiState) }
+                if (HomeDashboardCards.TODAY_WEEK in homeDashboardCards) item(span = { GridItemSpan(maxLineSpan) }) { TodayAndWeekCard(uiState) }
+                if (HomeDashboardCards.TODAY_INSIGHT in homeDashboardCards) item(span = { GridItemSpan(maxLineSpan) }) { TodayInsightCard(uiState) }
                 if (HomeDashboardCards.CATEGORIES in homeDashboardCards) {
                     item { CategorySpendingCard(uiState, categoryBudgets, onOpenHistory = onOpenHistory) }
                 }
@@ -176,9 +185,9 @@ fun HomeScreen(
                 }
             }
 
-            HomeTab.INSIGHTS -> item { InsightsContent(uiState, noSpendChallenge, onOpenManage) }
-            HomeTab.REPORT -> item { ReportContent(uiState, onExportPdf, onExportCsv) }
-            HomeTab.AI -> item {
+            HomeTab.INSIGHTS -> item(span = { GridItemSpan(maxLineSpan) }) { InsightsContent(uiState, noSpendChallenge, onOpenManage) }
+            HomeTab.REPORT -> item(span = { GridItemSpan(maxLineSpan) }) { ReportContent(uiState, onExportPdf, onExportCsv) }
+            HomeTab.AI -> item(span = { GridItemSpan(maxLineSpan) }) {
                 AiAnalysisContent(
                     uiState = uiState,
                     state = aiAnalysisState,

@@ -147,6 +147,115 @@ class ReceiptOcrTest {
     }
 
     @Test
+    fun `toss calendar totals weekdays and own account transfers are not imported as purchases`() {
+        val candidates = PhotoTransactionImport.extractWithReceiptFallback(
+            """
+            ← 10
+            전체 카드 입출금 페이기타
+            일 월 화 수 목 금 토
+            4 5 6 7 8 9 10
+            -14,550 -10,700 -3,000 +500 +10,000 +6,000
+            -18,000 -15,000 -6,750
+            8건
+            확인하기
+            -5,500%!
+            부안 마실영화관| 토스뱅크 체크카드
+            -1,250
+            내토스뱅크계좌 김민수
+            6,000
+            박서준 내 토스뱅크계좌
+            8일 목요일
+            10,000
+            이서연 내 토스뱅크 통장
+            15,0002l
+            내토스뱅크 통장 토스정승화
+            6,000
+            김지은 내 토스뱅크계좌
+            7일 수요일 평소보다 많이 쓸
+            500원
+            카드캐시백 내 토스뱅크 통장
+            -18,0002l
+            dtryx 디트릭스토스뱅크 체크카드
+            캐시백 500
+            6일화요일
+            -3,000
+            하이푸드토스뱅크 체크카드
+            5일 월요일
+            -8,4002l
+            버거킹|토스뱅크 체크카드
+            -2,300
+            CU)
+            CU토스뱅크 체크카드
+            4일 일요일
+            -120,000
+            내 계좌 이체 | 아이통장 토스뱅크
+            -120,000
+            내 계좌 이체 | 토스뱅크 통장 아이통장
+            """.trimIndent(),
+            today = LocalDate.of(2026, 10, 10),
+        )
+
+        assertEquals(candidates.joinToString { "${it.transaction.amount}:${it.transaction.merchant}:${it.transaction.occurredDate}" }, 11, candidates.size)
+        assertEquals(
+            listOf(5_500L, 1_250L, 6_000L, 10_000L, 15_000L, 6_000L, 500L, 18_000L, 3_000L, 8_400L, 2_300L),
+            candidates.map { it.transaction.amount },
+        )
+        assertEquals("부안 마실영화관", candidates[0].transaction.merchant)
+        assertEquals(LocalDate.of(2026, 10, 9), candidates[0].transaction.occurredDate)
+        assertEquals(TransactionType.EXPENSE, candidates[1].transaction.type)
+        assertEquals("김민수", candidates[1].transaction.merchant)
+        assertEquals(TransactionType.INCOME, candidates[2].transaction.type)
+        assertEquals("박서준", candidates[2].transaction.merchant)
+        assertEquals(LocalDate.of(2026, 10, 8), candidates[3].transaction.occurredDate)
+        assertEquals(LocalDate.of(2026, 10, 8), candidates[5].transaction.occurredDate)
+        assertEquals("정승화", candidates[4].transaction.merchant)
+        assertEquals(TransactionType.INCOME, candidates[6].transaction.type)
+        assertEquals("카드캐시백", candidates[6].transaction.merchant)
+        assertEquals("디트릭스", candidates[7].transaction.merchant)
+        assertEquals("LEISURE", candidates[7].transaction.categoryKey)
+        assertEquals("FOOD", candidates[8].transaction.categoryKey)
+        assertEquals("버거킹", candidates[9].transaction.merchant)
+        assertEquals("CU", candidates[10].transaction.merchant)
+    }
+
+    @Test
+    fun `overlapping screenshot rows deduplicate even when OCR varies punctuation`() {
+        val first = PhotoTransactionImport.extract(
+            "← 10\n7일 수요일\n500원\n카드캐시백 내 토스뱅크 통장\n-18,000\nd.tryx 디트릭스토스뱅크 체크카드",
+            today = LocalDate.of(2026, 10, 9),
+        ).map { it.copy(sourceImageId = "capture-a") }
+        val second = PhotoTransactionImport.extract(
+            "← 10\n7일 수요일\n500원\n카드캐시백 내 토스뱅크 통장\n-18,000\ndtryx 디트릭스토스뱅크 체크카드",
+            today = LocalDate.of(2026, 10, 9),
+        ).map { it.copy(sourceImageId = "capture-b") }
+
+        val preview = PhotoTransactionImport.preview(first + second, emptyList())
+
+        assertEquals(2, preview.candidates.size)
+        assertEquals(2, preview.duplicateCount)
+    }
+
+    @Test
+    fun `unsigned transfer rows use the nearest bank account direction`() {
+        val candidates = PhotoTransactionImport.extract(
+            "← 10\n6,000\n박서준 내 토스뱅크계좌\n8일 목요일\n10,000\n이서연 내 토스뱅크 통장",
+            today = LocalDate.of(2026, 10, 9),
+        )
+
+        assertEquals(candidates.joinToString { "${it.transaction.amount}:${it.transaction.merchant}:${it.transaction.type}" }, 2, candidates.size)
+    }
+
+    @Test
+    fun `ocr icon noise after an amount does not change the amount or lose the transaction`() {
+        val candidates = PhotoTransactionImport.extract(
+            "← 10\n8일 목요일\n15,0002l\n내 토스뱅크 통장 토스정승화\n6,000\n송민영 내 토스뱅크계좌\n7일 수요일",
+            today = LocalDate.of(2026, 10, 9),
+        )
+
+        assertEquals(candidates.joinToString { "${it.transaction.amount}:${it.transaction.merchant}:${it.transaction.type}" }, 2, candidates.size)
+    }
+
+    @Test
     fun `finance screenshot with a monthly summary keeps every transaction row`() {
         val candidates = PhotoTransactionImport.extractWithReceiptFallback(
             "이번 달 지출 24,400원\n10월 9일 스타벅스 강남점 -4,500원\n10월 8일 쿠팡 -19,900원",
@@ -166,5 +275,49 @@ class ReceiptOcrTest {
         )
 
         assertEquals(0, candidates.size)
+    }
+
+    @Test
+    fun `ordinary menu prices without transaction context are ignored`() {
+        val candidates = PhotoTransactionImport.extractWithReceiptFallback(
+            "추천 메뉴\n아메리카노 5,500원\n케이크 7,000원\n쿠폰 할인 2,000원",
+            today = LocalDate.of(2026, 10, 9),
+        )
+
+        assertEquals(0, candidates.size)
+    }
+
+    @Test
+    fun `a transaction history heading alone does not turn menu prices into transactions`() {
+        val candidates = PhotoTransactionImport.extract(
+            "거래내역\n아메리카노 5,500원\n케이크 7,000원",
+            today = LocalDate.of(2026, 10, 9),
+        )
+
+        assertEquals(0, candidates.size)
+    }
+
+    @Test
+    fun `payment brand before merchant is stripped from local merchant recognition`() {
+        val candidate = PhotoTransactionImport.extract(
+            "카드 이용내역\n10월 9일\n신한카드 스타벅스 강남점\n-4,500원",
+            today = LocalDate.of(2026, 10, 9),
+        ).single()
+
+        assertEquals("스타벅스 강남점", candidate.transaction.merchant)
+        assertEquals("신한카드", candidate.paymentMethod)
+    }
+
+    @Test
+    fun `unsigned amount on a dated bank row requires type review`() {
+        val candidates = PhotoTransactionImport.extract(
+            "카드 이용내역\n10월 9일\n스타벅스 강남점\n5,500원",
+            today = LocalDate.of(2026, 10, 9),
+        )
+
+        assertEquals(1, candidates.size)
+        assertEquals("스타벅스 강남점", candidates.single().transaction.merchant)
+        assertEquals(5_500L, candidates.single().transaction.amount)
+        assert(candidates.single().transaction.needsConfirmation.contains("type"))
     }
 }

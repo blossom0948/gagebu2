@@ -1,6 +1,7 @@
 package com.moasseum.app.data
 
 import android.content.Context
+import android.graphics.Rect
 import android.net.Uri
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -31,7 +32,7 @@ object ReceiptOcr {
             recognizer.process(image)
                 .addOnSuccessListener { result ->
                     recognizer.close()
-                    if (continuation.isActive) continuation.resume(result.text)
+                    if (continuation.isActive) continuation.resume(textInVisualRows(result.textBlocks.flatMap { it.lines }, result.text))
                 }
                 .addOnFailureListener { error ->
                     recognizer.close()
@@ -86,5 +87,30 @@ object ReceiptOcr {
             categoryConfidence = if (category != "OTHER") 0.7 else 0.4,
             needsConfirmation = needsConfirmation,
         )
+    }
+
+    private data class PositionedLine(val text: String, val bounds: Rect?) {
+        val centerY: Double get() = bounds?.let { (it.top + it.bottom) / 2.0 } ?: Double.MAX_VALUE
+        val height: Int get() = bounds?.height()?.coerceAtLeast(1) ?: 1
+        val left: Int get() = bounds?.left ?: 0
+    }
+
+    /** Rebuild OCR in visual row order so merchant and right-aligned amount stay together. */
+    private fun textInVisualRows(lines: List<com.google.mlkit.vision.text.Text.Line>, fallback: String): String {
+        val positioned = lines.map { PositionedLine(it.text.trim(), it.boundingBox) }
+            .filter { it.text.isNotBlank() }
+            .sortedWith(compareBy<PositionedLine> { it.centerY }.thenBy { it.left })
+        if (positioned.isEmpty() || positioned.any { it.bounds == null }) return fallback
+
+        val rows = mutableListOf<MutableList<PositionedLine>>()
+        positioned.forEach { line ->
+            val row = rows.lastOrNull()?.takeIf { previous ->
+                val baseline = previous.map(PositionedLine::centerY).average()
+                val threshold = maxOf(10.0, minOf(line.height, previous.minOf(PositionedLine::height)) * 0.55)
+                kotlin.math.abs(line.centerY - baseline) <= threshold
+            }
+            if (row == null) rows += mutableListOf(line) else row += line
+        }
+        return rows.joinToString("\n") { row -> row.sortedBy(PositionedLine::left).joinToString(" ") { it.text } }
     }
 }

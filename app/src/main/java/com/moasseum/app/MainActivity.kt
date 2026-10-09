@@ -107,6 +107,7 @@ import com.moasseum.app.ui.screens.TogetherScreen
 import com.moasseum.app.ui.screens.QuickHelpDialog
 import com.moasseum.app.ui.screens.ReleaseNotesCatalog
 import com.moasseum.app.ui.screens.WhatsNewDialog
+import com.moasseum.app.ui.screens.UpdateAvailableDialog
 import com.moasseum.app.data.SharedLedgerSnapshot
 import com.moasseum.app.ui.theme.MoasseumTheme
 import com.moasseum.app.data.AiClient
@@ -131,6 +132,7 @@ import com.moasseum.app.notification.NotificationAccess
 import com.moasseum.app.notification.EXTRA_NOTIFICATION_CANDIDATE_ID
 import com.moasseum.app.notification.PaymentNotificationNotifier
 import com.moasseum.app.update.AppUpdateManager
+import com.moasseum.app.update.AppRelease
 import com.moasseum.app.update.UpdateCheckState
 import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -649,6 +651,10 @@ private fun MoasseumApp(
     var sharedPrefillText by rememberSaveable { mutableStateOf<String?>(null) }
     var sharedPrefillKey by rememberSaveable { mutableStateOf("") }
     var updateState by remember { mutableStateOf<UpdateCheckState>(UpdateCheckState.Idle) }
+    val updatePreferences = remember(context) { context.getSharedPreferences("moasseum_update", android.content.Context.MODE_PRIVATE) }
+    var dismissedUpdateVersion by remember { mutableStateOf(updatePreferences.getString("dismissed_version", null)) }
+    var updatePromptRelease by remember { mutableStateOf<AppRelease?>(null) }
+    var lastAutomaticUpdateCheckAt by rememberSaveable { mutableStateOf(0L) }
     var downloadedUpdatePath by rememberSaveable { mutableStateOf<String?>(null) }
     var waitingForInstallPermission by rememberSaveable { mutableStateOf(false) }
     var speechResult by remember { mutableStateOf<String?>(null) }
@@ -673,9 +679,9 @@ private fun MoasseumApp(
             var failedImages = 0
             uris.forEachIndexed { index, uri ->
                 val result = try {
-                    Result.success(withContext(Dispatchers.IO) {
-                        PhotoTransactionImport.extractWithReceiptFallback(ReceiptOcr.recognize(context, uri))
-                    })
+                    val recognizedText = withContext(Dispatchers.IO) { ReceiptOcr.recognize(context, uri) }
+                    val rows = PhotoTransactionImport.extractWithReceiptFallback(recognizedText)
+                    Result.success(rows)
                 } catch (cancelled: kotlinx.coroutines.CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
@@ -709,6 +715,7 @@ private fun MoasseumApp(
             temporaryFile?.delete()
         }
     }
+
     val receiptPhotoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(20)) { uris ->
         if (uris.isNotEmpty()) processPhotoUris(uris)
     }
@@ -1006,6 +1013,36 @@ private fun MoasseumApp(
         )
     }
 
+    fun checkForAppUpdate(automatic: Boolean) {
+        val now = System.currentTimeMillis()
+        if (automatic && now - lastAutomaticUpdateCheckAt < 15 * 60 * 1000L) return
+        if (updateState == UpdateCheckState.Checking || updateState is UpdateCheckState.Downloading) return
+        if (automatic) lastAutomaticUpdateCheckAt = now
+        updateState = UpdateCheckState.Checking
+        coroutineScope.launch {
+            AppUpdateManager.checkForUpdate().fold(
+                onSuccess = { release ->
+                    updateState = release?.let(UpdateCheckState::Available) ?: UpdateCheckState.UpToDate
+                    updatePromptRelease = release?.takeIf { !automatic || it.versionName != dismissedUpdateVersion }
+                },
+                onFailure = { error ->
+                    updateState = if (automatic) UpdateCheckState.Idle else
+                        UpdateCheckState.Error(error.message ?: "업데이트 확인에 실패했어요.")
+                },
+            )
+        }
+    }
+
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            checkForAppUpdate(automatic = true)
+            while (true) {
+                kotlinx.coroutines.delay(6 * 60 * 60 * 1000L)
+                checkForAppUpdate(automatic = true)
+            }
+        }
+    }
+
     fun continueWithDownloadedUpdate() {
         val apkFile = downloadedUpdatePath?.let(::File)
         if (apkFile == null) {
@@ -1045,12 +1082,16 @@ private fun MoasseumApp(
 
     DisposableEffect(lifecycleOwner, waitingForInstallPermission, downloadedUpdatePath) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME && waitingForInstallPermission) {
-                waitingForInstallPermission = false
-                if (AppUpdateManager.canInstallFromThisApp(context)) {
-                    continueWithDownloadedUpdate()
+            if (event == Lifecycle.Event.ON_RESUME) {
+                if (waitingForInstallPermission) {
+                    waitingForInstallPermission = false
+                    if (AppUpdateManager.canInstallFromThisApp(context)) {
+                        continueWithDownloadedUpdate()
+                    } else {
+                        updateState = UpdateCheckState.WaitingForInstallPermission
+                    }
                 } else {
-                    updateState = UpdateCheckState.WaitingForInstallPermission
+                    checkForAppUpdate(automatic = true)
                 }
             }
         }
@@ -1360,21 +1401,7 @@ private fun MoasseumApp(
                         financeRemindersEnabled = financeRemindersEnabled,
                         onSetFinanceRemindersEnabled = onSetFinanceRemindersEnabled,
                         updateState = updateState,
-                        onCheckForUpdate = {
-                            updateState = UpdateCheckState.Checking
-                            coroutineScope.launch {
-                                AppUpdateManager.checkForUpdate()
-                                    .onSuccess { release ->
-                                        updateState = release?.let(UpdateCheckState::Available)
-                                            ?: UpdateCheckState.UpToDate
-                                    }
-                                    .onFailure { error ->
-                                        updateState = UpdateCheckState.Error(
-                                            error.message ?: "업데이트 확인에 실패했어요.",
-                                        )
-                                    }
-                            }
-                        },
+                        onCheckForUpdate = { checkForAppUpdate(automatic = false) },
                         onInstallUpdate = ::downloadAndInstallUpdate,
                         onContinueInstall = ::continueWithDownloadedUpdate,
                         onOpenNotificationSettings = {
@@ -1697,6 +1724,24 @@ private fun MoasseumApp(
             showWhatsNew = false
             coroutineScope.launch { application.preferencesRepository.markReleaseNotesSeen(BuildConfig.VERSION_NAME) }
         }
+    }
+    val pendingUpdatePrompt = updatePromptRelease
+    if (pendingUpdatePrompt != null && !showWhatsNew && !showFirstRunGuide && !showNotificationAccessPrompt &&
+        !addOpen && !showAccounts && !showAuth && !showQuickHelp && notificationPromptIds.isEmpty() &&
+        !(appLockEnabled && !appLockReleased)
+    ) {
+        UpdateAvailableDialog(
+            release = pendingUpdatePrompt,
+            onUpdate = {
+                updatePromptRelease = null
+                downloadAndInstallUpdate(pendingUpdatePrompt)
+            },
+            onLater = {
+                dismissedUpdateVersion = pendingUpdatePrompt.versionName
+                updatePreferences.edit().putString("dismissed_version", pendingUpdatePrompt.versionName).apply()
+                updatePromptRelease = null
+            },
+        )
     }
 }
 

@@ -100,7 +100,7 @@ fun PhotoImportReview(
                         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = colors.accent, modifier = Modifier.size(17.dp))
                             Text(buildList {
-                                if (state.duplicateCount > 0) add("이미 기록된 ${state.duplicateCount}건 제외")
+                                if (state.duplicateCount > 0) add("중복 ${state.duplicateCount}건 제외")
                                 if (state.failedImageCount > 0) add("${state.failedImageCount}장 인식 실패")
                             }.joinToString(" · "), modifier = Modifier.padding(start = 7.dp), color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                         }
@@ -137,7 +137,7 @@ fun PhotoImportReview(
                         Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Text("새로 추가할 내역이 없어요", fontWeight = FontWeight.SemiBold)
-                            Text("이미 기록된 거래는 자동으로 제외했어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                            Text("사진에서 새 거래를 찾지 못했어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }

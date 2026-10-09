@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -56,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -153,46 +157,21 @@ fun HistoryScreen(
         }
     }
 
-    LazyColumn(
-        state = listState,
-        modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        item { Text("소비내역", style = MaterialTheme.typography.headlineSmall) }
+    val expandedLayout = LocalConfiguration.current.screenWidthDp >= 640
+    val calendarContent: @Composable () -> Unit = {
+        CalendarCard(
+            month = uiState.month,
+            selectedDate = selectedDate,
+            transactions = uiState.monthTransactions,
+            expandedByDefault = expandedLayout,
+            onSelectDate = { date -> onSelectDate(date); dateFilter = date.toString() },
+            onPrevious = { dateFilter = null; onSelectMonth(uiState.month.minusMonths(1)) },
+            onNext = { dateFilter = null; onSelectMonth(uiState.month.plusMonths(1)) },
+        )
+    }
+    val transactionContent: LazyListScope.() -> Unit = {
         item {
-            CalendarCard(
-                month = uiState.month,
-                selectedDate = selectedDate,
-                transactions = uiState.monthTransactions,
-                onSelectDate = { date -> onSelectDate(date); dateFilter = date.toString() },
-                onPrevious = { dateFilter = null; onSelectMonth(uiState.month.minusMonths(1)) },
-                onNext = { dateFilter = null; onSelectMonth(uiState.month.plusMonths(1)) },
-            )
-        }
-        item {
-            Box(modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = onImportCsv, modifier = Modifier.align(Alignment.Center)) {
-                    Icon(Icons.Rounded.FileDownload, contentDescription = null, modifier = Modifier.size(17.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("CSV 가져오기")
-                }
-                Box(modifier = Modifier.align(Alignment.CenterEnd)) {
-                    IconButton(onClick = { backupMenuOpen = true }) {
-                        Icon(Icons.Rounded.FileDownload, contentDescription = "내보내기·백업")
-                    }
-                    DropdownMenu(expanded = backupMenuOpen, onDismissRequest = { backupMenuOpen = false }) {
-                        DropdownMenuItem(text = { Text("CSV 내보내기") }, onClick = { backupMenuOpen = false; onExportCsv() })
-                        DropdownMenuItem(text = { Text("JSON 전체 백업") }, onClick = { backupMenuOpen = false; onExportJson() })
-                    }
-                }
-            }
-        }
-        item {
-            HistoryFilterBar(
-                selected = filter,
-                onSelect = { filterName = it.name },
-            )
+            HistoryFilterBar(selected = filter, onSelect = { filterName = it.name })
         }
         item {
             Row(
@@ -227,10 +206,8 @@ fun HistoryScreen(
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
                 trailingIcon = {
-                    if (search.isNotEmpty()) {
-                        IconButton(onClick = { search = "" }) {
-                            Icon(Icons.Rounded.Close, contentDescription = "검색어 지우기")
-                        }
+                    if (search.isNotEmpty()) IconButton(onClick = { search = "" }) {
+                        Icon(Icons.Rounded.Close, contentDescription = "검색어 지우기")
                     }
                 },
                 placeholder = { Text("가맹점·메모·결제수단 검색") },
@@ -238,51 +215,44 @@ fun HistoryScreen(
             )
         }
         item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box {
-                    TextButton(onClick = { paymentMenuOpen = true }) {
-                        Text(paymentFilter ?: "결제수단", modifier = Modifier.widthIn(max = 62.dp), maxLines = 1,
-                            overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
-                        Icon(Icons.Rounded.ChevronRight, null, modifier = Modifier.size(16.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box {
+                        TextButton(onClick = { paymentMenuOpen = true }) {
+                            Text(paymentFilter ?: "결제수단", modifier = Modifier.widthIn(max = 110.dp), maxLines = 1,
+                                overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
+                            Icon(Icons.Rounded.ChevronRight, null, modifier = Modifier.size(16.dp))
+                        }
+                        DropdownMenu(paymentMenuOpen, { paymentMenuOpen = false }) {
+                            DropdownMenuItem(text = { Text("모든 결제수단") }, onClick = { paymentFilter = null; paymentMenuOpen = false })
+                            availableMethods.forEach { method ->
+                                DropdownMenuItem(text = { Text(method) }, onClick = { paymentFilter = method; paymentMenuOpen = false })
+                            }
+                        }
                     }
-                    DropdownMenu(paymentMenuOpen, { paymentMenuOpen = false }) {
-                        DropdownMenuItem(text = { Text("모든 결제수단") }, onClick = { paymentFilter = null; paymentMenuOpen = false })
-                        availableMethods.forEach { method ->
-                            DropdownMenuItem(text = { Text(method) }, onClick = { paymentFilter = method; paymentMenuOpen = false })
+                    Text("${filteredTransactions.size}건", modifier = Modifier.weight(1f), color = LocalFinanceColors.current.textSecondary,
+                        style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.End)
+                    Box {
+                        TextButton(onClick = { sortMenuOpen = true }) {
+                            Text(sort.label, style = MaterialTheme.typography.labelSmall)
+                            Icon(Icons.Rounded.ChevronRight, null, modifier = Modifier.size(16.dp))
+                        }
+                        DropdownMenu(sortMenuOpen, { sortMenuOpen = false }) {
+                            HistorySort.entries.forEach { option ->
+                                DropdownMenuItem(text = { Text(option.label) }, onClick = { sortName = option.name; sortMenuOpen = false })
+                            }
                         }
                     }
                 }
-                Text("${filteredTransactions.size}건", color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.labelMedium)
-                Text(
-                    "지출 ${formatWon(filteredTransactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount })}",
-                    color = LocalFinanceColors.current.expense,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                )
-                Text(
-                    "수입 ${formatWon(filteredTransactions.filter { it.type == TransactionType.INCOME }.sumOf { it.amount })}",
-                    color = LocalFinanceColors.current.income,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.End,
-                )
-                Box {
-                    TextButton(onClick = { sortMenuOpen = true }) {
-                        Text(sort.label, style = MaterialTheme.typography.labelSmall)
-                        Icon(Icons.Rounded.ChevronRight, null, modifier = Modifier.size(16.dp))
-                    }
-                    DropdownMenu(sortMenuOpen, { sortMenuOpen = false }) {
-                        HistorySort.entries.forEach { option ->
-                            DropdownMenuItem(text = { Text(option.label) }, onClick = { sortName = option.name; sortMenuOpen = false })
-                        }
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("지출 ${formatWon(filteredTransactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount })}",
+                        color = LocalFinanceColors.current.expense, style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1,
+                        overflow = TextOverflow.Ellipsis)
+                    Text("수입 ${formatWon(filteredTransactions.filter { it.type == TransactionType.INCOME }.sumOf { it.amount })}",
+                        color = LocalFinanceColors.current.income, style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1,
+                        overflow = TextOverflow.Ellipsis, textAlign = TextAlign.End)
                 }
             }
         }
@@ -300,22 +270,64 @@ fun HistoryScreen(
                 )
             }
         } else if (sort.groupsByDate) {
-            val grouped = filteredTransactions.groupBy { it.occurredDate }
-            grouped.forEach { (date, transactions) ->
+            filteredTransactions.groupBy { it.occurredDate }.forEach { (date, transactions) ->
                 item(key = "date-${date}") {
-                    DateGroup(
-                        date = date,
-                        transactions = transactions,
-                        onSelectTransaction = { detailId = it.id },
-                    )
+                    DateGroup(date, transactions, onSelectTransaction = { detailId = it.id })
                 }
             }
         } else {
             items(filteredTransactions, key = { "transaction-${it.id}" }) { transaction ->
-                FinanceCard {
-                    TransactionRow(transaction, onClick = { detailId = transaction.id })
-                }
+                FinanceCard { TransactionRow(transaction, onClick = { detailId = transaction.id }) }
             }
+        }
+    }
+
+    if (expandedLayout) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(
+                modifier = Modifier.weight(0.46f).fillMaxHeight().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("소비내역", style = MaterialTheme.typography.headlineSmall)
+                calendarContent()
+                HistoryBackupActions(
+                    expanded = backupMenuOpen,
+                    onExpandedChange = { backupMenuOpen = it },
+                    onImportCsv = onImportCsv,
+                    onExportCsv = onExportCsv,
+                    onExportJson = onExportJson,
+                )
+            }
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.weight(0.54f).fillMaxHeight(),
+                contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                content = transactionContent,
+            )
+        }
+    } else {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            item { Text("소비내역", style = MaterialTheme.typography.headlineSmall) }
+            item { calendarContent() }
+            item {
+                HistoryBackupActions(
+                    expanded = backupMenuOpen,
+                    onExpandedChange = { backupMenuOpen = it },
+                    onImportCsv = onImportCsv,
+                    onExportCsv = onExportCsv,
+                    onExportJson = onExportJson,
+                )
+            }
+            transactionContent()
         }
     }
 
@@ -344,6 +356,36 @@ fun HistoryScreen(
                 editingTransaction = null
             },
         )
+    }
+}
+
+@Composable
+private fun HistoryBackupActions(
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    onImportCsv: () -> Unit,
+    onExportCsv: () -> Unit,
+    onExportJson: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        OutlinedButton(onClick = onImportCsv, modifier = Modifier.weight(1f)) {
+            Icon(Icons.Rounded.FileDownload, contentDescription = null, modifier = Modifier.size(17.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("CSV 가져오기", maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Box {
+            IconButton(onClick = { onExpandedChange(true) }) {
+                Icon(Icons.Rounded.FileDownload, contentDescription = "내보내기·백업")
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { onExpandedChange(false) }) {
+                DropdownMenuItem(text = { Text("CSV 내보내기") }, onClick = { onExpandedChange(false); onExportCsv() })
+                DropdownMenuItem(text = { Text("JSON 전체 백업") }, onClick = { onExpandedChange(false); onExportJson() })
+            }
+        }
     }
 }
 
@@ -381,12 +423,13 @@ private fun CalendarCard(
     month: YearMonth,
     selectedDate: LocalDate,
     transactions: List<Transaction>,
+    expandedByDefault: Boolean = false,
     onSelectDate: (LocalDate) -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
-    var expanded by rememberSaveable { mutableStateOf(false) }
+    var expanded by rememberSaveable(expandedByDefault) { mutableStateOf(expandedByDefault) }
     val compactStart by rememberSaveable(month.toString()) {
         mutableStateOf(selectedDate.minusDays((selectedDate.dayOfWeek.value % 7).toLong()).toString())
     }

@@ -354,7 +354,7 @@ npm run deploy
 ### 앱 업데이트를 Galaxy에 전달
 
 1. `gradle.properties`의 `VERSION_CODE`를 이전보다 1 이상 올리고 `VERSION_NAME`을 바꾼다.
-2. `app/src/main/java/com/moasseum/app/ui/screens/WhatsNewDialog.kt`의 `ReleaseNotesCatalog`에 새 버전 슬라이드를 추가한다. 실제 QA 앱에서 변경 화면을 캡처하고, 개인정보·실사용 거래가 없는지 확인한 뒤 `app/src/main/res/drawable-nodpi/whats_new_<버전>_<기능>.jpg`로 포함한다. 슬라이드 순서는 팝업의 다음/이전 순서이며 제목·설명은 이미지 아래에 표시된다. 현재 버전의 카탈로그가 빠지면 `ReleaseNotesPolicyTest`가 빌드를 실패시킨다.
+2. `app/src/main/java/com/moasseum/app/ui/screens/WhatsNewDialog.kt`의 `ReleaseNotesCatalog`에 새 버전 슬라이드를 추가한다. 실제 QA 앱에서 변경 화면을 캡처하고, 개인정보·실사용 거래가 없는지 확인한 뒤 `app/src/main/res/drawable-nodpi/whats_new_<버전>_<기능>.jpg` 또는 `.png`로 포함한다. 슬라이드 순서는 팝업의 다음/이전 순서이며 제목·설명은 이미지 아래에 표시된다. 현재 버전의 카탈로그가 빠지면 `ReleaseNotesPolicyTest`가 빌드를 실패시킨다.
 3. 같은 개인용 서명 키를 사용해 `assembleRelease`를 빌드한다.
 4. 테스트가 통과한 뒤 코드를 `main`에 push하고 `app/build/outputs/apk/release/app-release.apk`를 [GitHub Releases](https://github.com/blossom0948/gagebu2/releases)에 새 버전으로 첨부한다.
 5. 휴대폰에서 `관리 → 앱 업데이트 → 업데이트 확인`을 누르면 앱이 APK를 직접 내려받고 검증한 뒤 Android 설치 화면을 연다. 설치를 마치고 앱을 열면 해당 버전의 신기능 팝업이 한 번 표시된다. 필요한 경우 모아씀의 앱 설치 허용을 켜고, 시스템 설치 확인을 누른다.

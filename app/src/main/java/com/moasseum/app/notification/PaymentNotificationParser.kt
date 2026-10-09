@@ -157,7 +157,7 @@ object PaymentNotificationParser {
         return when {
             listOf("카페", "커피", "스타벅스", "아메리카노", "컴포즈커피", "메가커피", "빽다방", "이디야", "투썸", "더벤티", "cafe", "coffee").any { lower.contains(it) } -> "CAFE"
             listOf(
-                "식당", "치킨", "배달", "점심", "저녁", "마트", "이마트", "홈플러스", "롯데마트", "코스트코",
+                "식당", "치킨", "버거킹", "burger king", "푸드", "배달", "점심", "저녁", "마트", "이마트", "홈플러스", "롯데마트", "코스트코",
                 "트레이더스", "하나로마트", "노브랜드", "gs더프레시", "이마트에브리데이", "이마트24", "마켓컬리", "오아시스마켓",
                 "배달의민족", "쿠팡이츠", "요기요", "편의점", "cu", "gs25", "세븐일레븐", "food", "restaurant", "supermarket", "grocery",
             ).any { lower.contains(it) } -> "FOOD"
@@ -174,8 +174,8 @@ object PaymentNotificationParser {
             listOf("반려견", "반려묘", "동물병원", "펫", "pet").any { lower.contains(it) } -> "PET"
             listOf("구독", "멤버십", "정기결제", "넷플릭스", "유튜브 프리미엄", "디즈니+", "스포티파이", "멜론", "웨이브", "티빙", "왓챠", "쿠팡 와우", "subscription").any { lower.contains(it) } -> "SUBSCRIPTION"
             listOf("보험료", "보험", "insurance").any { lower.contains(it) } -> "INSURANCE"
-            listOf("이자", "수수료", "금융", "finance").any { lower.contains(it) } -> "FINANCE"
-            listOf("게임", "영화", "놀이공원", "공연", "leisure").any { lower.contains(it) } -> "LEISURE"
+            listOf("이자", "수수료", "금융", "캐시백", "cashback", "finance").any { lower.contains(it) } -> "FINANCE"
+            listOf("게임", "영화", "극장", "디트릭스", "dtryx", "놀이공원", "공연", "leisure").any { lower.contains(it) } -> "LEISURE"
             listOf("전기", "한국전력", "한전", "도시가스", "수도요금", "생필품", "생활용품", "생활용품점", "living").any { lower.contains(it) } -> "LIVING"
             else -> "OTHER"
         }

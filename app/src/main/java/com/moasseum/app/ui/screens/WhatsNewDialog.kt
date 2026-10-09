@@ -55,13 +55,29 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.29" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_29_fold_home,
+                imageAspectRatio = 1812f / 2176f,
+                title = "폴드 펼친 화면을 더 넓게",
+                description = "펼친 화면에서는 대시보드 정보를 두 칸으로 배치해 월 목표 지출과 오늘·이번 주 지출을 한눈에 볼 수 있어요. 접은 화면은 기존 한 칸 구성을 유지해요.",
+                imageDescription = "Galaxy Z Fold4를 펼친 상태의 모아씀 대시보드와 월 목표 지출 진행 막대",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_29_fold_history,
+                imageAspectRatio = 1812f / 2176f,
+                title = "달력과 내역을 함께 확인",
+                description = "펼친 화면에서는 달력과 검색·필터·거래 목록을 나란히 보여줘요. 금융 사진 인식은 계속 기기 안에서 처리하고, 거래 문맥이 부족한 숫자는 후보에서 걸러요.",
+                imageDescription = "Galaxy Z Fold4를 펼친 상태의 소비 달력과 거래 목록 분할 화면",
+            ),
+        )
         "0.1.28" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_28_photo_import,
                 imageAspectRatio = 904f / 950f,
                 title = "사진 여러 장에서 새 거래만 골라 기록",
-                description = "캡처 속 거래를 모두 확인하고 가맹점·유형·금액·날짜·카테고리·결제 수단·메모를 고칠 수 있어요. 이미 기록된 중복은 제외하고, 확인이 필요한 인식 결과는 검토 전 저장하지 않아요.",
-                imageDescription = "여러 금융앱 캡처에서 기존 중복 거래를 제외하고 새 거래 두 건을 검토하는 화면",
+                description = "캡처 속 거래를 모두 확인하고 가맹점·유형·금액·날짜·카테고리·결제 수단·메모를 고칠 수 있어요. 장부와 선택한 사진 사이의 중복은 제외하고, 확인이 필요한 결과는 검토 전 저장하지 않아요.",
+                imageDescription = "여러 금융앱 캡처에서 장부·사진 간 중복 거래를 제외하고 신규 거래를 검토하는 화면",
             ),
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_28_year_end,
@@ -76,7 +92,7 @@ object ReleaseNotesCatalog {
                 imageResId = R.drawable.whats_new_0_1_27_photo,
                 imageAspectRatio = 904f / 1040f,
                 title = "금융앱 캡처 여러 장에서 거래 추가",
-                description = "토스 등 거래내역 화면을 한 번에 고르고, 이미 기록된 거래와 겹친 캡처는 제외해 새 내역만 검토 후 추가해요.",
+                description = "토스 등 거래내역 화면을 한 번에 고르고, 장부·사진 간 중복은 제외해 새 내역만 검토 후 추가해요.",
                 imageDescription = "모아씀 새 기록 메뉴의 사진에서 거래 가져오기 항목",
             ),
             ReleaseNoteSlide(
