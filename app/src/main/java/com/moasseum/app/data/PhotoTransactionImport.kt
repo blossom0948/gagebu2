@@ -12,6 +12,7 @@ data class PhotoTransactionCandidate(
     val transaction: AiTransactionCandidate,
     val paymentMethod: String = "금융앱 캡처",
     val sourceImageId: String = "",
+    val id: String = java.util.UUID.randomUUID().toString(),
 )
 
 data class PhotoImportPreview(
@@ -31,6 +32,7 @@ sealed interface PhotoImportState {
         val duplicateCount: Int,
         val imageCount: Int,
         val failedImageCount: Int,
+        val unselectedCandidateIds: Set<String> = emptySet(),
     ) : PhotoImportState
     data class Error(val message: String) : PhotoImportState
 }

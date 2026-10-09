@@ -50,7 +50,7 @@ private data class PhotoImportDraft(val candidate: PhotoTransactionCandidate, va
 fun PhotoImportReview(
     state: PhotoImportState,
     saving: Boolean,
-    onPickMore: () -> Unit,
+    onPickMore: (Set<String>) -> Unit,
     onSave: (List<PhotoTransactionCandidate>) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -69,12 +69,14 @@ fun PhotoImportReview(
             Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("내역을 읽지 못했어요", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(state.message, color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
-                OutlinedButton(onClick = onPickMore, modifier = Modifier.fillMaxWidth()) { Text("다른 사진 선택") }
+                OutlinedButton(onClick = { onPickMore(emptySet()) }, modifier = Modifier.fillMaxWidth()) { Text("다른 사진 선택") }
                 TextButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text("닫기") }
             }
         }
         is PhotoImportState.Review -> {
-            var drafts by remember(state) { mutableStateOf(state.candidates.map { PhotoImportDraft(it, true) }) }
+            var drafts by remember(state.candidates, state.unselectedCandidateIds) {
+                mutableStateOf(state.candidates.map { PhotoImportDraft(it, it.id !in state.unselectedCandidateIds) })
+            }
             var editingIndex by remember(state) { mutableStateOf<Int?>(null) }
             Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -125,7 +127,9 @@ fun PhotoImportReview(
                         }
                     }
                 }
-                OutlinedButton(enabled = !saving, onClick = onPickMore, modifier = Modifier.fillMaxWidth()) { Text("사진 더 선택") }
+                OutlinedButton(enabled = !saving, onClick = {
+                    onPickMore(drafts.filterNot { it.selected }.mapTo(mutableSetOf()) { it.candidate.id })
+                }, modifier = Modifier.fillMaxWidth()) { Text("사진 더 선택") }
                 Button(
                     enabled = !saving && drafts.any { it.selected },
                     onClick = { onSave(drafts.filter { it.selected }.map { it.candidate }) },

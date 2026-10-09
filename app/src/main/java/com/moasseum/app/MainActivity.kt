@@ -698,7 +698,13 @@ private fun MoasseumApp(
             photoImportState = if (preview.candidates.isEmpty() && duplicateCount == 0) {
                 PhotoImportState.Error("거래 내역을 찾지 못했어요. 날짜와 금액이 선명하게 보이는 화면을 선택해 주세요.")
             } else {
-                PhotoImportState.Review(preview.candidates, duplicateCount, totalImages, totalFailures)
+                PhotoImportState.Review(
+                    preview.candidates,
+                    duplicateCount,
+                    totalImages,
+                    totalFailures,
+                    previousReview?.unselectedCandidateIds.orEmpty(),
+                )
             }
             temporaryFile?.delete()
         }
@@ -1421,6 +1427,12 @@ private fun MoasseumApp(
                 onPickReceipt = ::pickReceiptPhoto,
                 onTakeReceipt = ::takeReceiptPhoto,
                 photoImportState = photoImportState,
+                onPickMorePhotos = { unselectedIds ->
+                    (photoImportState as? PhotoImportState.Review)?.let { review ->
+                        photoImportState = review.copy(unselectedCandidateIds = unselectedIds)
+                    }
+                    pickReceiptPhoto()
+                },
                 onAddPhotoCandidates = { candidates ->
                     if (!savingTransaction && candidates.isNotEmpty()) {
                         val shouldShare = shareNewRecords && sharedSnapshot.ledgerId != null
