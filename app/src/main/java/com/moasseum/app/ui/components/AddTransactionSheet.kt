@@ -84,6 +84,7 @@ enum class AddMode {
 fun AddTransactionSheet(
     mode: AddMode,
     initialDate: LocalDate = LocalDate.now(),
+    initialType: TransactionType = TransactionType.EXPENSE,
     paymentMethods: List<String>,
     accounts: List<com.moasseum.app.domain.Account>,
     saving: Boolean = false,
@@ -122,7 +123,7 @@ fun AddTransactionSheet(
         }
         when (mode) {
             AddMode.MENU -> AddMenu(onModeChange = onModeChange, onStartVoiceInput = onStartVoiceInput)
-            AddMode.DIRECT -> DirectTransactionForm(initialDate = initialDate, paymentMethods = paymentMethods, accounts = accounts, saving = saving, onModeChange = onModeChange, onDismiss = onDismiss, onSave = onSave)
+            AddMode.DIRECT -> DirectTransactionForm(initialDate = initialDate, initialType = initialType, paymentMethods = paymentMethods, accounts = accounts, saving = saving, onModeChange = onModeChange, onDismiss = onDismiss, onSave = onSave)
             AddMode.AI_INPUT, AddMode.AI_NOTICE -> AiInputForm(
                 paymentMethods = paymentMethods,
                 aiState = aiState,
@@ -492,6 +493,7 @@ private fun AddActionRow(
 @OptIn(ExperimentalMaterial3Api::class)
 private fun DirectTransactionForm(
     initialDate: LocalDate,
+    initialType: TransactionType,
     paymentMethods: List<String>,
     accounts: List<com.moasseum.app.domain.Account>,
     saving: Boolean,
@@ -500,11 +502,13 @@ private fun DirectTransactionForm(
     onSave: (String, TransactionType, String, String, String, String, String?, LocalDate, Int?) -> Boolean,
 ) {
     val colors = LocalFinanceColors.current
-    var typeName by rememberSaveable { mutableStateOf(TransactionType.EXPENSE.name) }
+    var typeName by rememberSaveable(initialType.name) { mutableStateOf(initialType.name) }
     var amount by rememberSaveable { mutableStateOf("") }
     var merchant by rememberSaveable { mutableStateOf("") }
     var memo by rememberSaveable { mutableStateOf("") }
-    var categoryKey by rememberSaveable { mutableStateOf("FOOD") }
+    var categoryKey by rememberSaveable(initialType.name) {
+        mutableStateOf(if (initialType == TransactionType.INCOME) "OTHER" else "FOOD")
+    }
     var paymentMethod by rememberSaveable { mutableStateOf(paymentMethods.firstOrNull().orEmpty()) }
     var showError by rememberSaveable { mutableStateOf(false) }
     val type = TransactionType.valueOf(typeName)

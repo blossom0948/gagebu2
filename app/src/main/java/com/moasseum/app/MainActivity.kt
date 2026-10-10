@@ -146,6 +146,7 @@ import androidx.compose.material3.SnackbarResult
 class MainActivity : FragmentActivity() {
     private val incomingNotificationCandidateId = MutableStateFlow<Long?>(null)
     private val incomingSharedContent = MutableStateFlow<IncomingShare?>(null)
+    private val incomingWidgetEntryType = MutableStateFlow<com.moasseum.app.domain.TransactionType?>(null)
     private var sharedContentSequence = 0L
     private val biometricLockReleased = MutableStateFlow(false)
 
@@ -215,6 +216,7 @@ class MainActivity : FragmentActivity() {
         applySystemBars()
         incomingNotificationCandidateId.value = intentCandidateId(intent)
         incomingSharedContent.value = extractShare(intent)
+        incomingWidgetEntryType.value = consumeWidgetEntryType(intent)
         val application = application as FinanceApplication
         consumeAuthIntent(intent)
         setContent {
@@ -241,6 +243,7 @@ class MainActivity : FragmentActivity() {
             val notificationLastSeenAt by application.preferencesRepository.notificationLastSeenAt.collectAsStateWithLifecycle(initialValue = null)
             val notificationLastCandidateAt by application.preferencesRepository.notificationLastCandidateAt.collectAsStateWithLifecycle(initialValue = null)
             val candidateIdFromNotification by incomingNotificationCandidateId.collectAsStateWithLifecycle()
+            val widgetEntryType by incomingWidgetEntryType.collectAsStateWithLifecycle()
             val sharedContent by incomingSharedContent.collectAsStateWithLifecycle()
             val appLockEnabled by application.preferencesRepository.appLockEnabled.collectAsStateWithLifecycle(initialValue = false)
             val appLockReleased by biometricLockReleased.collectAsStateWithLifecycle()
@@ -322,6 +325,10 @@ class MainActivity : FragmentActivity() {
                         onSetAppLockEnabled = ::setAppLockEnabled,
                         onAuthenticateAppLock = ::authenticateAppLock,
                         financeRemindersEnabled = financeRemindersEnabled,
+                        incomingWidgetEntryType = widgetEntryType,
+                        onWidgetEntryConsumed = { type ->
+                            if (incomingWidgetEntryType.value == type) incomingWidgetEntryType.value = null
+                        },
                         onSetFinanceRemindersEnabled = { enabled ->
                             viewModel.performOperation("알림 설정을 저장하지 못했어요.") {
                                 application.preferencesRepository.setFinanceRemindersEnabled(enabled)
@@ -349,7 +356,15 @@ class MainActivity : FragmentActivity() {
         setIntent(intent)
         incomingNotificationCandidateId.value = intentCandidateId(intent)
         incomingSharedContent.value = extractShare(intent)
+        incomingWidgetEntryType.value = consumeWidgetEntryType(intent)
         consumeAuthIntent(intent)
+    }
+
+    private fun consumeWidgetEntryType(incoming: Intent?): com.moasseum.app.domain.TransactionType? {
+        if (incoming?.action != ACTION_WIDGET_QUICK_ADD) return null
+        val type = widgetEntryType(incoming.getStringExtra(EXTRA_WIDGET_ENTRY_TYPE))
+        incoming.removeExtra(EXTRA_WIDGET_ENTRY_TYPE)
+        return type
     }
 
     private fun consumeAuthIntent(incoming: Intent?) {
@@ -445,6 +460,8 @@ private fun MoasseumApp(
     onAuthenticateAppLock: () -> Unit,
     financeRemindersEnabled: Boolean,
     onSetFinanceRemindersEnabled: (Boolean) -> Unit,
+    incomingWidgetEntryType: com.moasseum.app.domain.TransactionType?,
+    onWidgetEntryConsumed: (com.moasseum.app.domain.TransactionType) -> Unit,
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -645,6 +662,7 @@ private fun MoasseumApp(
     var aiQuestionState by remember { mutableStateOf<SpendingQuestionState>(SpendingQuestionState.Idle) }
     var addOpen by rememberSaveable { mutableStateOf(false) }
     var addInitialDate by rememberSaveable { mutableStateOf(java.time.LocalDate.now().toString()) }
+    var addInitialTypeName by rememberSaveable { mutableStateOf(com.moasseum.app.domain.TransactionType.EXPENSE.name) }
     var pendingHistoryTransactionId by rememberSaveable { mutableStateOf<Long?>(null) }
     var savingTransaction by remember { mutableStateOf(false) }
     var addModeName by rememberSaveable { mutableStateOf(AddMode.MENU.name) }
@@ -901,6 +919,17 @@ private fun MoasseumApp(
     }
     val addMode = AddMode.valueOf(addModeName)
 
+    LaunchedEffect(incomingWidgetEntryType, showFirstRunGuide, showNotificationAccessPrompt, appLockEnabled, appLockReleased) {
+        val type = incomingWidgetEntryType ?: return@LaunchedEffect
+        if (showFirstRunGuide || showNotificationAccessPrompt || (appLockEnabled && !appLockReleased)) return@LaunchedEffect
+        navigateTo(navController, ROUTE_HOME)
+        addInitialDate = java.time.LocalDate.now().toString()
+        addInitialTypeName = type.name
+        addModeName = AddMode.DIRECT.name
+        addOpen = true
+        onWidgetEntryConsumed(type)
+    }
+
     fun startVoiceInput() {
         addOpen = true
         addModeName = AddMode.AI_INPUT.name
@@ -1002,6 +1031,7 @@ private fun MoasseumApp(
         addOpen = false
         addModeName = AddMode.MENU.name
         addInitialDate = java.time.LocalDate.now().toString()
+        addInitialTypeName = com.moasseum.app.domain.TransactionType.EXPENSE.name
         sharedPrefillText = null
         aiState = AiParseState.Idle
         photoImportState = PhotoImportState.Idle
@@ -1153,6 +1183,7 @@ private fun MoasseumApp(
                 onAdd = {
                     if (addOpen) closeAdd() else {
                         addInitialDate = java.time.LocalDate.now().toString()
+                        addInitialTypeName = com.moasseum.app.domain.TransactionType.EXPENSE.name
                         addOpen = true
                         addModeName = AddMode.MENU.name
                     }
@@ -1462,6 +1493,8 @@ private fun MoasseumApp(
             AddTransactionSheet(
                 mode = addMode,
                 initialDate = runCatching { java.time.LocalDate.parse(addInitialDate) }.getOrDefault(java.time.LocalDate.now()),
+                initialType = runCatching { com.moasseum.app.domain.TransactionType.valueOf(addInitialTypeName) }
+                    .getOrDefault(com.moasseum.app.domain.TransactionType.EXPENSE),
                 onModeChange = { if (!savingTransaction) addModeName = it.name },
                 onDismiss = { closeAdd() },
                 aiState = aiState,

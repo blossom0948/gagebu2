@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="400" viewBox="0 0 920 400">
+  <rect width="920" height="400" rx="36" fill="#121814"/>
+  <rect x="22" y="22" width="876" height="356" rx="32" fill="#202B24" stroke="#405247" stroke-width="2"/>
+  <text x="66" y="112" fill="#E9F4EC" font-family="Arial, sans-serif" font-size="42" font-weight="700">모아씀 · 빠른 기록</text>
+  <rect x="66" y="160" width="380" height="144" rx="28" fill="#C9E8D2"/>
+  <text x="256" y="252" fill="#22382C" font-family="Arial, sans-serif" font-size="44" font-weight="700" text-anchor="middle">− 지출</text>
+  <rect x="474" y="160" width="380" height="144" rx="28" fill="#34483B" stroke="#61796A" stroke-width="3"/>
+  <text x="664" y="252" fill="#E9F4EC" font-family="Arial, sans-serif" font-size="44" font-weight="700" text-anchor="middle">＋ 수입</text>
+</svg>

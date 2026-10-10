@@ -55,6 +55,15 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.33" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_33_widget,
+                imageAspectRatio = 2.3f,
+                title = "홈 화면에서 바로 기록",
+                description = "모아씀 위젯에서 지출·수입을 누르면 해당 입력 화면이 바로 열려요. 거래는 확인한 뒤 기기에 저장됩니다.",
+                imageDescription = "모아씀 홈 화면 빠른 기록 위젯의 지출·수입 버튼 미리보기",
+            ),
+        )
         "0.1.32" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_32_together,
