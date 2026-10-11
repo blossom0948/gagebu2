@@ -65,6 +65,57 @@ class SupabaseAuthApi(
     }
     override suspend fun refresh(refreshToken: String): AuthSession = parseSession(request("token?grant_type=refresh_token", JSONObject().put("refresh_token", refreshToken)))
     override suspend fun logout(accessToken: String) { request("logout?scope=local", JSONObject(), token = accessToken) }
+    override suspend fun deleteAccount(accessToken: String) = withContext(Dispatchers.IO) {
+        check(configured) { "로그인 서버가 아직 연결되지 않았어요." }
+        require(accessToken.isNotBlank())
+        val endpoint = URL("${baseUrl.trimEnd('/')}/rest/v1/rpc/delete_my_account")
+        require(endpoint.protocol == "https" && endpoint.userInfo == null) { "로그인 서버는 HTTPS 주소만 사용할 수 있어요." }
+        val connection = endpoint.openConnection() as HttpURLConnection
+        try {
+            connection.requestMethod = "POST"
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 20_000
+            connection.instanceFollowRedirects = false
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("apikey", publishableKey)
+            connection.setRequestProperty("Authorization", "Bearer $accessToken")
+            connection.outputStream.use { it.write("{}".toByteArray(Charsets.UTF_8)) }
+            val status = connection.responseCode
+            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+            val response = stream?.use {
+                val bytes = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(1024)
+                while (true) {
+                    val count = it.read(buffer)
+                    if (count < 0) break
+                    if (bytes.size() + count > 16_384) throw java.io.IOException("계정 삭제 응답이 너무 큽니다.")
+                    bytes.write(buffer, 0, count)
+                }
+                bytes.toString(Charsets.UTF_8.name())
+            }.orEmpty()
+            if (status !in 200..299) {
+                throw AuthHttpException(status, "account_delete_failed", when (status) {
+                    401, 403 -> "로그인이 만료됐어요. 다시 로그인한 뒤 계정을 삭제해 주세요."
+                    404 -> "계정 삭제를 위한 서버 업데이트가 아직 적용되지 않았어요."
+                    in 500..599 -> "계정 삭제 서버가 잠시 응답하지 않아요. 다시 시도해 주세요."
+                    else -> "계정을 삭제하지 못했어요. 로그인 상태를 확인하고 다시 시도해 주세요."
+                })
+            }
+            check(runCatching { org.json.JSONTokener(response).nextValue() == true }.getOrDefault(false)) {
+                "계정 삭제 서버의 완료 응답을 확인하지 못했어요."
+            }
+        } catch (error: AuthHttpException) {
+            throw error
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            throw java.io.IOException("계정 삭제 서버에 연결하지 못했어요. 계정 상태를 다시 확인해 주세요.", error)
+        } finally {
+            connection.disconnect()
+        }
+    }
 
     private suspend fun request(path: String, body: JSONObject? = null, method: String = "POST", token: String? = null): JSONObject = withContext(Dispatchers.IO) {
         check(configured) { "로그인 서버가 아직 연결되지 않았어요. 앱 전용 Supabase 프로젝트 설정이 필요합니다." }

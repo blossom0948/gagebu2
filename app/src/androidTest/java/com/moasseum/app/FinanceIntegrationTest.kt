@@ -40,6 +40,52 @@ class FinanceIntegrationTest {
         } finally { database.close() }
     }
 
+    @Test fun externalDepositPersistsAndOnlyChangesItsLinkedAccountBalance() = runBlocking {
+        val database = Room.inMemoryDatabaseBuilder(context, FinanceDatabase::class.java).build()
+        try {
+            val repo = FinanceRepository(database.financeDao())
+            repo.saveAccount(null, "QA 입금 계좌", 10_000)
+            val account = repo.observeAccounts().first().single()
+            repo.addExternalDeposit(5_000, account.id, LocalDate.parse("2026-10-05"), "QA 외부 입금", "잔액 반영만")
+            val row = repo.observeTransactions().first().single()
+            assertEquals(TransactionType.EXTERNAL_DEPOSIT, row.type)
+            assertEquals("EXTERNAL_DEPOSIT", row.source)
+            assertEquals(account.id, row.accountId)
+            assertEquals(15_000L, accountBalance(account, listOf(row)))
+            val ledger = LedgerUiState(YearMonth.of(2026, 10), listOf(row))
+            assertEquals(0L, ledger.expenseTotal)
+            assertEquals(0L, ledger.incomeTotal)
+            assertTrue(runCatching {
+                repo.addExternalDeposit(1_000, "missing-account", LocalDate.now(), "QA", "")
+            }.isFailure)
+        } finally { database.close() }
+    }
+
+    @Test fun installmentTotalCanBeRedistributedAndConvertedToOnePayment() = runBlocking {
+        val database = Room.inMemoryDatabaseBuilder(context, FinanceDatabase::class.java).build()
+        try {
+            val dao = database.financeDao()
+            val repo = FinanceRepository(dao)
+            repo.addInstallmentPlan(10_000, 3, LocalDate.parse("2026-10-05"), "SHOPPING", "QA 할부", "가전", "카드")
+            val original = repo.observeTransactions().first().sortedBy { it.installmentNumber }
+            assertEquals(listOf(3_334L, 3_333L, 3_333L), original.map { it.amount })
+            val groupId = requireNotNull(original.first().installmentGroupId)
+
+            repo.updateInstallmentTotal(groupId, 12_002)
+            val updated = repo.observeTransactions().first().sortedBy { it.installmentNumber }
+            assertEquals(listOf(4_001L, 4_001L, 4_000L), updated.map { it.amount })
+            assertEquals(12_002L, updated.sumOf { it.amount })
+            assertEquals(original.map { it.occurredDate }, updated.map { it.occurredDate })
+
+            repo.convertInstallmentToSinglePayment(groupId)
+            val oneTime = repo.observeTransactions().first().single()
+            assertEquals(12_002L, oneTime.amount)
+            assertNull(oneTime.installmentGroupId)
+            assertEquals("가전", oneTime.memo)
+            assertEquals(2, dao.allTransactionsForBackup().count { it.deletedAt != null })
+        } finally { database.close() }
+    }
+
     @Test fun missingRuleAndInvalidFinancialWritesAreRejected() = runBlocking {
         val database = Room.inMemoryDatabaseBuilder(context, FinanceDatabase::class.java).build()
         try {

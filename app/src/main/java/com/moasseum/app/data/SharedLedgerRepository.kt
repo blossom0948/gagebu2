@@ -78,6 +78,26 @@ data class SharedLedgerSnapshot(
 
 class SharedApiException(val statusCode: Int, message: String) : java.io.IOException(message)
 
+/** Narrow server boundary so two independent signed-in clients can be exercised end to end. */
+interface SharedLedgerGateway {
+    suspend fun findLedger(token: String, userId: String): String?
+    suspend fun countMembers(token: String, ledgerId: String): Int
+    suspend fun fetchGoals(token: String, ledgerId: String): List<SharedLedgerGoal>
+    suspend fun saveGoal(token: String, ledgerId: String, ownerId: String, goalId: String?, title: String, targetAmount: Long, currentAmount: Long, monthKey: String)
+    suspend fun deleteGoal(token: String, ledgerId: String, goalId: String)
+    suspend fun fetchFinanceItems(token: String, ledgerId: String): List<SharedFinanceItem>
+    suspend fun saveFinanceItem(token: String, ledgerId: String, ownerId: String, item: SharedFinanceItem)
+    suspend fun deleteFinanceItem(token: String, ledgerId: String, itemId: String)
+    suspend fun fetchSettings(token: String, ledgerId: String): SharedLedgerSettings
+    suspend fun saveSettings(token: String, ledgerId: String, userId: String, settings: SharedLedgerSettings)
+    suspend fun leave(token: String): String?
+    suspend fun createInvite(token: String): SharedLedgerInvite
+    suspend fun join(token: String, code: String)
+    suspend fun upsertTransactions(token: String, ledgerId: String, ownerId: String, rows: List<TransactionEntity>)
+    suspend fun fetchTransactions(token: String, ledgerId: String): List<RemoteSharedTransaction>
+    suspend fun deleteTransaction(token: String, ledgerId: String, transactionId: String, ownerId: String)
+}
+
 /**
  * The app sends only explicitly shared transaction fields. This repository never
  * uploads personal rows, accounts, budgets, or notification previews.
@@ -85,7 +105,7 @@ class SharedApiException(val statusCode: Int, message: String) : java.io.IOExcep
 class SharedLedgerRepository(
     private val dao: FinanceDao,
     private val auth: AuthRepository,
-    private val api: SharedLedgerApi = SharedLedgerApi(),
+    private val api: SharedLedgerGateway = SharedLedgerApi(),
 ) {
     suspend fun refresh(): SharedLedgerSnapshot {
         val identity = identity()
@@ -244,6 +264,10 @@ data class RemoteSharedTransaction(
     val paymentMethod: String,
     val updatedAt: Long,
     val deletedAt: Long?,
+    val currency: String = "KRW",
+    val originalAmount: String? = null,
+    val exchangeRate: String? = null,
+    val exchangeRateDate: String? = null,
 ) {
     fun toEntity(existing: TransactionEntity?, signedInUserId: String) = TransactionEntity(
         id = existing?.id ?: 0,
@@ -265,6 +289,10 @@ data class RemoteSharedTransaction(
         accountId = existing?.accountId,
         destinationAccountId = existing?.destinationAccountId,
         cloudId = transactionId,
+        currency = currency,
+        originalAmount = originalAmount,
+        exchangeRate = exchangeRate,
+        exchangeRateDate = exchangeRateDate,
     )
 }
 
@@ -285,22 +313,26 @@ private fun TransactionEntity.toSharedDomain() = Transaction(
     ledgerId = ledgerId,
     sharingScope = sharingScope,
     cloudId = cloudId,
+    currency = currency,
+    originalAmount = originalAmount,
+    exchangeRateToKrw = exchangeRate,
+    exchangeRateDate = exchangeRateDate,
 )
 
 class SharedLedgerApi(
     private val baseUrl: String = BuildConfig.SUPABASE_URL,
     private val publishableKey: String = BuildConfig.SUPABASE_PUBLISHABLE_KEY,
-) {
-    suspend fun findLedger(token: String, userId: String): String? {
+) : SharedLedgerGateway {
+    override suspend fun findLedger(token: String, userId: String): String? {
         val result = request("GET", "shared_ledger_members?select=ledger_id&user_id=eq.${enc(userId)}&limit=1", token)
         return JSONArray(result).optJSONObject(0)?.optString("ledger_id")?.takeIf(String::isNotBlank)
     }
 
-    suspend fun countMembers(token: String, ledgerId: String): Int = JSONArray(
+    override suspend fun countMembers(token: String, ledgerId: String): Int = JSONArray(
         request("GET", "shared_ledger_members?select=user_id&ledger_id=eq.${enc(ledgerId)}&limit=2", token),
     ).length()
 
-    suspend fun fetchGoals(token: String, ledgerId: String): List<SharedLedgerGoal> {
+    override suspend fun fetchGoals(token: String, ledgerId: String): List<SharedLedgerGoal> {
         val rows = try {
             fetchPagedRows(
                 token,
@@ -331,7 +363,7 @@ class SharedLedgerApi(
         }
     }
 
-    suspend fun saveGoal(
+    override suspend fun saveGoal(
         token: String,
         ledgerId: String,
         ownerId: String,
@@ -370,7 +402,7 @@ class SharedLedgerApi(
         }
     }
 
-    suspend fun fetchFinanceItems(token: String, ledgerId: String): List<SharedFinanceItem> {
+    override suspend fun fetchFinanceItems(token: String, ledgerId: String): List<SharedFinanceItem> {
         val rows = fetchPagedRows(
             token,
             "shared_finance_items?select=id,owner_id,kind,title,amount,due_day,month_key,date_key,memo&ledger_id=eq.${enc(ledgerId)}&order=kind.asc,title.asc,id.asc",
@@ -392,7 +424,7 @@ class SharedLedgerApi(
         }
     }
 
-    suspend fun fetchSettings(token: String, ledgerId: String): SharedLedgerSettings {
+    override suspend fun fetchSettings(token: String, ledgerId: String): SharedLedgerSettings {
         val rows = JSONArray(request(
             "GET",
             "shared_ledger_settings?select=money_mode&ledger_id=eq.${enc(ledgerId)}&limit=1",
@@ -404,7 +436,7 @@ class SharedLedgerApi(
         return SharedLedgerSettings(moneyMode = mode)
     }
 
-    suspend fun saveSettings(token: String, ledgerId: String, userId: String, settings: SharedLedgerSettings) {
+    override suspend fun saveSettings(token: String, ledgerId: String, userId: String, settings: SharedLedgerSettings) {
         val body = JSONObject()
             .put("ledger_id", ledgerId)
             .put("money_mode", settings.moneyMode.name)
@@ -420,13 +452,13 @@ class SharedLedgerApi(
         check(saved.length() == 1) { "공동 자금 방식을 저장하지 못했어요." }
     }
 
-    suspend fun leave(token: String): String? {
+    override suspend fun leave(token: String): String? {
         val response = request("POST", "rpc/leave_shared_ledger", token, JSONObject())
         val value = runCatching { org.json.JSONTokener(response).nextValue() }.getOrNull()
         return (value as? String)?.let { runCatching { UUID.fromString(it).toString() }.getOrNull() }
     }
 
-    suspend fun saveFinanceItem(token: String, ledgerId: String, ownerId: String, item: SharedFinanceItem) {
+    override suspend fun saveFinanceItem(token: String, ledgerId: String, ownerId: String, item: SharedFinanceItem) {
         val itemId = runCatching { UUID.fromString(item.id).toString() }.getOrElse { UUID.randomUUID().toString() }
         val body = JSONObject()
             .put("kind", item.kind.name)
@@ -450,7 +482,7 @@ class SharedLedgerApi(
         }
     }
 
-    suspend fun deleteFinanceItem(token: String, ledgerId: String, itemId: String) {
+    override suspend fun deleteFinanceItem(token: String, ledgerId: String, itemId: String) {
         UUID.fromString(itemId)
         val deleted = JSONArray(request(
             "DELETE", "shared_finance_items?id=eq.${enc(itemId)}&ledger_id=eq.${enc(ledgerId)}",
@@ -459,7 +491,7 @@ class SharedLedgerApi(
         check(deleted.length() == 1) { "공동 재정 항목이 이미 삭제되었어요." }
     }
 
-    suspend fun deleteGoal(token: String, ledgerId: String, goalId: String) {
+    override suspend fun deleteGoal(token: String, ledgerId: String, goalId: String) {
         UUID.fromString(goalId)
         val deleted = JSONArray(request(
             "DELETE",
@@ -470,19 +502,19 @@ class SharedLedgerApi(
         check(deleted.length() == 1) { "공동 목표가 이미 삭제되었어요. 새로고침해 주세요." }
     }
 
-    suspend fun createInvite(token: String): SharedLedgerInvite {
+    override suspend fun createInvite(token: String): SharedLedgerInvite {
         val response = jsonObject(request("POST", "rpc/create_shared_ledger_invite", token, JSONObject()))
         val code = response.getString("invite_code")
         require(code.matches(Regex("[A-F0-9]{20}"))) { "초대 코드를 안전하게 만들지 못했어요." }
         return SharedLedgerInvite(code, response.optString("expires_at"))
     }
 
-    suspend fun join(token: String, code: String) {
+    override suspend fun join(token: String, code: String) {
         require(code.matches(Regex("[A-F0-9]{20}"))) { "초대 코드는 20자리 영문·숫자입니다." }
         request("POST", "rpc/join_shared_ledger", token, JSONObject().put("invite_code", code))
     }
 
-    suspend fun upsertTransactions(token: String, ledgerId: String, ownerId: String, rows: List<TransactionEntity>) {
+    override suspend fun upsertTransactions(token: String, ledgerId: String, ownerId: String, rows: List<TransactionEntity>) {
         if (rows.isEmpty()) return
         val payload = JSONArray()
         rows.forEach { row ->
@@ -500,29 +532,64 @@ class SharedLedgerApi(
                 .put("merchant", row.merchant.trim().take(300))
                 .put("memo", row.memo.take(1000))
                 .put("payment_method", row.paymentMethod.take(80))
+                .put("currency", row.currency)
+                .put("original_amount", row.originalAmount ?: JSONObject.NULL)
+                .put("exchange_rate", row.exchangeRate ?: JSONObject.NULL)
+                .put("exchange_rate_date", row.exchangeRateDate ?: JSONObject.NULL)
                 .put("updated_at", Instant.ofEpochMilli(row.updatedAt).toString())
             if (row.deletedAt == null) item.put("deleted_at", JSONObject.NULL)
             else item.put("deleted_at", Instant.ofEpochMilli(row.deletedAt).toString())
             payload.put(item)
         }
         if (payload.length() == 0) return
-        request(
-            "POST",
-            "shared_transactions?on_conflict=ledger_id%2Ctransaction_id",
-            token,
-            payload,
-            prefer = "resolution=merge-duplicates,return=minimal",
-        )
+        try {
+            request(
+                "POST",
+                "shared_transactions?on_conflict=ledger_id%2Ctransaction_id",
+                token,
+                payload,
+                prefer = "resolution=merge-duplicates,return=minimal",
+            )
+        } catch (error: SharedApiException) {
+            if (error.statusCode != 400 || rows.any { it.currency != "KRW" }) {
+                if (error.statusCode == 400 && rows.any { it.currency != "KRW" }) {
+                    throw SharedApiException(400, "외화 공유를 위한 서버 업데이트가 아직 적용되지 않았어요.")
+                }
+                throw error
+            }
+            for (index in 0 until payload.length()) {
+                payload.getJSONObject(index).apply {
+                    remove("currency"); remove("original_amount"); remove("exchange_rate"); remove("exchange_rate_date")
+                }
+            }
+            request(
+                "POST",
+                "shared_transactions?on_conflict=ledger_id%2Ctransaction_id",
+                token,
+                payload,
+                prefer = "resolution=merge-duplicates,return=minimal",
+            )
+        }
     }
 
-    suspend fun fetchTransactions(token: String, ledgerId: String): List<RemoteSharedTransaction> {
-        val columns = "ledger_id,transaction_id,owner_id,type,amount,occurred_at,timezone,category_key,merchant,memo,payment_method,updated_at,deleted_at"
-        val rows = fetchPagedRows(
-            token,
-            "shared_transactions?select=$columns&ledger_id=eq.${enc(ledgerId)}&order=transaction_id.asc",
-            pageSize = 1_000,
-            maxRows = 20_000,
-        )
+    override suspend fun fetchTransactions(token: String, ledgerId: String): List<RemoteSharedTransaction> {
+        val columns = "ledger_id,transaction_id,owner_id,type,amount,occurred_at,timezone,category_key,merchant,memo,payment_method,currency,original_amount,exchange_rate,exchange_rate_date,updated_at,deleted_at"
+        val rows = try {
+            fetchPagedRows(
+                token,
+                "shared_transactions?select=$columns&ledger_id=eq.${enc(ledgerId)}&order=transaction_id.asc",
+                pageSize = 1_000,
+                maxRows = 20_000,
+            )
+        } catch (error: SharedApiException) {
+            if (error.statusCode != 400) throw error
+            fetchPagedRows(
+                token,
+                "shared_transactions?select=ledger_id,transaction_id,owner_id,type,amount,occurred_at,timezone,category_key,merchant,memo,payment_method,updated_at,deleted_at&ledger_id=eq.${enc(ledgerId)}&order=transaction_id.asc",
+                pageSize = 1_000,
+                maxRows = 20_000,
+            )
+        }
         return rows.map { item ->
             RemoteSharedTransaction(
                 ledgerId = item.getString("ledger_id"),
@@ -538,6 +605,10 @@ class SharedLedgerApi(
                 paymentMethod = item.optString("payment_method", "카드").take(80),
                 updatedAt = Instant.parse(item.getString("updated_at")).toEpochMilli(),
                 deletedAt = item.optString("deleted_at").takeIf { it.isNotBlank() && it != "null" }?.let { Instant.parse(it).toEpochMilli() },
+                currency = item.optString("currency").takeIf { it.matches(Regex("[A-Z]{3}")) } ?: "KRW",
+                originalAmount = item.optString("original_amount").takeIf { it.isNotBlank() && it != "null" },
+                exchangeRate = item.optString("exchange_rate").takeIf { it.isNotBlank() && it != "null" },
+                exchangeRateDate = item.optString("exchange_rate_date").takeIf { it.isNotBlank() && it != "null" },
             )
         }
     }
@@ -562,7 +633,7 @@ class SharedLedgerApi(
         }
     }
 
-    suspend fun deleteTransaction(token: String, ledgerId: String, transactionId: String, ownerId: String) {
+    override suspend fun deleteTransaction(token: String, ledgerId: String, transactionId: String, ownerId: String) {
         UUID.fromString(transactionId)
         request(
             "DELETE",

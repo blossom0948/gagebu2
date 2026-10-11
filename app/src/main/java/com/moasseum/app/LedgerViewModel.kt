@@ -11,6 +11,7 @@ import com.moasseum.app.domain.AiTransactionCandidate
 import com.moasseum.app.domain.NotificationCandidate
 import com.moasseum.app.domain.RecurringRule
 import com.moasseum.app.domain.TransactionType
+import com.moasseum.app.domain.CurrencyConversion
 import com.moasseum.app.domain.parseAmount
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -111,6 +112,7 @@ class LedgerViewModel(
         occurredAt: LocalDate = LocalDate.now(),
         paymentMethod: String = "카드",
         accountId: String? = null,
+        currencyConversion: CurrencyConversion? = null,
         onComplete: (Result<Long>) -> Unit = {},
     ): Boolean {
         val amount = parseAmount(amountInput)?.takeIf { it <= 1_000_000_000_000L } ?: return false
@@ -126,6 +128,7 @@ class LedgerViewModel(
                 memo = memo,
                 paymentMethod = paymentMethod,
                 accountId = accountId,
+                currencyConversion = currencyConversion,
             ) })
         }
         return true
@@ -205,6 +208,10 @@ class LedgerViewModel(
     fun deleteInstallmentPlan(groupId: String) {
         performOperation("할부 내역을 삭제하지 못했어요.") { repository.deleteInstallmentPlan(groupId) }
     }
+
+    suspend fun updateInstallmentTotal(groupId: String, total: Long) = repository.updateInstallmentTotal(groupId, total)
+
+    suspend fun convertInstallmentToSinglePayment(groupId: String) = repository.convertInstallmentToSinglePayment(groupId)
 
     fun setRecurringRuleActive(id: Long, active: Boolean) {
         performOperation("반복 거래 상태를 바꾸지 못했어요.") { repository.setRecurringRuleActive(id, active) }

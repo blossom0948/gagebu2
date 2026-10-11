@@ -26,6 +26,9 @@ interface AuthApi {
     suspend fun updatePassword(session: AuthSession, password: String)
     suspend fun refresh(refreshToken: String): AuthSession
     suspend fun logout(accessToken: String)
+    suspend fun deleteAccount(accessToken: String) {
+        throw UnsupportedOperationException("계정 삭제를 지원하지 않는 인증 서버입니다.")
+    }
 }
 
 interface AuthLinkApi : AuthApi {

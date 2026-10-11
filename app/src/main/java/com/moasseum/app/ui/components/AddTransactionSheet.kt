@@ -1,6 +1,7 @@
 package com.moasseum.app.ui.components
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -23,15 +24,19 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.KeyboardVoice
+import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Payments
 import androidx.compose.material.icons.rounded.PieChartOutline
 import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -46,11 +51,15 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -62,9 +71,17 @@ import com.moasseum.app.domain.AiTransactionCandidate
 import com.moasseum.app.domain.formatDate
 import com.moasseum.app.domain.formatWon
 import com.moasseum.app.domain.parseAmount
+import com.moasseum.app.domain.parseQuickEntry
 import com.moasseum.app.domain.Transaction
+import com.moasseum.app.domain.CurrencyConversion
+import com.moasseum.app.domain.ExchangeRateQuote
+import com.moasseum.app.domain.quickEntrySuggestions
 import com.moasseum.app.data.PhotoImportState
 import com.moasseum.app.data.PhotoTransactionCandidate
+import com.moasseum.app.data.convertForeignAmountToKrw
+import com.moasseum.app.data.currencyFractionDigits
+import com.moasseum.app.data.parseForeignAmount
+import com.moasseum.app.data.supportedForeignCurrencies
 import com.moasseum.app.ui.components.categoryLabel
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import java.time.LocalDate
@@ -80,6 +97,31 @@ enum class AddMode {
     PHOTO_REVIEW,
 }
 
+private fun currencyLabelForInput(code: String): String = when (code) {
+    "KRW" -> "원"
+    "USD" -> "미국 달러"
+    "JPY" -> "일본 엔"
+    "EUR" -> "유로"
+    "CNY" -> "중국 위안"
+    "GBP" -> "영국 파운드"
+    "TWD" -> "대만 달러"
+    "HKD" -> "홍콩 달러"
+    "THB" -> "태국 바트"
+    "VND" -> "베트남 동"
+    "SGD" -> "싱가포르 달러"
+    "AUD" -> "호주 달러"
+    "CAD" -> "캐나다 달러"
+    "CHF" -> "스위스 프랑"
+    "NZD" -> "뉴질랜드 달러"
+    "PHP" -> "필리핀 페소"
+    "IDR" -> "인도네시아 루피아"
+    "MYR" -> "말레이시아 링깃"
+    "INR" -> "인도 루피"
+    "AED" -> "아랍에미리트 디르함"
+    "KWD" -> "쿠웨이트 디나르"
+    else -> code
+}
+
 @Composable
 fun AddTransactionSheet(
     mode: AddMode,
@@ -87,10 +129,13 @@ fun AddTransactionSheet(
     initialType: TransactionType = TransactionType.EXPENSE,
     paymentMethods: List<String>,
     accounts: List<com.moasseum.app.domain.Account>,
+    hiddenSuggestionKeys: Set<String> = emptySet(),
+    onHideSuggestion: (String) -> Unit = {},
+    onFetchExchangeRate: suspend (String, LocalDate) -> Result<ExchangeRateQuote> = { _, _ -> Result.failure(IllegalStateException("환율 정보를 불러올 수 없어요.")) },
     saving: Boolean = false,
     onModeChange: (AddMode) -> Unit,
     onDismiss: () -> Unit,
-    onSave: (String, TransactionType, String, String, String, String, String?, LocalDate, Int?) -> Boolean,
+    onSave: (String, TransactionType, String, String, String, String, String?, LocalDate, Int?, CurrencyConversion?) -> Boolean,
     aiState: AiParseState = AiParseState.Idle,
     onParseAi: (String) -> Unit = {},
     onConfirmAi: (String, TransactionType, String, String, String, String, java.time.LocalDate) -> Boolean = { _, _, _, _, _, _, _ -> false },
@@ -118,12 +163,35 @@ fun AddTransactionSheet(
     LaunchedEffect(mode) { scrollState.scrollTo(0) }
     Column(Modifier.fillMaxWidth().verticalScroll(scrollState)) {
         if (saving) androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (canShareOnSave && mode in setOf(AddMode.DIRECT, AddMode.AI_INPUT, AddMode.PHOTO_REVIEW)) {
+        if (canShareOnSave && mode in setOf(AddMode.MENU, AddMode.DIRECT, AddMode.AI_INPUT, AddMode.PHOTO_REVIEW)) {
             SaveDestinationSelector(shareOnSave, onShareOnSaveChange)
         }
         when (mode) {
-            AddMode.MENU -> AddMenu(onModeChange = onModeChange, onStartVoiceInput = onStartVoiceInput)
-            AddMode.DIRECT -> DirectTransactionForm(initialDate = initialDate, initialType = initialType, paymentMethods = paymentMethods, accounts = accounts, saving = saving, onModeChange = onModeChange, onDismiss = onDismiss, onSave = onSave)
+            AddMode.MENU -> AddMenu(
+                paymentMethods = paymentMethods,
+                saving = saving,
+                onModeChange = onModeChange,
+                onStartVoiceInput = onStartVoiceInput,
+                speechResult = speechResult,
+                onSpeechResultConsumed = onSpeechResultConsumed,
+                onParseAi = onParseAi,
+                onQuickSave = { input ->
+                    val candidate = parseQuickEntry(input) ?: return@AddMenu false
+                    val category = com.moasseum.app.notification.PaymentNotificationParser.inferCategoryFrom(candidate.merchant)
+                    onSave(
+                        candidate.amount.toString(), candidate.type, candidate.merchant, category, "",
+                        paymentMethods.firstOrNull() ?: "카드", null, initialDate, null, null,
+                    )
+                },
+                onPickReceipt = onPickReceipt,
+                onTakeReceipt = onTakeReceipt,
+            )
+            AddMode.DIRECT -> DirectTransactionForm(
+                initialDate = initialDate, initialType = initialType, paymentMethods = paymentMethods, accounts = accounts,
+                transactions = transactions, hiddenSuggestionKeys = hiddenSuggestionKeys, onHideSuggestion = onHideSuggestion,
+                onFetchExchangeRate = onFetchExchangeRate, saving = saving, onModeChange = onModeChange,
+                onDismiss = onDismiss, onSave = onSave,
+            )
             AddMode.AI_INPUT, AddMode.AI_NOTICE -> AiInputForm(
                 paymentMethods = paymentMethods,
                 aiState = aiState,
@@ -180,42 +248,103 @@ private fun SaveDestinationSelector(
 }
 
 @Composable
-private fun AddMenu(onModeChange: (AddMode) -> Unit, onStartVoiceInput: () -> Unit) {
+private fun AddMenu(
+    paymentMethods: List<String>,
+    saving: Boolean,
+    onModeChange: (AddMode) -> Unit,
+    onStartVoiceInput: () -> Unit,
+    speechResult: String?,
+    onSpeechResultConsumed: () -> Unit,
+    onParseAi: (String) -> Unit,
+    onQuickSave: (String) -> Boolean,
+    onPickReceipt: () -> Unit,
+    onTakeReceipt: () -> Unit,
+) {
+    val colors = LocalFinanceColors.current
+    val focusRequester = remember { FocusRequester() }
+    var aiMode by rememberSaveable { mutableStateOf(true) }
+    var input by rememberSaveable { mutableStateOf("") }
+    var moreOpen by rememberSaveable { mutableStateOf(false) }
+    var error by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
+    LaunchedEffect(speechResult) {
+        if (!speechResult.isNullOrBlank()) {
+            input = speechResult.take(240)
+            aiMode = true
+            error = null
+            onSpeechResultConsumed()
+        }
+    }
     Column(
-        modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
-        Text("새 기록", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        AddActionRow(
-            icon = Icons.Rounded.TouchApp,
-            title = "직접 입력",
-            message = "",
-            onClick = { onModeChange(AddMode.DIRECT) },
-        )
-        AddActionRow(
-            icon = Icons.Rounded.AutoAwesome,
-            title = "AI 문장으로 입력",
-            message = "예: 점심 8천원",
-            onClick = { onModeChange(AddMode.AI_INPUT) },
-        )
-        AddActionRow(
-            icon = Icons.Rounded.Edit,
-            title = "문장으로 여러 건 처리",
-            message = "추가 · 수정 · 삭제",
-            onClick = { onModeChange(AddMode.BATCH) },
-        )
-        AddActionRow(
-            icon = Icons.Rounded.KeyboardVoice,
-            title = "음성으로 입력",
-            message = "",
-            onClick = onStartVoiceInput,
-        )
-        AddActionRow(
-            icon = Icons.Rounded.CameraAlt,
-            title = "사진에서 거래 가져오기",
-            message = "",
-            onClick = { onModeChange(AddMode.RECEIPT_NOTICE) },
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("빠른 기록", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            FilterChip(selected = aiMode, onClick = { aiMode = true; error = null }, enabled = !saving, label = { Text("AI") }, leadingIcon = {
+                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(15.dp))
+            })
+            Spacer(Modifier.width(6.dp))
+            FilterChip(selected = !aiMode, onClick = { aiMode = false; error = null }, enabled = !saving, label = { Text("직접") }, leadingIcon = {
+                Icon(Icons.Rounded.TouchApp, contentDescription = null, modifier = Modifier.size(15.dp))
+            })
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            OutlinedTextField(
+                value = input,
+                onValueChange = { input = it.take(240); error = null },
+                modifier = Modifier.weight(1f).focusRequester(focusRequester),
+                placeholder = { Text(if (aiMode) "예: 점심 8천원" else "가게 이름과 금액 · 예: 점심 8천원") },
+                singleLine = true,
+                enabled = !saving,
+                trailingIcon = if (!aiMode) ({
+                    TextButton(enabled = !saving && input.isNotBlank(), onClick = {
+                        if (onQuickSave(input)) { input = ""; error = null } else error = "가게 이름과 금액을 확인해 주세요."
+                    }) { Text("저장", fontWeight = FontWeight.Bold, color = colors.accent) }
+                }) else null,
+                shape = RoundedCornerShape(15.dp),
+            )
+            if (aiMode) {
+                Button(
+                    enabled = !saving && input.isNotBlank(),
+                    onClick = { onParseAi(input); onModeChange(AddMode.AI_INPUT) },
+                    contentPadding = PaddingValues(horizontal = 13.dp, vertical = 11.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = MaterialTheme.colorScheme.onPrimary),
+                    shape = RoundedCornerShape(14.dp),
+                ) { Text("분석", fontWeight = FontWeight.Bold) }
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(enabled = !saving, onClick = onStartVoiceInput) {
+                Icon(Icons.Rounded.KeyboardVoice, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("음성")
+            }
+            TextButton(enabled = !saving, onClick = onTakeReceipt) {
+                Icon(Icons.Rounded.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("카메라")
+            }
+            TextButton(enabled = !saving, onClick = onPickReceipt) {
+                Icon(Icons.Rounded.Image, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("사진")
+            }
+            Spacer(Modifier.weight(1f))
+            TextButton(enabled = !saving, onClick = { moreOpen = !moreOpen }) {
+                Text(if (moreOpen) "접기" else "더 보기")
+            }
+        }
+        if (error != null) Text(error!!, color = colors.expense, style = MaterialTheme.typography.labelMedium)
+        if (moreOpen) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(modifier = Modifier.weight(1f), enabled = !saving, onClick = { onModeChange(AddMode.DIRECT) }) {
+                    Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(5.dp)); Text("상세 입력")
+                }
+                OutlinedButton(modifier = Modifier.weight(1f), enabled = !saving, onClick = { onModeChange(AddMode.BATCH) }) {
+                    Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(5.dp)); Text("여러 건 처리")
+                }
+            }
+            Text("직접 입력은 이 기기 안에서 처리됩니다.", color = colors.textSecondary, style = MaterialTheme.typography.labelSmall)
+        }
     }
 }
 
@@ -496,10 +625,14 @@ private fun DirectTransactionForm(
     initialType: TransactionType,
     paymentMethods: List<String>,
     accounts: List<com.moasseum.app.domain.Account>,
+    transactions: List<Transaction>,
+    hiddenSuggestionKeys: Set<String>,
+    onHideSuggestion: (String) -> Unit,
+    onFetchExchangeRate: suspend (String, LocalDate) -> Result<ExchangeRateQuote>,
     saving: Boolean,
     onModeChange: (AddMode) -> Unit,
     onDismiss: () -> Unit,
-    onSave: (String, TransactionType, String, String, String, String, String?, LocalDate, Int?) -> Boolean,
+    onSave: (String, TransactionType, String, String, String, String, String?, LocalDate, Int?, CurrencyConversion?) -> Boolean,
 ) {
     val colors = LocalFinanceColors.current
     var typeName by rememberSaveable(initialType.name) { mutableStateOf(initialType.name) }
@@ -517,6 +650,38 @@ private fun DirectTransactionForm(
     var isInstallment by rememberSaveable { mutableStateOf(false) }
     var installmentCountText by rememberSaveable { mutableStateOf("3") }
     var accountId by rememberSaveable { mutableStateOf<String?>(null) }
+    var currencyCode by rememberSaveable { mutableStateOf("KRW") }
+    var currencyMenuOpen by rememberSaveable { mutableStateOf(false) }
+    var rateQuote by remember { mutableStateOf<ExchangeRateQuote?>(null) }
+    var rateLoading by remember { mutableStateOf(false) }
+    var rateError by remember { mutableStateOf<String?>(null) }
+    var rateReloadKey by rememberSaveable { mutableIntStateOf(0) }
+    var manageSuggestions by rememberSaveable { mutableStateOf(false) }
+    val suggestions = remember(transactions, hiddenSuggestionKeys) {
+        quickEntrySuggestions(transactions, hiddenSuggestionKeys)
+    }
+
+    LaunchedEffect(currencyCode, occurredDateText, rateReloadKey) {
+        if (currencyCode == "KRW") {
+            rateQuote = null
+            rateError = null
+            rateLoading = false
+            return@LaunchedEffect
+        }
+        val date = runCatching { LocalDate.parse(occurredDateText) }.getOrNull()
+        if (date == null) {
+            rateQuote = null
+            rateError = "거래일을 확인해 주세요."
+            return@LaunchedEffect
+        }
+        rateLoading = true
+        rateQuote = null
+        rateError = null
+        val result = onFetchExchangeRate(currencyCode, date)
+        rateQuote = result.getOrNull()
+        rateError = result.exceptionOrNull()?.message
+        rateLoading = false
+    }
 
     Column(
         modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 8.dp),
@@ -525,6 +690,49 @@ private fun DirectTransactionForm(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("거래 기록", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             TextButton(enabled = !saving, onClick = { onModeChange(AddMode.MENU) }) { Text("방법 바꾸기") }
+        }
+        if (suggestions.isNotEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("최근 내역", modifier = Modifier.weight(1f), color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                TextButton(enabled = !saving, onClick = { manageSuggestions = !manageSuggestions }) {
+                    Text(if (manageSuggestions) "완료" else "편집")
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                suggestions.forEach { suggestion ->
+                    Surface(color = colors.surfaceOverlay, shape = RoundedCornerShape(12.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .then(if (!manageSuggestions) Modifier.clickable {
+                                    typeName = suggestion.type.name
+                                    amount = suggestion.originalAmount ?: suggestion.amount.toString()
+                                    merchant = suggestion.merchant
+                                    categoryKey = suggestion.categoryKey
+                                    paymentMethod = suggestion.paymentMethod
+                                    currencyCode = suggestion.currency
+                                    isInstallment = false
+                                    showError = false
+                                } else Modifier)
+                                .padding(start = 10.dp, end = if (manageSuggestions) 0.dp else 10.dp, top = 7.dp, bottom = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        ) {
+                            Column {
+                                Text(suggestion.merchant, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                                Text("${suggestion.currency} ${suggestion.originalAmount ?: suggestion.amount}", color = colors.textSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                            }
+                            if (manageSuggestions) {
+                                IconButton(onClick = { onHideSuggestion(suggestion.key) }, enabled = !saving, modifier = Modifier.size(34.dp)) {
+                                    Icon(Icons.Rounded.Close, contentDescription = "${suggestion.merchant} 추천 삭제", modifier = Modifier.size(17.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -545,18 +753,64 @@ private fun DirectTransactionForm(
                 modifier = Modifier.weight(1f),
             )
         }
-        OutlinedTextField(
-            value = amount,
-            onValueChange = { amount = it.take(24); showError = false },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("금액") },
-            placeholder = { Text("0") },
-            suffix = { Text("원") },
-            singleLine = true,
-            isError = showError && amount.isBlank(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            shape = RoundedCornerShape(15.dp),
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            androidx.compose.foundation.layout.Box {
+                OutlinedButton(onClick = { currencyMenuOpen = true }, enabled = !saving) { Text(currencyCode) }
+                DropdownMenu(expanded = currencyMenuOpen, onDismissRequest = { currencyMenuOpen = false }, modifier = Modifier.heightIn(max = 360.dp)) {
+                    (listOf("KRW") + supportedForeignCurrencies).forEach { code ->
+                        DropdownMenuItem(
+                            text = { Text("$code · ${currencyLabelForInput(code)}") },
+                            onClick = {
+                                currencyCode = code
+                                currencyMenuOpen = false
+                                if (code != "KRW") isInstallment = false
+                                showError = false
+                            },
+                        )
+                    }
+                }
+            }
+            OutlinedTextField(
+                value = amount,
+                onValueChange = { input ->
+                    val allowed = if (currencyCode == "KRW") input.all { it.isDigit() || it in ", " } else input.all { it.isDigit() || it in ", ." }
+                    if (allowed) amount = input.take(24)
+                    showError = false
+                },
+                modifier = Modifier.weight(1f),
+                label = { Text("금액") },
+                placeholder = { Text(if (currencyCode == "KRW") "0" else "0.${"0".repeat(currencyFractionDigits(currencyCode))}") },
+                suffix = { Text(currencyCode) },
+                singleLine = true,
+                isError = showError && amount.isBlank(),
+                keyboardOptions = KeyboardOptions(keyboardType = if (currencyCode == "KRW") KeyboardType.Number else KeyboardType.Decimal),
+                shape = RoundedCornerShape(15.dp),
+            )
+        }
+        if (currencyCode != "KRW") {
+            val foreignAmount = parseForeignAmount(amount, currencyCode)
+            val convertedAmount = foreignAmount?.let { value -> rateQuote?.let { convertForeignAmountToKrw(value, it) } }
+            when {
+                rateLoading -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Text("거래일 환율 확인 중", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                }
+                rateQuote != null -> {
+                    val conversionLabel = when {
+                        amount.isBlank() -> "금액을 입력하면 환산액이 표시돼요"
+                        foreignAmount == null -> "금액 형식을 확인해 주세요"
+                        convertedAmount == null -> "금액 범위를 초과했어요"
+                        else -> "환산 ${formatWon(convertedAmount)}"
+                    }
+                    Text("$conversionLabel · 1 ${rateQuote!!.baseCurrency} = ${rateQuote!!.rate}원", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Text("${rateQuote!!.date} 기준 일일 참고 환율 · 카드사 청구 환율과 수수료에 따라 실제 결제액은 다를 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.labelSmall)
+                }
+                else -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(rateError ?: "환율을 불러올 수 없어요.", modifier = Modifier.weight(1f), color = colors.expense, style = MaterialTheme.typography.labelSmall)
+                    TextButton(enabled = !saving, onClick = { rateReloadKey++ }) { Text("다시 시도") }
+                }
+            }
+        }
         OutlinedTextField(
             value = merchant,
             onValueChange = { merchant = it; showError = false },
@@ -591,7 +845,7 @@ private fun DirectTransactionForm(
                 }
             }
         }
-        if (type == TransactionType.EXPENSE) {
+        if (type == TransactionType.EXPENSE && currencyCode == "KRW") {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("할부로 기록", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
@@ -646,12 +900,19 @@ private fun DirectTransactionForm(
         }
         Button(
             onClick = {
-                val parsedAmount = parseAmount(amount)
+                val parsedForeign = if (currencyCode == "KRW") null else parseForeignAmount(amount, currencyCode)
+                val wonAmount = if (currencyCode == "KRW") parseAmount(amount) else parsedForeign?.let { value -> rateQuote?.let { convertForeignAmountToKrw(value, it) } }
+                val currencyConversion = if (currencyCode == "KRW" || parsedForeign == null || rateQuote == null) null else CurrencyConversion(
+                    currencyCode = currencyCode,
+                    originalAmount = parsedForeign.stripTrailingZeros().toPlainString(),
+                    rateToKrw = rateQuote!!.rate,
+                    rateDate = rateQuote!!.date,
+                )
                 val occurredDate = runCatching { LocalDate.parse(occurredDateText) }.getOrNull()
                 val count = installmentCountText.toIntOrNull()
-                val invalidInstallment = isInstallment && (count == null || count !in 2..60 || parsedAmount == null || parsedAmount < count)
-                if (parsedAmount == null || merchant.isBlank() || occurredDate == null || invalidInstallment ||
-                    !onSave(amount, type, merchant, categoryKey, memo, paymentMethod, accountId, occurredDate, count.takeIf { isInstallment })
+                val invalidInstallment = isInstallment && (count == null || count !in 2..60 || wonAmount == null || wonAmount < count)
+                if (wonAmount == null || merchant.isBlank() || occurredDate == null || invalidInstallment ||
+                    !onSave(wonAmount.toString(), type, merchant, categoryKey, memo, paymentMethod, accountId, occurredDate, count.takeIf { isInstallment }, currencyConversion)
                 ) showError = true
             },
             enabled = !saving,

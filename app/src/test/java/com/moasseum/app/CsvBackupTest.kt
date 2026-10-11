@@ -48,6 +48,31 @@ class CsvBackupTest {
         assertEquals(setOf(group), decoded.mapNotNull { it.installmentGroupId }.toSet())
     }
 
+    @Test fun `CSV round trip preserves original currency and applied rate`() {
+        val transaction = Transaction(
+            id = 9L, type = TransactionType.EXPENSE, amount = 13_420L, occurredAt = 1_758_000_000_000L,
+            categoryKey = "TRAVEL", merchant = "Hotel", memo = "", paymentMethod = "체크카드", source = "MANUAL",
+            currency = "USD", originalAmount = "10", exchangeRateToKrw = "1342", exchangeRateDate = "2026-10-09",
+        )
+        val imported = CsvBackup.decode(CsvBackup.encode(listOf(transaction))).single()
+        assertEquals("USD", imported.currency)
+        assertEquals("10", imported.originalAmount)
+        assertEquals("1342", imported.exchangeRate)
+        assertEquals("2026-10-09", imported.exchangeRateDate)
+    }
+
+    @Test fun `CSV round trip preserves balance-only external deposits and linked account`() {
+        val transaction = Transaction(
+            id = 10L, type = TransactionType.EXTERNAL_DEPOSIT, amount = 5_000, occurredAt = 1_758_000_000_000L,
+            categoryKey = "OTHER", merchant = "은행 이자", memo = "잔액만", paymentMethod = "계좌 입금",
+            source = "EXTERNAL_DEPOSIT", accountId = "checking-1",
+        )
+        val imported = CsvBackup.decode(CsvBackup.encode(listOf(transaction))).single()
+        assertEquals(TransactionType.EXTERNAL_DEPOSIT, imported.type)
+        assertEquals("checking-1", imported.accountId)
+        assertEquals("EXTERNAL_DEPOSIT", imported.source)
+    }
+
     @Test
     fun `CSV import rejects unknown schemas and invalid amounts`() {
         assertThrows(IllegalArgumentException::class.java) {

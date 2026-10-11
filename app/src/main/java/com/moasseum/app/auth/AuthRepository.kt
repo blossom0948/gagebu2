@@ -154,6 +154,30 @@ class AuthRepository(private val api: AuthApi, private val store: SessionStore, 
         catch (error: Exception) { mutableState.value = mutableState.value.copy(error = "로그아웃 정보를 지우지 못했어요."); Result.failure(error) }
         finally { mutableState.value = mutableState.value.copy(busy = false) }
     }
+    suspend fun deleteAccount(): Result<String> {
+        var deletedUserId: String? = null
+        val result = action {
+            val current = session ?: error("로그인 후 계정을 삭제할 수 있어요.")
+            val active = if (current.expiresAt > now() + 60) current else {
+                val refreshed = api.refresh(current.refreshToken)
+                require(refreshed.user.id == current.user.id) { "로그인 계정이 일치하지 않아요." }
+                save(refreshed)
+                refreshed
+            }
+            api.deleteAccount(active.accessToken)
+            deletedUserId = active.user.id
+            session = null
+            recoverySession = null
+            val cleared = withContext(Dispatchers.IO) { runCatching { store.clear() }.isSuccess }
+            runCatching { clearPending() }
+            mutableState.value = AuthState(
+                initialized = true,
+                message = if (cleared) "계정을 삭제했어요. 이 기기의 가계부 기록은 유지됩니다."
+                else "서버 계정은 삭제됐지만 이 기기의 로그인 정보도 지워 주세요. 앱 저장공간을 비우면 완료됩니다.",
+            )
+        }
+        return result.map { requireNotNull(deletedUserId) }
+    }
     suspend fun validAccessToken(): String? = mutex.withLock {
         val existing = session ?: return@withLock null
         if (existing.expiresAt > now() + 60) return@withLock existing.accessToken

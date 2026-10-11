@@ -17,6 +17,7 @@ fun accountBalance(account: Account, transactions: List<Transaction>): Long =
                 transaction.destinationAccountId -> transaction.amount
                 else -> 0L
             }
+            TransactionType.EXTERNAL_DEPOSIT -> if (transaction.accountId == account.id) transaction.amount else 0L
         }
         Math.addExact(balance, change)
     }

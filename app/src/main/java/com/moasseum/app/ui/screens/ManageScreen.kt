@@ -114,6 +114,8 @@ fun ManageScreen(
     onDeleteRecurringRule: (Long) -> Unit,
     onAddInstallmentPlan: suspend (Long, Int, java.time.LocalDate, String, String, String, String) -> Unit,
     onDeleteInstallmentPlan: (String) -> Unit,
+    onUpdateInstallmentTotal: suspend (String, Long) -> Unit,
+    onConvertInstallmentToSinglePayment: suspend (String) -> Unit,
     darkTheme: Boolean,
     reduceMotion: Boolean,
     onDarkThemeChanged: (Boolean) -> Unit,
@@ -535,6 +537,8 @@ fun ManageScreen(
             onDismiss = { showInstallmentDialog = false },
             onSave = onAddInstallmentPlan,
             onDelete = onDeleteInstallmentPlan,
+            onUpdateTotal = onUpdateInstallmentTotal,
+            onConvertToSingle = onConvertInstallmentToSinglePayment,
         )
     }
     if (showYearEndDialog) {
@@ -714,6 +718,8 @@ private fun InstallmentPlansDialog(
     onDismiss: () -> Unit,
     onSave: suspend (Long, Int, java.time.LocalDate, String, String, String, String) -> Unit,
     onDelete: (String) -> Unit,
+    onUpdateTotal: suspend (String, Long) -> Unit,
+    onConvertToSingle: suspend (String) -> Unit,
 ) {
     val colors = LocalFinanceColors.current
     val saving = rememberSaveActionState()
@@ -726,6 +732,10 @@ private fun InstallmentPlansDialog(
     var paymentMethod by rememberSaveable { mutableStateOf(paymentMethods.firstOrNull() ?: "카드") }
     var formError by rememberSaveable { mutableStateOf<String?>(null) }
     var deleteTarget by rememberSaveable { mutableStateOf<String?>(null) }
+    var editTarget by rememberSaveable { mutableStateOf<String?>(null) }
+    var editTotalText by rememberSaveable { mutableStateOf("") }
+    var editError by rememberSaveable { mutableStateOf<String?>(null) }
+    var convertTarget by rememberSaveable { mutableStateOf<String?>(null) }
     val groups = remember(transactions) {
         transactions.filter { it.installmentGroupId != null }
             .groupBy { it.installmentGroupId!! }
@@ -749,7 +759,15 @@ private fun InstallmentPlansDialog(
                                     Text(first?.merchant.orEmpty(), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
                                     Text("${rows.size}회 · 총 ${formatWon(rows.sumOf { it.amount })}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                                 }
-                                TextButton(onClick = { deleteTarget = rows.first().installmentGroupId }) { Text("삭제", color = colors.expense) }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    TextButton(enabled = !saving.busy, onClick = {
+                                        editTarget = rows.first().installmentGroupId
+                                        editTotalText = rows.sumOf { it.amount }.toString()
+                                        editError = null
+                                    }) { Text("총액 수정") }
+                                    TextButton(enabled = !saving.busy, onClick = { convertTarget = rows.first().installmentGroupId }) { Text("일시불", color = colors.accent) }
+                                    TextButton(enabled = !saving.busy, onClick = { deleteTarget = rows.first().installmentGroupId }) { Text("삭제", color = colors.expense) }
+                                }
                             }
                         }
                     }
@@ -803,6 +821,46 @@ private fun InstallmentPlansDialog(
             text = { Text("이 할부의 모든 회차가 거래 내역에서 삭제됩니다.") },
             confirmButton = { TextButton(onClick = { onDelete(groupId); deleteTarget = null }) { Text("삭제", color = colors.expense) } },
             dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("취소") } },
+        )
+    }
+    editTarget?.let { groupId ->
+        AlertDialog(
+            onDismissRequest = { if (!saving.busy) editTarget = null },
+            title = { Text("할부 총액 수정") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(editTotalText, { editTotalText = it.take(24); editError = null }, label = { Text("새 총액") }, suffix = { Text("원") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), enabled = !saving.busy)
+                    Text("회차 수와 첫 결제일은 유지하고 각 회차 금액을 다시 나눠요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                    editError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium) }
+                    saving.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium) }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = !saving.busy, onClick = {
+                    val total = com.moasseum.app.domain.parseAmount(editTotalText)
+                    if (total == null) editError = "총액을 확인해 주세요."
+                    else saving.save({ onUpdateTotal(groupId, total); editTarget = null })
+                }) { Text("저장", color = colors.accent) }
+            },
+            dismissButton = { TextButton(enabled = !saving.busy, onClick = { editTarget = null }) { Text("취소") } },
+        )
+    }
+    convertTarget?.let { groupId ->
+        AlertDialog(
+            onDismissRequest = { if (!saving.busy) convertTarget = null },
+            title = { Text("일시불로 바꿀까요?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("첫 회차를 전체 금액으로 바꾸고 나머지 회차는 거래 내역에서 삭제해요.")
+                    saving.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium) }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = !saving.busy, onClick = {
+                    saving.save({ onConvertToSingle(groupId); convertTarget = null })
+                }) { Text("일시불로 전환", color = colors.expense) }
+            },
+            dismissButton = { TextButton(enabled = !saving.busy, onClick = { convertTarget = null }) { Text("취소") } },
         )
     }
 }

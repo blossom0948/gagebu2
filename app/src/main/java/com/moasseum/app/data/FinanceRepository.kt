@@ -12,6 +12,7 @@ import com.moasseum.app.domain.NotificationCandidate
 import com.moasseum.app.domain.RecurringRule
 import com.moasseum.app.domain.Transaction
 import com.moasseum.app.domain.TransactionType
+import com.moasseum.app.domain.CurrencyConversion
 import com.moasseum.app.domain.AiTransactionCandidate
 import com.moasseum.app.domain.firstRecurringOccurrence
 import com.moasseum.app.domain.installmentSchedule
@@ -30,6 +31,8 @@ class FinanceRepository(
 ) {
     suspend fun backupSnapshot(): FullBackup = dao.backupSnapshot()
     suspend fun restoreBackup(backup: FullBackup) = dao.restoreSnapshot(backup)
+    suspend fun detachSharedDataAfterAccountDeletion(ownerId: String) =
+        dao.detachAfterAccountDeletion(ownerId, System.currentTimeMillis())
     fun observeAccounts(): Flow<List<Account>> = dao.observeAccounts().map { rows ->
         rows.map { Account(it.id, it.name, it.openingBalance, it.archived) }
     }
@@ -57,6 +60,28 @@ class FinanceRepository(
                 memo = memo.trim(), paymentMethod = "계좌 이체", accountId = fromId, destinationAccountId = toId,
                 createdAt = now, updatedAt = now))
         }
+    }
+
+    suspend fun addExternalDeposit(amount: Long, accountId: String, date: LocalDate, sourceLabel: String, memo: String) {
+        require(amount in 1..1_000_000_000_000L && sourceLabel.isNotBlank())
+        require(dao.getAccount(accountId)?.archived == false) { "사용 중인 계좌를 선택해 주세요." }
+        val now = System.currentTimeMillis()
+        dao.saveLinkedTransaction(
+            TransactionEntity(
+                type = TransactionType.EXTERNAL_DEPOSIT.name,
+                amount = amount,
+                occurredAt = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                timezone = TimeZone.getDefault().id,
+                categoryKey = "OTHER",
+                merchant = sourceLabel.trim(),
+                memo = memo.trim(),
+                paymentMethod = "계좌 입금",
+                source = "EXTERNAL_DEPOSIT",
+                accountId = accountId,
+                createdAt = now,
+                updatedAt = now,
+            ),
+        )
     }
     fun observeTransactions(): Flow<List<Transaction>> =
         dao.observeTransactions().map { entities -> entities.map(TransactionEntity::toDomain) }
@@ -128,8 +153,15 @@ class FinanceRepository(
         source: String = "MANUAL",
         paymentMethod: String = "카드",
         accountId: String? = null,
+        currencyConversion: CurrencyConversion? = null,
     ): Long {
         require(type != TransactionType.TRANSFER)
+        currencyConversion?.let { conversion ->
+            require(conversion.currencyCode.matches(Regex("[A-Z]{3}")) && conversion.currencyCode != "KRW")
+            require(conversion.originalAmount.length in 1..32 && conversion.originalAmount.toBigDecimalOrNull()?.signum() == 1)
+            require(conversion.rateToKrw.toBigDecimalOrNull()?.signum() == 1)
+            java.time.LocalDate.parse(conversion.rateDate)
+        }
         val now = System.currentTimeMillis()
         val occurredAtMillis = occurredAt.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
         return dao.saveLinkedTransaction(
@@ -143,6 +175,10 @@ class FinanceRepository(
                 memo = memo.trim(),
                 paymentMethod = paymentMethod,
                 source = source,
+                currency = currencyConversion?.currencyCode ?: "KRW",
+                originalAmount = currencyConversion?.originalAmount,
+                exchangeRate = currencyConversion?.rateToKrw,
+                exchangeRateDate = currencyConversion?.rateDate,
                 accountId = accountId,
                 createdAt = now,
                 updatedAt = now,
@@ -234,6 +270,12 @@ class FinanceRepository(
 
     suspend fun deleteInstallmentPlan(groupId: String): Int =
         dao.softDeleteInstallmentPlan(groupId, System.currentTimeMillis())
+
+    suspend fun updateInstallmentTotal(groupId: String, total: Long) =
+        dao.updateInstallmentTotal(groupId, total, System.currentTimeMillis())
+
+    suspend fun convertInstallmentToSinglePayment(groupId: String) =
+        dao.convertInstallmentToSinglePayment(groupId, System.currentTimeMillis())
 
     suspend fun softDeleteTransaction(id: Long) {
         dao.softDeleteTransaction(id = id, deletedAt = System.currentTimeMillis())
@@ -400,6 +442,10 @@ private fun TransactionEntity.toDomain(): Transaction =
         installmentGroupId = installmentGroupId,
         installmentNumber = installmentNumber,
         installmentCount = installmentCount,
+        currency = currency,
+        originalAmount = originalAmount,
+        exchangeRateToKrw = exchangeRate,
+        exchangeRateDate = exchangeRateDate,
     )
 
 private fun RecurringTransactionEntity.toDomain(): RecurringRule =

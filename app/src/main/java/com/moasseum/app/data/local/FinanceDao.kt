@@ -27,10 +27,12 @@ interface FinanceDao {
             row.destinationAccountId?.let { require(getAccount(it) != null) { "CSV에 받는 계좌가 없어요. JSON 전체 백업을 사용해 주세요." } }
             if (row.type.name == "TRANSFER") require(row.accountId != null && row.destinationAccountId != null && row.accountId != row.destinationAccountId)
             else require(row.destinationAccountId == null)
+            if (row.type == com.moasseum.app.domain.TransactionType.EXTERNAL_DEPOSIT) require(row.accountId != null) { "외부 입금에는 연결된 계좌가 필요해요." }
             val merchant = row.merchant.trim(); val memo = row.memo.trim()
             if (!transactionExists(row.type.name, row.amount, row.occurredAt, row.categoryKey, merchant, memo, row.paymentMethod, row.accountId, row.destinationAccountId)) {
                 insertTransaction(TransactionEntity(type = row.type.name, amount = row.amount, occurredAt = row.occurredAt, timezone = row.timezone ?: timezone,
                     categoryKey = row.categoryKey, merchant = merchant, memo = memo, paymentMethod = row.paymentMethod, source = row.source,
+                    currency = row.currency, originalAmount = row.originalAmount, exchangeRate = row.exchangeRate, exchangeRateDate = row.exchangeRateDate,
                     accountId = row.accountId, destinationAccountId = row.destinationAccountId,
                     installmentGroupId = row.installmentGroupId, installmentNumber = row.installmentNumber, installmentCount = row.installmentCount,
                     createdAt = now, updatedAt = now))
@@ -116,11 +118,21 @@ interface FinanceDao {
     @Query("DELETE FROM transactions WHERE ledgerId = :sharedLedgerId")
     suspend fun clearSharedLedgerCache(sharedLedgerId: String): Int
 
+    @Query("DELETE FROM transactions WHERE ledgerId LIKE 'shared:%'")
+    suspend fun clearAllSharedLedgerCaches(): Int
+
     @Transaction
     suspend fun detachFromSharedLedger(ledgerId: String, ownerId: String, now: Long) {
         require(ledgerId.matches(Regex("[0-9a-fA-F-]{36}")))
         makeOwnedSharedRowsPrivate(ownerId, now)
         clearSharedLedgerCache("shared:$ledgerId")
+    }
+
+    @Transaction
+    suspend fun detachAfterAccountDeletion(ownerId: String, now: Long) {
+        require(ownerId.matches(Regex("[0-9a-fA-F-]{36}")))
+        makeOwnedSharedRowsPrivate(ownerId, now)
+        clearAllSharedLedgerCaches()
     }
 
     @Query("UPDATE transactions SET ownerId = 'local-user', ledgerId = 'personal', sharingScope = 'PRIVATE', cloudId = NULL, updatedAt = :now WHERE id = :id AND sharingScope = 'SHARED'")
@@ -139,7 +151,10 @@ interface FinanceDao {
         if (transaction.type == "TRANSFER") {
             require(transaction.accountId != null && transaction.destinationAccountId != null && transaction.accountId != transaction.destinationAccountId) { "서로 다른 두 계좌를 선택해 주세요." }
             require(getAccount(transaction.destinationAccountId)?.archived == false) { "받는 계좌를 확인해 주세요." }
-        } else require(transaction.destinationAccountId == null)
+        } else {
+            require(transaction.destinationAccountId == null)
+            if (transaction.type == "EXTERNAL_DEPOSIT") require(transaction.accountId != null) { "잔액을 반영할 계좌를 선택해 주세요." }
+        }
         return insertTransaction(transaction)
     }
 
@@ -266,7 +281,7 @@ interface FinanceDao {
     @Query("UPDATE transactions SET deletedAt = :now, updatedAt = :now WHERE id IN (:ids) AND deletedAt IS NULL AND ledgerId = 'personal' AND sharingScope = 'PRIVATE' AND type != 'TRANSFER' AND installmentGroupId IS NULL")
     suspend fun softDeletePersonalBatchRows(ids: List<Long>, now: Long): Int
 
-    @Query("UPDATE transactions SET amount = COALESCE(:amount, amount), merchant = COALESCE(:merchant, merchant), categoryKey = COALESCE(:categoryKey, categoryKey), type = COALESCE(:type, type), occurredAt = COALESCE(:occurredAt, occurredAt), timezone = COALESCE(:timezone, timezone), memo = COALESCE(:memo, memo), updatedAt = :now WHERE id IN (:ids) AND deletedAt IS NULL AND ledgerId = 'personal' AND sharingScope = 'PRIVATE' AND type != 'TRANSFER' AND installmentGroupId IS NULL")
+    @Query("UPDATE transactions SET amount = COALESCE(:amount, amount), currency = CASE WHEN :amount IS NULL THEN currency ELSE 'KRW' END, originalAmount = CASE WHEN :amount IS NULL THEN originalAmount ELSE NULL END, exchangeRate = CASE WHEN :amount IS NULL THEN exchangeRate ELSE NULL END, exchangeRateDate = CASE WHEN :amount IS NULL THEN exchangeRateDate ELSE NULL END, merchant = COALESCE(:merchant, merchant), categoryKey = COALESCE(:categoryKey, categoryKey), type = COALESCE(:type, type), occurredAt = COALESCE(:occurredAt, occurredAt), timezone = COALESCE(:timezone, timezone), memo = COALESCE(:memo, memo), updatedAt = :now WHERE id IN (:ids) AND deletedAt IS NULL AND ledgerId = 'personal' AND sharingScope = 'PRIVATE' AND type != 'TRANSFER' AND installmentGroupId IS NULL")
     suspend fun updatePersonalBatchRows(ids: List<Long>, amount: Long?, merchant: String?, categoryKey: String?, type: String?, occurredAt: Long?, timezone: String?, memo: String?, now: Long): Int
 
     @Query("UPDATE transactions SET deletedAt = NULL, updatedAt = :now WHERE id IN (:ids) AND deletedAt IS NOT NULL AND ledgerId = 'personal' AND sharingScope = 'PRIVATE'")
@@ -308,6 +323,50 @@ interface FinanceDao {
         require(transactions.size in 2..60)
         require(transactions.all { it.type == "EXPENSE" && it.installmentGroupId == transactions.first().installmentGroupId })
         insertTransactions(transactions)
+    }
+
+    @Query("SELECT * FROM transactions WHERE installmentGroupId = :groupId AND deletedAt IS NULL ORDER BY installmentNumber ASC, id ASC")
+    suspend fun getActiveInstallmentRows(groupId: String): List<TransactionEntity>
+
+    @Query("UPDATE transactions SET amount = :amount, occurredAt = :occurredAt, timezone = :timezone, memo = :memo, installmentCount = :count, updatedAt = :now WHERE id = :id AND installmentGroupId = :groupId AND deletedAt IS NULL")
+    suspend fun updateInstallmentRow(groupId: String, id: Long, amount: Long, occurredAt: Long, timezone: String, memo: String, count: Int, now: Long): Int
+
+    @Query("UPDATE transactions SET amount = :amount, installmentGroupId = NULL, installmentNumber = NULL, installmentCount = NULL, memo = :memo, updatedAt = :now WHERE id = :id AND installmentGroupId = :groupId AND deletedAt IS NULL")
+    suspend fun convertInstallmentKeeper(id: Long, groupId: String, amount: Long, memo: String, now: Long): Int
+
+    @Query("UPDATE transactions SET deletedAt = :now, updatedAt = :now WHERE installmentGroupId = :groupId AND id != :keepId AND deletedAt IS NULL")
+    suspend fun softDeleteInstallmentRemainder(groupId: String, keepId: Long, now: Long): Int
+
+    @Transaction
+    suspend fun updateInstallmentTotal(groupId: String, total: Long, now: Long) {
+        require(total in 1..1_000_000_000_000L)
+        val rows = getActiveInstallmentRows(groupId)
+        require(rows.size in 2..60 && rows.all { it.type == "EXPENSE" }) { "수정할 할부 내역을 찾지 못했어요." }
+        require(rows.mapNotNull { it.installmentNumber }.sorted() == (1..rows.size).toList()) { "회차 정보가 올바르지 않아 총액을 수정할 수 없어요." }
+        val first = rows.first()
+        val zone = ZoneId.of(first.timezone)
+        val startDate = Instant.ofEpochMilli(first.occurredAt).atZone(zone).toLocalDate()
+        val schedule = com.moasseum.app.domain.installmentSchedule(total, rows.size, startDate)
+        val memoPattern = Regex("\\s*·\\s*할부\\s+\\d+/\\d+\\s*$")
+        rows.zip(schedule).forEach { (row, part) ->
+            val baseMemo = row.memo.replace(memoPattern, "").trim()
+            val newMemo = listOf(baseMemo, "할부 ${part.number}/${schedule.size}").filter(String::isNotBlank).joinToString(" · ")
+            val timestamp = part.date.atStartOfDay(zone).toInstant().toEpochMilli()
+            check(updateInstallmentRow(groupId, row.id, part.amount, timestamp, row.timezone, newMemo, schedule.size, now) == 1)
+        }
+    }
+
+    @Transaction
+    suspend fun convertInstallmentToSinglePayment(groupId: String, now: Long) {
+        val rows = getActiveInstallmentRows(groupId)
+        require(rows.size in 2..60 && rows.all { it.type == "EXPENSE" }) { "전환할 할부 내역을 찾지 못했어요." }
+        val total = rows.fold(0L) { sum, row -> Math.addExact(sum, row.amount) }
+        require(total in 1..1_000_000_000_000L) { "총액 범위를 확인해 주세요." }
+        val first = rows.first()
+        val memoPattern = Regex("\\s*·\\s*할부\\s+\\d+/\\d+\\s*$")
+        val baseMemo = first.memo.replace(memoPattern, "").trim()
+        check(convertInstallmentKeeper(first.id, groupId, total, baseMemo, now) == 1)
+        check(softDeleteInstallmentRemainder(groupId, first.id, now) == rows.size - 1)
     }
 
     @Query("UPDATE transactions SET deletedAt = :deletedAt, updatedAt = :deletedAt WHERE installmentGroupId = :groupId AND deletedAt IS NULL")
@@ -408,6 +467,10 @@ interface FinanceDao {
             merchant = :merchant,
             memo = :memo,
             paymentMethod = :paymentMethod,
+            currency = 'KRW',
+            originalAmount = NULL,
+            exchangeRate = NULL,
+            exchangeRateDate = NULL,
             updatedAt = :updatedAt
         WHERE id = :id AND deletedAt IS NULL AND type != 'TRANSFER' AND :type != 'TRANSFER'
         """,

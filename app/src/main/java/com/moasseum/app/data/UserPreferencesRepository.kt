@@ -217,6 +217,25 @@ class UserPreferencesRepository(
         )
     }
 
+    val hiddenQuickEntrySuggestions: Flow<Set<String>> = context.settingsDataStore.data.map { preferences ->
+        preferences[HIDDEN_QUICK_ENTRY_SUGGESTIONS].orEmpty().lineSequence()
+            .filter { it.matches(Regex("[a-f0-9]{64}")) }
+            .toList()
+            .takeLast(MAX_HIDDEN_QUICK_ENTRY_SUGGESTIONS)
+            .toSet()
+    }
+
+    suspend fun hideQuickEntrySuggestion(key: String) {
+        require(key.matches(Regex("[a-f0-9]{64}")))
+        context.settingsDataStore.edit { preferences ->
+            val hidden = preferences[HIDDEN_QUICK_ENTRY_SUGGESTIONS].orEmpty().lineSequence()
+                .filter { it.matches(Regex("[a-f0-9]{64}")) }
+                .toMutableList()
+            if (key !in hidden) hidden += key
+            preferences[HIDDEN_QUICK_ENTRY_SUGGESTIONS] = hidden.takeLast(MAX_HIDDEN_QUICK_ENTRY_SUGGESTIONS).joinToString("\n")
+        }
+    }
+
     suspend fun saveHomeDashboardCards(cards: Set<String>) {
         val normalized = cards.filter { it in HomeDashboardCards.defaults }.toSet()
         require(normalized.size == cards.size) { "홈 카드 설정이 올바르지 않아요." }
@@ -411,6 +430,8 @@ class UserPreferencesRepository(
         key in DEFAULT_CATEGORY_LABELS || key.matches(CUSTOM_CATEGORY_KEY)
 
     private companion object {
+        val HIDDEN_QUICK_ENTRY_SUGGESTIONS = stringPreferencesKey("hidden_quick_entry_suggestions")
+        const val MAX_HIDDEN_QUICK_ENTRY_SUGGESTIONS = 500
         val DARK_THEME = booleanPreferencesKey("dark_theme")
         val REDUCE_MOTION = booleanPreferencesKey("reduce_motion")
         val NOTIFICATION_ACCESS_PROMPT_SHOWN = booleanPreferencesKey("notification_access_prompt_shown")

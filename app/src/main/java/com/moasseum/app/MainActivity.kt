@@ -228,6 +228,7 @@ class MainActivity : FragmentActivity() {
             val categoryLabels by application.preferencesRepository.categoryLabels.collectAsStateWithLifecycle(initialValue = DEFAULT_CATEGORY_LABELS)
             val categoryOrder by application.preferencesRepository.categoryOrder.collectAsStateWithLifecycle(initialValue = DEFAULT_CATEGORY_ORDER)
             val paymentMethods by application.preferencesRepository.paymentMethods.collectAsStateWithLifecycle(initialValue = DEFAULT_PAYMENT_METHODS)
+            val hiddenQuickEntrySuggestions by application.preferencesRepository.hiddenQuickEntrySuggestions.collectAsStateWithLifecycle(initialValue = emptySet())
             val paymentCards by application.preferencesRepository.paymentCards.collectAsStateWithLifecycle(initialValue = emptyList())
             val categoryBudgets by application.preferencesRepository.categoryBudgets.collectAsStateWithLifecycle(initialValue = emptyMap())
             val monthlyIncomeTargets by application.preferencesRepository.monthlyIncomeTargets.collectAsStateWithLifecycle(initialValue = emptyMap())
@@ -258,6 +259,8 @@ class MainActivity : FragmentActivity() {
                         viewModel = viewModel,
                         application = application,
                         paymentMethods = (paymentMethods + paymentCards.map { it.paymentMethod }).distinct(),
+                        hiddenSuggestionKeys = hiddenQuickEntrySuggestions,
+                        onHideQuickEntrySuggestion = application.preferencesRepository::hideQuickEntrySuggestion,
                         onSavePaymentMethods = { methods ->
                             application.preferencesRepository.savePaymentMethods(methods)
                         },
@@ -418,6 +421,8 @@ private fun MoasseumApp(
     viewModel: LedgerViewModel,
     application: FinanceApplication,
     paymentMethods: List<String>,
+    hiddenSuggestionKeys: Set<String>,
+    onHideQuickEntrySuggestion: suspend (String) -> Unit,
     onSavePaymentMethods: suspend (List<String>) -> Unit,
     paymentCards: List<com.moasseum.app.domain.PaymentCard>,
     onSavePaymentCards: suspend (List<com.moasseum.app.domain.PaymentCard>) -> Unit,
@@ -1438,6 +1443,8 @@ private fun MoasseumApp(
                         onDeleteRecurringRule = viewModel::deleteRecurringRule,
                         onAddInstallmentPlan = viewModel::addInstallmentPlan,
                         onDeleteInstallmentPlan = viewModel::deleteInstallmentPlan,
+                        onUpdateInstallmentTotal = viewModel::updateInstallmentTotal,
+                        onConvertInstallmentToSinglePayment = viewModel::convertInstallmentToSinglePayment,
                         onClearLocalData = {
                             viewModel.clearAllLocalRecords { result ->
                                 coroutineScope.launch {
@@ -1500,6 +1507,17 @@ private fun MoasseumApp(
                 aiState = aiState,
                 paymentMethods = paymentMethods,
                 accounts = accounts,
+                hiddenSuggestionKeys = hiddenSuggestionKeys,
+                onHideSuggestion = { key -> coroutineScope.launch { onHideQuickEntrySuggestion(key) } },
+                onFetchExchangeRate = { currency, date ->
+                    try {
+                        Result.success(application.exchangeRateRepository.quoteToKrw(currency, date))
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        Result.failure(error)
+                    }
+                },
                 saving = savingTransaction,
                 onParseAi = { text ->
                     aiState = AiParseState.Loading
@@ -1625,7 +1643,7 @@ private fun MoasseumApp(
                         true
                     }
                 },
-                onSave = { amount, type, merchant, categoryKey, memo, paymentMethod, accountId, occurredAt, installmentCount ->
+                onSave = { amount, type, merchant, categoryKey, memo, paymentMethod, accountId, occurredAt, installmentCount, currencyConversion ->
                     if (savingTransaction) {
                         false
                     } else if (installmentCount != null) {
@@ -1655,6 +1673,7 @@ private fun MoasseumApp(
                             occurredAt = occurredAt,
                             paymentMethod = paymentMethod,
                             accountId = accountId,
+                            currencyConversion = currencyConversion,
                             onComplete = { result -> completeTransactionSave(result, "거래가 저장됐어요") },
                         )
                         if (!saved) savingTransaction = false
@@ -1666,7 +1685,23 @@ private fun MoasseumApp(
     }
 
     if (showAccounts) com.moasseum.app.ui.screens.AccountsDialog(accounts, uiState.transactions, application.financeRepository) { showAccounts = false }
-    if (showAuth) com.moasseum.app.ui.screens.AuthDialog(application.authRepository) { showAuth = false }
+    if (showAuth) com.moasseum.app.ui.screens.AuthDialog(
+        repository = application.authRepository,
+        onDismiss = { showAuth = false },
+        onAccountDeleted = { userId ->
+            showAuth = false
+            sharedSnapshot = SharedLedgerSnapshot()
+            sharedAiAnalysisState = SpendingAnalysisState.Idle
+            sharedAiQuestionState = SpendingQuestionState.Idle
+            coroutineScope.launch {
+                val cleared = runCatching { application.financeRepository.detachSharedDataAfterAccountDeletion(userId) }.isSuccess
+                snackbarHostState.showSnackbar(
+                    if (cleared) "계정을 삭제했어요. 기기 기록은 유지됩니다."
+                    else "계정은 삭제됐지만 이 기기의 공유 캐시 정리는 완료되지 않았어요.",
+                )
+            }
+        },
+    )
     backupToRestore?.let { backup ->
         AlertDialog(onDismissRequest = { if (!restoringBackup) backupToRestore = null }, title = { Text("백업을 복원할까요?") },
             text = { Column {

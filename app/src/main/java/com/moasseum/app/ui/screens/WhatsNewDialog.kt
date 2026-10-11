@@ -55,6 +55,43 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.34" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_34_fx,
+                imageAspectRatio = 904f / 1450f,
+                title = "외화 거래에 거래일 환율 기록",
+                description = "통화와 날짜를 고르면 무료 일일 참고 환율로 원화 금액을 계산하고, 원래 금액·환율·기준일도 함께 저장해요. 실제 카드 청구액과는 다를 수 있어요.",
+                imageDescription = "거래일 참고 환율로 12.50달러를 원화로 환산해 기록하는 화면",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_34_deposit,
+                imageAspectRatio = 904f / 1450f,
+                title = "외부 입금은 계좌 잔액에만",
+                description = "수입·예산 합계에 넣지 않고 선택한 계좌 잔액에만 반영해요. 계좌를 보관하면 과거 거래 연결은 유지됩니다.",
+                imageDescription = "계좌 잔액에만 반영되는 외부 입금 입력 화면",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_34_installments,
+                imageAspectRatio = 904f / 1450f,
+                title = "할부 총액 수정과 일시불 전환",
+                description = "총액을 바꾸면 회차별 금액을 다시 나누고 합계와 결제일을 보존해요. 할부 전환·삭제도 한곳에서 관리할 수 있어요.",
+                imageDescription = "총액 수정, 일시불 전환, 할부 삭제를 제공하는 할부 관리 화면",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_34_suggestions,
+                imageAspectRatio = 904f / 1300f,
+                title = "빠른 기록 추천 내역 정리",
+                description = "추천 내역 편집에서 필요 없는 항목을 숨기면 다음 기록부터 추천에서 제외돼요.",
+                imageDescription = "빠른 기록 추천 내역을 편집하고 개별 삭제하는 화면",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_34_together,
+                imageAspectRatio = 904f / 1450f,
+                title = "함께 장부는 고른 거래만 공유",
+                description = "두 계정이 공동 장부에 참여해도 개인 기록은 자동으로 올라가지 않아요. 공유할 거래를 직접 선택합니다.",
+                imageDescription = "무료 공동 장부와 선택 공유를 안내하는 함께 화면",
+            ),
+        )
         "0.1.33" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_33_widget,

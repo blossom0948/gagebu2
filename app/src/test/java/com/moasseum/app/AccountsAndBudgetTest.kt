@@ -23,6 +23,15 @@ class AccountsAndBudgetTest {
         val rows = listOf(tx(TransactionType.EXPENSE, 1000), tx(TransactionType.INCOME, 2000), tx(TransactionType.EXPENSE, 9999, from = null))
         assertEquals(11000, accountBalance(Account("A", "계좌", 10000, archived = true), rows))
     }
+    @Test fun externalDepositChangesLinkedBalanceWithoutChangingIncomeOrExpenseTotals() {
+        val account = Account("A", "은행", 10_000)
+        val rows = listOf(tx(TransactionType.EXTERNAL_DEPOSIT, 5_000), tx(TransactionType.INCOME, 2_000, from = null))
+        assertEquals(15_000L, accountBalance(account, rows))
+        val state = LedgerUiState(YearMonth.of(2026, 10), rows)
+        assertEquals(0L, state.expenseTotal)
+        assertEquals(2_000L, state.incomeTotal)
+        assertEquals("+₩5,000", formatSignedWon(5_000, TransactionType.EXTERNAL_DEPOSIT))
+    }
     @Test fun removingAndEditingTransferRecalculatesBothAccounts() {
         val a = Account("A", "A", 10000); val b = Account("B", "B", 0)
         assertEquals(7000, accountBalance(a, listOf(tx(TransactionType.TRANSFER, 3000, to = "B"))))

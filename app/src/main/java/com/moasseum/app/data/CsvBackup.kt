@@ -19,12 +19,17 @@ data class ImportedTransaction(
     val installmentGroupId: String? = null,
     val installmentNumber: Int? = null,
     val installmentCount: Int? = null,
+    val currency: String = "KRW",
+    val originalAmount: String? = null,
+    val exchangeRate: String? = null,
+    val exchangeRateDate: String? = null,
 )
 
 object CsvBackup {
     private val headers = listOf(
         "id", "type", "amount", "occurredAt", "categoryKey", "merchant", "memo", "paymentMethod", "source",
         "accountId", "destinationAccountId", "timezone", "installmentGroupId", "installmentNumber", "installmentCount",
+        "currency", "originalAmount", "exchangeRate", "exchangeRateDate",
     )
 
     fun encode(transactions: List<Transaction>): String = buildString {
@@ -48,6 +53,10 @@ object CsvBackup {
                 transaction.installmentGroupId.orEmpty(),
                 transaction.installmentNumber?.toString().orEmpty(),
                 transaction.installmentCount?.toString().orEmpty(),
+                transaction.currency,
+                transaction.originalAmount.orEmpty(),
+                transaction.exchangeRateToKrw.orEmpty(),
+                transaction.exchangeRateDate.orEmpty(),
             ).joinTo(this, separator = ",", transform = ::escape)
             append("\r\n")
         }
@@ -85,6 +94,14 @@ object CsvBackup {
             }
             val installmentNumber = value("installmentNumber").takeIf(String::isNotBlank)?.toIntOrNull()
             val installmentCount = value("installmentCount").takeIf(String::isNotBlank)?.toIntOrNull()
+            val currency = value("currency").ifBlank { "KRW" }
+            require(currency.matches(Regex("[A-Z]{3}"))) { "${lineNumber}번째 줄의 통화 코드를 확인해 주세요." }
+            val originalAmount = value("originalAmount").takeIf(String::isNotBlank)
+            val exchangeRate = value("exchangeRate").takeIf(String::isNotBlank)
+            val exchangeRateDate = value("exchangeRateDate").takeIf(String::isNotBlank)
+            require(if (currency == "KRW") originalAmount == null && exchangeRate == null && exchangeRateDate == null
+                else originalAmount?.toBigDecimalOrNull()?.signum() == 1 && exchangeRate?.toBigDecimalOrNull()?.signum() == 1 &&
+                    exchangeRateDate?.let { runCatching { LocalDate.parse(it) }.isSuccess } == true) { "${lineNumber}번째 줄의 외화 환산 정보를 확인해 주세요." }
             require((installmentGroupId == null && installmentNumber == null && installmentCount == null) ||
                 (type == TransactionType.EXPENSE && installmentGroupId != null && installmentNumber != null && installmentNumber in 1..60 && installmentCount != null && installmentCount in 2..60 && installmentNumber <= installmentCount)) {
                 "${lineNumber}번째 줄의 할부 정보를 확인해 주세요."
@@ -106,6 +123,10 @@ object CsvBackup {
                 installmentGroupId = installmentGroupId,
                 installmentNumber = installmentNumber,
                 installmentCount = installmentCount,
+                currency = currency,
+                originalAmount = originalAmount,
+                exchangeRate = exchangeRate,
+                exchangeRateDate = exchangeRateDate,
             )
         }
         require(imported.filter { it.installmentGroupId != null }.groupBy { it.installmentGroupId }.values.all { group ->

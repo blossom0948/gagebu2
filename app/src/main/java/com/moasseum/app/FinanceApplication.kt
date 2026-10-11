@@ -22,6 +22,7 @@ class FinanceApplication : Application() {
     }
     val preferencesRepository by lazy { UserPreferencesRepository(this) }
     val backupManager by lazy { com.moasseum.app.data.BackupManager(this, financeRepository, preferencesRepository) }
+    val exchangeRateRepository by lazy { com.moasseum.app.data.ExchangeRateRepository() }
     val authRepository by lazy {
         com.moasseum.app.auth.AuthRepository(
             com.moasseum.app.auth.SupabaseAuthApi(), com.moasseum.app.auth.EncryptedSessionStore(this),

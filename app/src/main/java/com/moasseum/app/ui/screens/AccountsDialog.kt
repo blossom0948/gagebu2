@@ -29,6 +29,7 @@ fun AccountsDialog(accounts: List<Account>, transactions: List<Transaction>, rep
     var name by rememberSaveable { mutableStateOf("") }
     var opening by rememberSaveable { mutableStateOf("0") }
     var transferForm by rememberSaveable { mutableStateOf(false) }
+    var externalDepositForm by rememberSaveable { mutableStateOf(false) }
     var editingTransfer by rememberSaveable { mutableStateOf<Long?>(null) }
     var fromId by rememberSaveable { mutableStateOf("") }
     var toId by rememberSaveable { mutableStateOf("") }
@@ -58,7 +59,7 @@ fun AccountsDialog(accounts: List<Account>, transactions: List<Transaction>, rep
         Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("수동 기록이며 실제 은행 송금은 하지 않습니다.", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
             Text("총 잔액 ${formatWon(accounts.sumOf { accountBalance(it, transactions) })}", style = MaterialTheme.typography.titleMedium)
-            if (!accountForm && !transferForm) accounts.forEach { account ->
+            if (!accountForm && !transferForm && !externalDepositForm) accounts.forEach { account ->
                 OutlinedCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(10.dp)) {
                         Text("${account.name}${if (account.archived) " · 보관됨" else ""}", style = MaterialTheme.typography.titleSmall)
@@ -82,7 +83,39 @@ fun AccountsDialog(accounts: List<Account>, transactions: List<Transaction>, rep
                     }) { Text("계좌 저장") }
                     TextButton(enabled = !busy, onClick = { accountForm = false }) { Text("취소") }
                 }
-            } else if (!transferForm) TextButton(enabled = !busy, onClick = { editingAccount = null; name = ""; opening = "0"; accountForm = true }) { Text("+ 계좌·지갑 추가") }
+            } else if (!transferForm && !externalDepositForm) Row {
+                TextButton(enabled = !busy, onClick = { editingAccount = null; name = ""; opening = "0"; accountForm = true }) { Text("+ 계좌·지갑 추가") }
+                TextButton(enabled = !busy && active.isNotEmpty(), onClick = {
+                    externalDepositForm = true
+                    name = "외부 입금"
+                    amount = ""
+                    memo = ""
+                    date = LocalDate.now().toString()
+                    toId = active.first().id
+                }) { Text("+ 외부 입금") }
+            }
+            if (externalDepositForm) {
+                Text("계좌 잔액에만 반영", style = MaterialTheme.typography.titleSmall)
+                Text("수입·예산 합계에는 포함되지 않아요.", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+                AccountChips("입금 계좌", active, toId) { toId = it.orEmpty() }
+                FinanceTextField(amount, { amount = it.take(24) }, label = { Text("입금 금액") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), enabled = !busy)
+                FinanceTextField(name, { name = it.take(80) }, label = { Text("입금 출처") }, singleLine = true, enabled = !busy)
+                FinanceTextField(date, { date = it }, label = { Text("날짜 (YYYY-MM-DD)") }, singleLine = true, enabled = !busy)
+                FinanceTextField(memo, { memo = it.take(300) }, label = { Text("메모 (선택)") }, singleLine = true, enabled = !busy)
+                Row {
+                    TextButton(enabled = !busy, onClick = {
+                        val value = parseAmount(amount)
+                        val day = runCatching { LocalDate.parse(date) }.getOrNull()
+                        if (value == null || day == null || toId.isBlank() || name.isBlank()) error = "금액·날짜·입금 계좌를 확인해 주세요."
+                        else perform({ repository.addExternalDeposit(value, toId, day, name, memo) }) {
+                            externalDepositForm = false
+                            amount = ""
+                            memo = ""
+                        }
+                    }) { Text("잔액에 반영") }
+                    TextButton(enabled = !busy, onClick = { externalDepositForm = false }) { Text("취소") }
+                }
+            }
             HorizontalDivider()
             if (transferForm) {
                 Text(if (editingTransfer == null) "이체 기록" else "이체 수정", style = MaterialTheme.typography.titleSmall)
@@ -99,10 +132,10 @@ fun AccountsDialog(accounts: List<Account>, transactions: List<Transaction>, rep
                     }) { Text("이체 저장") }
                     TextButton(enabled = !busy, onClick = { transferForm = false }) { Text("취소") }
                 }
-            } else if (!accountForm) TextButton(enabled = !busy && active.size >= 2, onClick = { editingTransfer = null; fromId = active[0].id; toId = active[1].id; amount = ""; memo = ""; date = LocalDate.now().toString(); transferForm = true }) { Text("+ 계좌 간 이체 기록") }
-            if (!accountForm && active.size < 2) Text("이체하려면 사용 중인 계좌 두 개가 필요해요.", style = MaterialTheme.typography.labelMedium)
+            } else if (!accountForm && !externalDepositForm) TextButton(enabled = !busy && active.size >= 2, onClick = { editingTransfer = null; fromId = active[0].id; toId = active[1].id; amount = ""; memo = ""; date = LocalDate.now().toString(); transferForm = true }) { Text("+ 계좌 간 이체 기록") }
+            if (!accountForm && !externalDepositForm && active.size < 2) Text("이체하려면 사용 중인 계좌 두 개가 필요해요.", style = MaterialTheme.typography.labelMedium)
             val transfers = transactions.filter { it.type == TransactionType.TRANSFER }
-            if (!accountForm && !transferForm) {
+            if (!accountForm && !transferForm && !externalDepositForm) {
             transfers.take(transferCount).forEach { transaction ->
                 Text("${formatDate(transaction.occurredDate)} · ${transaction.merchant} · ${formatWon(transaction.amount)}", style = MaterialTheme.typography.bodySmall)
                 Row {

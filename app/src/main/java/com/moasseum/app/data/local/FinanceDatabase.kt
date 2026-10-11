@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [TransactionEntity::class, BudgetEntity::class, NotificationCandidateEntity::class, RecurringTransactionEntity::class, AccountEntity::class],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 abstract class FinanceDatabase : RoomDatabase() {
@@ -21,7 +21,7 @@ abstract class FinanceDatabase : RoomDatabase() {
                 context,
                 FinanceDatabase::class.java,
                 name,
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build()
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7).build()
     }
 }
 
@@ -46,6 +46,14 @@ internal val MIGRATION_5_6 = object : Migration(5, 6) {
         database.execSQL("ALTER TABLE transactions ADD COLUMN installmentNumber INTEGER")
         database.execSQL("ALTER TABLE transactions ADD COLUMN installmentCount INTEGER")
         database.execSQL("CREATE INDEX IF NOT EXISTS index_transactions_installmentGroupId ON transactions(installmentGroupId)")
+    }
+}
+
+internal val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE transactions ADD COLUMN originalAmount TEXT")
+        database.execSQL("ALTER TABLE transactions ADD COLUMN exchangeRate TEXT")
+        database.execSQL("ALTER TABLE transactions ADD COLUMN exchangeRateDate TEXT")
     }
 }
 

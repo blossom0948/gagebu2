@@ -18,6 +18,7 @@ class AuthRepositoryTest {
         var refreshError: Exception? = null
         var expiry = 1600L
         var updated = false
+        var deletedToken: String? = null
         fun session() = AuthSession(SignedInUser("72a43f9d-00e0-44db-af34-4cf143314bb7", "qa@example.invalid"), "synthetic-access", "synthetic-refresh", expiry)
         override suspend fun login(email: String, password: String) = session()
         override suspend fun signup(email: String, password: String): AuthSession? = null
@@ -27,6 +28,7 @@ class AuthRepositoryTest {
         override suspend fun updatePassword(session: AuthSession, password: String) { updated = true }
         override suspend fun refresh(refreshToken: String): AuthSession { refreshCalls++; refreshError?.let { throw it }; expiry = 2600; return session() }
         override suspend fun logout(accessToken: String) {}
+        override suspend fun deleteAccount(accessToken: String) { deletedToken = accessToken }
     }
     @Test fun loginAndRestartRetainSessionButNotPassword() = runBlocking {
         val api = Api(); val store = Store(); val repo = AuthRepository(api, store) { 1000 }
@@ -64,6 +66,16 @@ class AuthRepositoryTest {
     @Test fun logoutRemovesPersistedSession() = runBlocking {
         val store = Store(); val repo = AuthRepository(Api(), store) { 1000 }; repo.initialize(); repo.login("qa@example.invalid", "password123"); repo.logout()
         assertNull(store.value); assertNull(repo.state.value.user)
+    }
+    @Test fun accountDeletionUsesCurrentSessionThenClearsOnlyLoginState() = runBlocking {
+        val api = Api(); val store = Store(); val repo = AuthRepository(api, store) { 1000 }
+        repo.initialize(); repo.login("qa@example.invalid", "password123")
+        val deleted = repo.deleteAccount()
+        assertTrue(deleted.isSuccess)
+        assertEquals("72a43f9d-00e0-44db-af34-4cf143314bb7", deleted.getOrNull())
+        assertEquals("synthetic-access", api.deletedToken)
+        assertNull(store.value); assertNull(repo.state.value.user)
+        assertTrue(repo.state.value.message!!.contains("기기의 가계부 기록은 유지"))
     }
     @Test fun missingConfigurationIsExplicitAndNotFakeSuccess() = runBlocking {
         val repo = AuthRepository(Api().apply { configured = false }, Store()); repo.initialize()

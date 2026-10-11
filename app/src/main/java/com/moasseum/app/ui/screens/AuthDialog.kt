@@ -19,7 +19,7 @@ import com.moasseum.app.ui.theme.LocalFinanceColors
 import kotlinx.coroutines.launch
 
 @Composable
-fun AuthDialog(repository: AuthRepository, onDismiss: () -> Unit) {
+fun AuthDialog(repository: AuthRepository, onDismiss: () -> Unit, onAccountDeleted: (String) -> Unit = {}) {
     val state by repository.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var email by rememberSaveable { mutableStateOf("") }
@@ -29,6 +29,8 @@ fun AuthDialog(repository: AuthRepository, onDismiss: () -> Unit) {
     var mode by rememberSaveable { mutableStateOf("LOGIN") }
     var localError by remember { mutableStateOf<String?>(null) }
     var showLogout by rememberSaveable { mutableStateOf(false) }
+    var showDeleteAccount by rememberSaveable { mutableStateOf(false) }
+    var deleteConfirmation by rememberSaveable { mutableStateOf("") }
     var showCode by rememberSaveable { mutableStateOf(false) }
     val colors = LocalFinanceColors.current
     val context = LocalContext.current
@@ -59,6 +61,7 @@ fun AuthDialog(repository: AuthRepository, onDismiss: () -> Unit) {
             state.user?.takeIf { mode != "NEW_PASSWORD" }?.let { user ->
                 Text("로그인됨 · ${user.displayLabel}", style = MaterialTheme.typography.titleSmall)
                 TextButton(enabled = !state.busy, onClick = { showLogout = true }) { Text("로그아웃") }
+                TextButton(enabled = !state.busy, onClick = { deleteConfirmation = ""; showDeleteAccount = true }) { Text("계정 삭제", color = colors.expense) }
             } ?: run {
                 if (mode in listOf("LOGIN", "SIGNUP") && repository.supportsSocialLogin) {
                     GoogleSignInButton(enabled = repository.configured && !state.busy && "google" in state.socialProviders, onClick = { startSocialLogin("google") })
@@ -130,4 +133,28 @@ fun AuthDialog(repository: AuthRepository, onDismiss: () -> Unit) {
     }, confirmButton = { TextButton(enabled = !state.busy, onClick = { close() }) { Text("닫기") } })
     if (showLogout) AlertDialog(onDismissRequest = { showLogout = false }, title = { Text("로그아웃할까요?") }, text = { Text("이 기기의 로그인 정보를 지웁니다. 기기에 저장된 가계부 기록은 유지돼요.") },
         confirmButton = { TextButton(onClick = { showLogout = false; scope.launch { repository.logout() } }) { Text("로그아웃") } }, dismissButton = { TextButton(onClick = { showLogout = false }) { Text("취소") } })
+    if (showDeleteAccount) AlertDialog(
+        onDismissRequest = { if (!state.busy) showDeleteAccount = false },
+        title = { Text("계정을 영구 삭제할까요?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("서버 계정과 로그인 정보가 삭제됩니다. 파트너가 있는 공동 장부는 파트너에게 남도록 보존합니다. 이 기기의 거래·예산은 삭제되지 않습니다. 삭제는 되돌릴 수 없어요.")
+                FinanceTextField(deleteConfirmation, { deleteConfirmation = it.take(8) }, label = { Text("확인을 위해 ‘삭제’ 입력") }, singleLine = true, enabled = !state.busy)
+                if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                state.error?.let { Text(it, color = colors.expense, style = MaterialTheme.typography.labelMedium) }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !state.busy && deleteConfirmation.trim() == "삭제", onClick = {
+                val userId = state.user?.id ?: return@TextButton
+                scope.launch {
+                    repository.deleteAccount().onSuccess { deletedId ->
+                        showDeleteAccount = false
+                        onAccountDeleted(deletedId.ifBlank { userId })
+                    }
+                }
+            }) { Text("계정 영구 삭제", color = colors.expense) }
+        },
+        dismissButton = { TextButton(enabled = !state.busy, onClick = { showDeleteAccount = false }) { Text("취소") } },
+    )
 }

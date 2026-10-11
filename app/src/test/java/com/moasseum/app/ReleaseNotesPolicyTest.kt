@@ -2,6 +2,7 @@ package com.moasseum.app
 
 import com.moasseum.app.update.ReleaseNotesPolicy
 import com.moasseum.app.ui.screens.ReleaseNotesCatalog
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -10,6 +11,16 @@ class ReleaseNotesPolicyTest {
     @Test
     fun `every packaged app version has its own illustrated release note`() {
         assertTrue(ReleaseNotesCatalog.slides(BuildConfig.VERSION_NAME).isNotEmpty())
+    }
+
+    @Test
+    fun `v0134 release note covers the shipped screens with valid screenshot ratios`() {
+        val slides = ReleaseNotesCatalog.slides("0.1.34")
+        assertEquals(5, slides.size)
+        assertTrue(slides.all { it.imageAspectRatio in 0.5f..0.8f })
+        assertTrue(slides.any { it.title.contains("환율") })
+        assertTrue(slides.any { it.title.contains("할부") })
+        assertTrue(slides.any { it.title.contains("추천") })
     }
 
     @Test

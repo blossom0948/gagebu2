@@ -57,6 +57,10 @@ object FullBackupCodec {
         put("app", "모아씀"); put("schemaVersion", 2); put("createdAt", System.currentTimeMillis())
         put("transactions", array(backup.transactions) { t -> JSONObject().apply {
             put("id", t.id); put("type", t.type); put("amount", t.amount); put("occurredAt", t.occurredAt)
+            put("currency", t.currency)
+            put("originalAmount", t.originalAmount ?: JSONObject.NULL)
+            put("exchangeRate", t.exchangeRate ?: JSONObject.NULL)
+            put("exchangeRateDate", t.exchangeRateDate ?: JSONObject.NULL)
             put("timezone", t.timezone); put("categoryKey", t.categoryKey); put("merchant", t.merchant)
             put("memo", t.memo); put("paymentMethod", t.paymentMethod); put("source", t.source)
             put("createdAt", t.createdAt); put("updatedAt", t.updatedAt); put("deletedAt", t.deletedAt ?: JSONObject.NULL)
@@ -112,11 +116,19 @@ object FullBackupCodec {
             val installmentGroupId = t.nullableString("installmentGroupId")?.also { java.util.UUID.fromString(it) }
             val installmentNumber = t.optInt("installmentNumber", -1).takeIf { it > 0 }
             val installmentCount = t.optInt("installmentCount", -1).takeIf { it > 0 }
+            val currency = t.optString("currency").takeIf { it.isNotBlank() } ?: "KRW"
+            require(currency.matches(Regex("[A-Z]{3}"))) { "통화 코드가 올바르지 않은 백업이에요." }
+            val originalAmount = t.nullableString("originalAmount")?.also { value -> require(value.length <= 32 && value.toBigDecimalOrNull()?.signum() == 1) }
+            val exchangeRate = t.nullableString("exchangeRate")?.also { value -> require(value.length <= 32 && value.toBigDecimalOrNull()?.signum() == 1) }
+            val exchangeRateDate = t.nullableString("exchangeRateDate")?.also { value -> LocalDate.parse(value) }
+            require(if (currency == "KRW") originalAmount == null && exchangeRate == null && exchangeRateDate == null
+                else originalAmount != null && exchangeRate != null && exchangeRateDate != null) { "외화 환산 정보가 올바르지 않은 백업이에요." }
             require((installmentGroupId == null && installmentNumber == null && installmentCount == null) ||
                 (type == TransactionType.EXPENSE && installmentGroupId != null && installmentNumber != null && installmentCount != null && installmentCount in 2..60 && installmentNumber <= installmentCount)) {
                 "할부 연결 정보가 올바르지 않은 백업이에요."
             }
             TransactionEntity(id = t.getLong("id").also { require(it > 0) }, type = type.name, amount = amount(t), occurredAt = timestamp,
+                currency = currency, originalAmount = originalAmount, exchangeRate = exchangeRate, exchangeRateDate = exchangeRateDate,
                 timezone = zone, categoryKey = field(t, "categoryKey", 64), merchant = field(t, "merchant", 300), memo = field(t, "memo", 4000, true),
                 paymentMethod = field(t, "paymentMethod", 100), source = field(t, "source", 40), createdAt = t.optLong("createdAt", now),
                 updatedAt = t.optLong("updatedAt", now), deletedAt = if (t.isNull("deletedAt") || !t.has("deletedAt")) null else t.getLong("deletedAt"), accountId = from, destinationAccountId = to,

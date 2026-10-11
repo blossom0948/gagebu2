@@ -1,5 +1,7 @@
 package com.moasseum.app.ui.screens
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -75,6 +77,7 @@ import com.moasseum.app.domain.filterHistoryTransactions
 import com.moasseum.app.domain.formatDate
 import com.moasseum.app.domain.formatMonth
 import com.moasseum.app.domain.formatWon
+import com.moasseum.app.domain.foreignTransactionCaption
 import com.moasseum.app.ui.components.AmountText
 import com.moasseum.app.ui.components.allCategorySpecs
 import com.moasseum.app.ui.components.EmptyState
@@ -95,6 +98,7 @@ private enum class HistoryFilter(val label: String) {
     EXPENSE("지출"),
     INCOME("수입"),
     TRANSFER("이체"),
+    EXTERNAL_DEPOSIT("외부 입금"),
 }
 
 @Composable
@@ -139,6 +143,7 @@ fun HistoryScreen(
             HistoryFilter.EXPENSE -> TransactionType.EXPENSE
             HistoryFilter.INCOME -> TransactionType.INCOME
             HistoryFilter.TRANSFER -> TransactionType.TRANSFER
+            HistoryFilter.EXTERNAL_DEPOSIT -> TransactionType.EXTERNAL_DEPOSIT
         },
         categoryKey = categoryFilterKey.takeUnless { it == "ALL" },
         date = dateFilter?.let(LocalDate::parse), paymentMethod = paymentFilter, search = search, sort = sort,
@@ -464,12 +469,12 @@ private fun CalendarCard(
     val days = remember(month, compactStart, expanded) {
         val first = month.atDay(1)
         val startDate = if (expanded) first.minusDays((first.dayOfWeek.value % 7).toLong()) else LocalDate.parse(compactStart)
-        val count = if (expanded) ((first.dayOfWeek.value % 7 + month.lengthOfMonth() + 6) / 7) * 7 else 14
+        val count = if (expanded) ((first.dayOfWeek.value % 7 + month.lengthOfMonth() + 6) / 7) * 7 else 7
         (0 until count).map { startDate.plusDays(it.toLong()) }
     }
     val datesWithTransactions = transactions.groupingBy { it.occurredDate }.eachCount()
     FinanceCard {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp).animateContentSize(tween(180)), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onPrevious, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Rounded.ChevronLeft, contentDescription = "이전 달", tint = colors.accent)
@@ -514,7 +519,7 @@ private fun CalendarCard(
                 }
             }
             TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.Start)) {
-                Text(if (expanded) "2주 보기" else "전체 보기", style = MaterialTheme.typography.labelMedium)
+                Text(if (expanded) "주간 보기" else "한 달 보기", style = MaterialTheme.typography.labelMedium)
             }
         }
     }
@@ -622,6 +627,8 @@ private fun TransactionDetailDialog(
         text = {
             Column(modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(13.dp)) {
                 AmountText(transaction.amount, transaction.type, style = MaterialTheme.typography.headlineSmall)
+                if (transaction.type == TransactionType.EXTERNAL_DEPOSIT) DetailLine("반영 방식", "계좌 잔액에만 더하고 수입·예산 합계에서는 제외")
+                foreignTransactionCaption(transaction)?.let { DetailLine("외화 환산", it) }
                 DetailLine("날짜", formatDate(transaction.occurredDate))
                 DetailLine("카테고리", categoryLabel(transaction.categoryKey))
                 DetailLine("결제수단", transaction.paymentMethod)
@@ -664,9 +671,11 @@ private fun TransactionEditDialog(
         title = { Text("거래 수정", fontWeight = FontWeight.Bold) },
         text = {
             Column(modifier = Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                if (transaction.currency != "KRW") Text("금액을 저장하면 원화로 바뀌고 기존 환율 정보는 지워집니다.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(type == TransactionType.EXPENSE, { typeName = TransactionType.EXPENSE.name }, enabled = !saving.busy, label = { Text("지출") })
                     FilterChip(type == TransactionType.INCOME, { typeName = TransactionType.INCOME.name }, enabled = !saving.busy, label = { Text("수입") })
+                    if (transaction.type == TransactionType.EXTERNAL_DEPOSIT) FilterChip(type == TransactionType.EXTERNAL_DEPOSIT, { typeName = TransactionType.EXTERNAL_DEPOSIT.name }, enabled = !saving.busy, label = { Text("외부 입금 · 잔액만") })
                 }
                 OutlinedTextField(
                     value = amount,

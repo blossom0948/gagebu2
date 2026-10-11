@@ -19,6 +19,7 @@ enum class TransactionType {
     EXPENSE,
     INCOME,
     TRANSFER,
+    EXTERNAL_DEPOSIT,
 }
 
 object HomeDashboardCards {
@@ -110,10 +111,50 @@ data class Transaction(
     val installmentGroupId: String? = null,
     val installmentNumber: Int? = null,
     val installmentCount: Int? = null,
+    val currency: String = "KRW",
+    val originalAmount: String? = null,
+    val exchangeRateToKrw: String? = null,
+    val exchangeRateDate: String? = null,
 ) {
     val occurredDate: LocalDate
         get() = Instant.ofEpochMilli(occurredAt).atZone(ZoneId.of(timezone)).toLocalDate()
 }
+
+fun foreignTransactionCaption(transaction: Transaction): String? {
+    if (transaction.currency == "KRW") return null
+    val original = transaction.originalAmount ?: return "${transaction.currency} · 외화 환산 정보 없음"
+    val rate = transaction.exchangeRateToKrw ?: return "${transaction.currency} $original · 환율 정보 없음"
+    val date = transaction.exchangeRateDate?.let { " · $it 기준" }.orEmpty()
+    return "${transaction.currency} $original · 1 ${transaction.currency} = ${rate}원$date"
+}
+
+/** A foreign-currency amount with the daily reference rate used to store its KRW value. */
+data class CurrencyConversion(
+    val currencyCode: String,
+    val originalAmount: String,
+    val rateToKrw: String,
+    val rateDate: String,
+)
+
+data class ExchangeRateQuote(
+    val baseCurrency: String,
+    val quoteCurrency: String,
+    val rate: String,
+    val date: String,
+)
+
+data class QuickEntrySuggestion(
+    val key: String,
+    val merchant: String,
+    val amount: Long,
+    val type: TransactionType,
+    val categoryKey: String,
+    val paymentMethod: String,
+    val currency: String = "KRW",
+    val originalAmount: String? = null,
+    val exchangeRateToKrw: String? = null,
+    val exchangeRateDate: String? = null,
+)
 
 data class InstallmentPart(val number: Int, val amount: Long, val date: LocalDate)
 
@@ -288,6 +329,7 @@ fun formatSignedWon(amount: Long, type: TransactionType): String =
         TransactionType.EXPENSE -> "−${formatWon(amount)}"
         TransactionType.INCOME -> "+${formatWon(amount)}"
         TransactionType.TRANSFER -> "↔ ${formatWon(amount)}"
+        TransactionType.EXTERNAL_DEPOSIT -> "+${formatWon(amount)}"
     }
 
 fun formatMonth(month: YearMonth): String = "${month.year}년 ${month.monthValue}월"

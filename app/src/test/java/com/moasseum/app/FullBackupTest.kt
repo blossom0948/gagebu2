@@ -24,6 +24,15 @@ class FullBackupTest {
     @Test fun completeRoundTripPreservesAccountsRulesTombstonesAndSettings() {
         assertEquals(backup(), FullBackupCodec.decode(FullBackupCodec.encode(backup())))
     }
+    @Test fun foreignCurrencyMetadataSurvivesFullBackupRoundTrip() {
+        val foreign = TransactionEntity(
+            id = 9, type = "EXPENSE", amount = 13420, currency = "USD", originalAmount = "10",
+            exchangeRate = "1342", exchangeRateDate = "2026-10-09", occurredAt = 1234,
+            timezone = "Asia/Seoul", categoryKey = "TRAVEL", merchant = "Hotel", createdAt = 123, updatedAt = 124,
+        )
+        val restored = FullBackupCodec.decode(FullBackupCodec.encode(backup().copy(transactions = listOf(foreign))))
+        assertEquals(foreign, restored.transactions.single())
+    }
     @Test fun installmentGroupSurvivesFullBackupRoundTrip() {
         val groupId = "971a8c7e-7f32-4e6b-9a74-82c22e218671"
         val rows = (1..3).map { number ->

@@ -83,6 +83,7 @@ import com.moasseum.app.domain.Transaction
 import com.moasseum.app.domain.formatSignedWon
 import com.moasseum.app.domain.formatWon
 import com.moasseum.app.domain.formatDate
+import com.moasseum.app.domain.foreignTransactionCaption
 import com.moasseum.app.ui.theme.CategoryFood
 import com.moasseum.app.ui.theme.CategoryCafe
 import com.moasseum.app.ui.theme.CategoryHealth
@@ -207,7 +208,7 @@ fun CategoryIcon(
 @Composable
 fun TypeBadge(type: TransactionType) {
     val colors = LocalFinanceColors.current
-    val tint = when (type) { TransactionType.EXPENSE -> colors.expense; TransactionType.INCOME -> colors.income; TransactionType.TRANSFER -> colors.textSecondary }
+    val tint = when (type) { TransactionType.EXPENSE -> colors.expense; TransactionType.INCOME, TransactionType.EXTERNAL_DEPOSIT -> colors.income; TransactionType.TRANSFER -> colors.textSecondary }
     val icon = if (type == TransactionType.EXPENSE) Icons.Rounded.ArrowDownward else Icons.Rounded.ArrowUpward
     Row(
         modifier = Modifier
@@ -218,7 +219,7 @@ fun TypeBadge(type: TransactionType) {
     ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(13.dp))
         Text(
-            text = when (type) { TransactionType.EXPENSE -> "지출"; TransactionType.INCOME -> "수입"; TransactionType.TRANSFER -> "이체" },
+            text = when (type) { TransactionType.EXPENSE -> "지출"; TransactionType.INCOME -> "수입"; TransactionType.TRANSFER -> "이체"; TransactionType.EXTERNAL_DEPOSIT -> "외부 입금 · 잔액만" },
             color = tint,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.SemiBold,
@@ -235,7 +236,7 @@ fun AmountText(
     val colors = LocalFinanceColors.current
     Text(
         text = formatSignedWon(amount, type),
-        color = when (type) { TransactionType.EXPENSE -> colors.expense; TransactionType.INCOME -> colors.income; TransactionType.TRANSFER -> colors.textSecondary },
+        color = when (type) { TransactionType.EXPENSE -> colors.expense; TransactionType.INCOME, TransactionType.EXTERNAL_DEPOSIT -> colors.income; TransactionType.TRANSFER -> colors.textSecondary },
         style = style,
         fontWeight = FontWeight.Bold,
         maxLines = 1,
@@ -286,6 +287,9 @@ fun TransactionRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            foreignTransactionCaption(transaction)?.let { caption ->
+                Text(caption, color = colors.textSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
         Column(modifier = Modifier.widthIn(max = 148.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
             AmountText(transaction.amount, transaction.type)
