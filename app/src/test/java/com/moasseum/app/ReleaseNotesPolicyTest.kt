@@ -24,6 +24,15 @@ class ReleaseNotesPolicyTest {
     }
 
     @Test
+    fun `v0135 release note describes the simplified manage menu`() {
+        val slides = ReleaseNotesCatalog.slides("0.1.35")
+        assertEquals(2, slides.size)
+        assertTrue(slides.any { it.title.contains("관리 메뉴") })
+        assertTrue(slides.any { it.title.contains("이전 내역") })
+        assertTrue(slides.all { it.imageAspectRatio in 0.5f..0.8f })
+    }
+
+    @Test
     fun `fresh installs do not get an update popup`() {
         assertFalse(ReleaseNotesPolicy.shouldShow("0.1.24", null, isUpgradeInstall = false))
     }

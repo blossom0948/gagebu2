@@ -55,6 +55,22 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.35" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_35_manage,
+                imageAspectRatio = 904f / 1350f,
+                title = "한 화면에서 찾는 관리 메뉴",
+                description = "불필요한 메뉴 탭을 없애고 예산·장부, 결제·알림, 앱·데이터를 한 화면에 정리했어요. 목표 지출에는 이번 달 사용량과 진행 막대를 표시해요.",
+                imageDescription = "목표 지출 진행 막대와 예산·장부 설정이 이어지는 모아씀 관리 화면",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_35_suggestions,
+                imageAspectRatio = 904f / 1150f,
+                title = "가맹점을 입력하면 이전 내역 추천",
+                description = "두 글자 이상 입력하면 같은 유형의 개인 거래를 최대 3개까지 찾아요. 하나를 고르면 금액·카테고리·결제수단을 불러와 빠르게 기록할 수 있어요.",
+                imageDescription = "QA 테스트 장부에서 가맹점 입력에 따라 이전 개인 거래가 추천되는 상세 기록 화면",
+            ),
+        )
         "0.1.34" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_34_fx,

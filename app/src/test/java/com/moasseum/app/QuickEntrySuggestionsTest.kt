@@ -4,6 +4,7 @@ import com.moasseum.app.domain.Transaction
 import com.moasseum.app.domain.TransactionType
 import com.moasseum.app.domain.quickEntrySuggestionKey
 import com.moasseum.app.domain.quickEntrySuggestions
+import com.moasseum.app.domain.matchingQuickEntrySuggestions
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -47,5 +48,28 @@ class QuickEntrySuggestionsTest {
             quickEntrySuggestionKey(TransactionType.EXPENSE, 1000, "Cafe", "FOOD", "CARD"),
             quickEntrySuggestionKey(TransactionType.EXPENSE, 1000, " cafe ", "FOOD", "card"),
         )
+    }
+
+    @Test fun typingMerchantFindsRecentPersonalEntriesForTheSelectedType() {
+        val matches = matchingQuickEntrySuggestions(listOf(
+            transaction(1, "Cafe Bene", 4500),
+            transaction(2, "Cafe Bene", 5000),
+            transaction(3, "Cafe Bene", 3000, type = TransactionType.INCOME),
+            transaction(4, "Other Cafe", 1200, scope = "SHARED"),
+            transaction(5, "Transfer Cafe", 2500, type = TransactionType.TRANSFER),
+        ), "cafe", TransactionType.EXPENSE)
+
+        assertEquals(listOf(5000L, 4500L), matches.map { it.amount })
+        assertTrue(matchingQuickEntrySuggestions(listOf(transaction(6, "Cafe", 1000)), "c", TransactionType.EXPENSE).isEmpty())
+    }
+
+    @Test fun typingMerchantLimitsMatchesAndRejectsTransfers() {
+        val transactions = (1L..6L).map { transaction(it, "Market_$it", it * 1000) } +
+            transaction(7, "Market Transfer", 1000, type = TransactionType.TRANSFER)
+
+        val matches = matchingQuickEntrySuggestions(transactions, "market", TransactionType.EXPENSE, limit = 2)
+
+        assertEquals(2, matches.size)
+        assertEquals(listOf(6000L, 5000L), matches.map { it.amount })
     }
 }

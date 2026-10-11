@@ -76,6 +76,7 @@ import com.moasseum.app.domain.Transaction
 import com.moasseum.app.domain.CurrencyConversion
 import com.moasseum.app.domain.ExchangeRateQuote
 import com.moasseum.app.domain.quickEntrySuggestions
+import com.moasseum.app.domain.matchingQuickEntrySuggestions
 import com.moasseum.app.data.PhotoImportState
 import com.moasseum.app.data.PhotoTransactionCandidate
 import com.moasseum.app.data.convertForeignAmountToKrw
@@ -660,6 +661,9 @@ private fun DirectTransactionForm(
     val suggestions = remember(transactions, hiddenSuggestionKeys) {
         quickEntrySuggestions(transactions, hiddenSuggestionKeys)
     }
+    val merchantMatches = remember(transactions, merchant, type) {
+        matchingQuickEntrySuggestions(transactions, merchant, type)
+    }
 
     LaunchedEffect(currencyCode, occurredDateText, rateReloadKey) {
         if (currencyCode == "KRW") {
@@ -821,6 +825,46 @@ private fun DirectTransactionForm(
             isError = showError && merchant.isBlank(),
             shape = RoundedCornerShape(15.dp),
         )
+        if (!manageSuggestions && merchantMatches.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text("이전에 입력한 내역", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    merchantMatches.forEach { match ->
+                        Surface(
+                            modifier = Modifier.clickable {
+                                typeName = match.type.name
+                                amount = match.originalAmount ?: match.amount.toString()
+                                merchant = match.merchant
+                                categoryKey = match.categoryKey
+                                paymentMethod = match.paymentMethod
+                                currencyCode = match.currency
+                                isInstallment = false
+                                showError = false
+                            },
+                            color = colors.surfaceOverlay,
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                Text(
+                                    if (match.currency == "KRW") formatWon(match.amount) else "${match.currency} ${match.originalAmount.orEmpty()}",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    maxLines = 1,
+                                )
+                                Text(
+                                    "${categoryLabel(match.categoryKey)} · ${match.paymentMethod}",
+                                    color = colors.textSecondary,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("카테고리", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             Row(

@@ -1,6 +1,8 @@
 package com.moasseum.app.ui.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -8,11 +10,14 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
@@ -45,7 +50,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import com.moasseum.app.ui.components.FinanceTextField as OutlinedTextField
 import androidx.compose.material3.Switch
@@ -60,9 +64,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import com.moasseum.app.domain.LedgerUiState
 import com.moasseum.app.domain.HomeDashboardCards
@@ -184,10 +191,10 @@ fun ManageScreen(
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        item { Text("관리", style = MaterialTheme.typography.headlineSmall) }
         item {
-            Text("관리", style = MaterialTheme.typography.headlineSmall)
-        }
-        item {
+            val budget = uiState.budgetAmount?.takeIf { it > 0L }
+            val spent = uiState.expenseTotal
             FinanceCard(
                 modifier = Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button) { showBudgetDialog = true },
                 highlighted = true,
@@ -201,220 +208,112 @@ fun ManageScreen(
                         }
                         Icon(Icons.Rounded.ChevronRight, contentDescription = null, modifier = Modifier.size(24.dp))
                     }
-                    Text(uiState.budgetAmount?.let(::formatWon) ?: "설정되지 않음", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(budget?.let(::formatWon) ?: "목표 설정하기", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    if (budget != null) {
+                        ManageProgressBar(
+                            progress = spent.toFloat() / budget,
+                            color = if (spent > budget) colors.expense else colors.accent,
+                            trackColor = colors.surfaceRaised,
+                        )
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("현재 ${formatWon(spent)} 사용", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                            Text("목표 ${formatWon(budget)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
                 }
             }
         }
-        item { ManageSectionTitle("카드·고정 지출") }
         item {
-            FinanceCard {
-                val installmentGroups = uiState.transactions.filter { it.installmentGroupId != null }.groupBy { it.installmentGroupId }
-                ManageRow(
-                    Icons.Rounded.CreditCard,
-                    "할부 관리",
-                    if (installmentGroups.isEmpty()) "" else "${installmentGroups.size}건",
-                    onClick = { showInstallmentDialog = true },
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ManageSectionTitle("예산과 장부")
+                FinanceCard {
+                    ManageRow(Icons.Rounded.AccountBalance, "월 수입 목표", monthlyIncomeTarget?.let(::formatWon) ?: "설정 안 됨", onClick = { showIncomeTargetDialog = true })
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    SettingSwitchRow(Icons.Rounded.Wallet, "남은 예산 다음 달 이월", "", uiState.budgetRollover, onSetBudgetRollover)
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    ManageRow(Icons.Rounded.AutoAwesome, "무지출 챌린지", if (noSpendChallenge.enabled) "${noSpendChallenge.goalDays}일 목표" else "목표 기간을 정하고 시작", onClick = { showNoSpendDialog = true })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("카테고리별 지출", color = colors.textSecondary, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = 4.dp))
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = { showCategoryOrderDialog = true }) { Text("순서") }
+                    TextButton(onClick = { showCategoryDialog = true }) { Text("관리") }
+                }
+                CategoryWeightCard(
+                    uiState = uiState,
+                    budgets = categoryBudgets,
+                    onEditBudgets = { showCategoryBudgetsDialog = true },
                 )
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                ManageRow(
-                    Icons.Rounded.CalendarMonth,
-                    "결제일 기준 보기",
-                    if (paymentCards.isEmpty()) "등록된 카드 없음" else "${formatMonth(uiState.month)} · ${formatWon(paymentCards.sumOf { cardUsage(it, uiState.month, uiState.transactions).total })}",
-                    onClick = { showCardUsageDialog = true },
-                )
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                ManageRow(
-                    Icons.Rounded.CreditCard,
-                    "카드·결제일",
-                    if (paymentCards.isEmpty()) "" else "${paymentCards.size}장",
-                    onClick = { showPaymentCardsDialog = true },
-                )
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                ManageRow(Icons.Rounded.Repeat, "반복 거래 관리", "${recurringRules.count { it.isActive }}개 사용 중", onClick = { showRecurringDialog = true })
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                ManageRow(
-                    Icons.Rounded.Wallet, "구독·고정비 레이더",
-                    "월 예정 ${formatWon(recurringRules.filter { it.isActive && it.type == TransactionType.EXPENSE }.sumOf { it.amount })}",
-                    onClick = { showFixedRadarDialog = true },
-                )
+                FinanceCard {
+                    ManageRow(Icons.Rounded.AccountBalance, "계좌·지갑과 이체", "", onClick = onOpenAccounts)
+                }
             }
         }
         item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                ManageSectionTitle("카테고리 비중")
-                Spacer(Modifier.weight(1f))
-                TextButton(onClick = { showCategoryOrderDialog = true }) { Text("순서 변경") }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ManageSectionTitle("결제와 알림")
+                FinanceCard {
+                    ManageRow(Icons.Rounded.CreditCard, "결제수단", paymentMethods.joinToString(" · "), onClick = { showPaymentMethodsDialog = true })
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    val installmentGroups = uiState.transactions.filter { it.installmentGroupId != null }.groupBy { it.installmentGroupId }
+                    ManageRow(Icons.Rounded.CreditCard, "할부 관리", if (installmentGroups.isEmpty()) "" else "${installmentGroups.size}건", onClick = { showInstallmentDialog = true })
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    ManageRow(Icons.Rounded.CalendarMonth, "결제일 기준 보기", if (paymentCards.isEmpty()) "등록된 카드 없음" else "${formatMonth(uiState.month)} · ${formatWon(paymentCards.sumOf { cardUsage(it, uiState.month, uiState.transactions).total })}", onClick = { showCardUsageDialog = true })
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    ManageRow(Icons.Rounded.CreditCard, "카드·결제일", if (paymentCards.isEmpty()) "" else "${paymentCards.size}장", onClick = { showPaymentCardsDialog = true })
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    ManageRow(Icons.Rounded.Repeat, "반복 거래 관리", "${recurringRules.count { it.isActive }}개 사용 중", onClick = { showRecurringDialog = true })
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    ManageRow(Icons.Rounded.Wallet, "구독·고정비 레이더", "월 예정 ${formatWon(recurringRules.filter { it.isActive && it.type == TransactionType.EXPENSE }.sumOf { it.amount })}", onClick = { showFixedRadarDialog = true })
+                }
+                FinanceCard {
+                    SettingSwitchRow(Icons.Rounded.NotificationsActive, "예산·고정비 알림", "예산 50%·초과 · 고정비 전날", financeRemindersEnabled, onSetFinanceRemindersEnabled)
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    ManageRow(Icons.Rounded.NotificationsActive, "결제 알림 감지", notificationStatusMessage(notificationAccessEnabled, notificationServiceConnectedAt, notificationServiceDisconnectedAt, notificationLastSeenAt, pendingCandidates.size), onClick = onOpenNotificationSettings)
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    ManageRow(Icons.Rounded.NotificationsActive, "인식 알림 표시", if (appNotificationsEnabled) "허용됨" else "알림 권한 필요", onClick = onOpenAppNotificationSettings)
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    SettingSwitchRow(
+                        Icons.Rounded.Security,
+                        "AI 알림 오탐 줄이기",
+                        if (aiLoginRequired) "AI 판별은 로그인 필요" else "",
+                        aiNotificationClassificationEnabled,
+                        onCheckedChange = { enabled -> if (enabled) showAiNotificationConsent = true else onSetAiNotificationClassificationEnabled(false) },
+                    )
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    ManageRow(Icons.Rounded.NotificationsActive, "알림 후보함", "확인 대기 ${pendingCandidates.size}건", onClick = onOpenCandidates)
+                }
             }
         }
         item {
-            CategoryWeightCard(
-                uiState = uiState,
-                budgets = categoryBudgets,
-                onEditBudgets = { showCategoryBudgetsDialog = true },
-                onAddCategory = { showCategoryDialog = true },
-            )
-        }
-        item { ManageSectionTitle("예산") }
-        item {
-            FinanceCard {
-                ManageRow(
-                    Icons.Rounded.Wallet,
-                    "월 예산",
-                    uiState.budgetAmount?.let(::formatWon) ?: "예산 미설정",
-                    onClick = { showBudgetDialog = true },
-                )
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                ManageRow(
-                    Icons.Rounded.AccountBalance,
-                    "월 수입 목표",
-                    monthlyIncomeTarget?.let(::formatWon) ?: "설정 안 됨",
-                    onClick = { showIncomeTargetDialog = true },
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ManageSectionTitle("앱과 데이터")
+                FinanceCard {
+                    ManageRow(Icons.Rounded.Wallet, "전체 백업 내보내기", "", onClick = onExportBackup)
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    ManageRow(Icons.Rounded.Wallet, "백업 복원", "", onClick = onRestoreBackup)
+                    ManageRow(Icons.Rounded.Wallet, "복원 전 백업 내보내기", "", onClick = onExportSafetyBackup)
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    ManageRow(Icons.Rounded.CalendarMonth, "연말정산 자료 정리", "연간 수입·지출 및 CSV", onClick = { selectedReportYear = java.time.LocalDate.now().year; showYearEndDialog = true })
+                    ManageRow(Icons.Rounded.CalendarMonth, "월별 PDF 리포트", formatMonth(uiState.month), onClick = onExportPdf)
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    ManageRow(Icons.Rounded.Security, "로그인·계정", accountStatus, onClick = onOpenAuth)
+                    ManageRow(Icons.AutoMirrored.Rounded.HelpOutline, "기능 안내", "", onClick = onOpenGuide)
+                }
+                FinanceCard {
+                    ManageRow(Icons.Rounded.Home, "홈 카드 구성", "${homeDashboardCards.size}개 표시", onClick = { showHomeCardsDialog = true })
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    SettingSwitchRow(Icons.Rounded.DarkMode, "다크 모드", "", darkTheme, onDarkThemeChanged)
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    SettingSwitchRow(Icons.Rounded.Palette, "모션 줄이기", "", reduceMotion, onReduceMotionChanged)
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    SettingSwitchRow(Icons.Rounded.Security, "앱 잠금", "생체 인증 또는 기기 잠금", appLockEnabled, onSetAppLockEnabled)
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    ManageRow(Icons.Rounded.Security, "개인정보와 데이터", "", onClick = { showPrivacyDialog = true })
+                }
+                AppUpdateCard(updateState, onCheckForUpdate, onInstallUpdate, onContinueInstall)
+                Text("모아씀 ${com.moasseum.app.BuildConfig.VERSION_NAME}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 4.dp, vertical = 5.dp))
             }
-        }
-        item {
-            FinanceCard { SettingSwitchRow(Icons.Rounded.Wallet, "남은 예산 다음 달 이월", "", uiState.budgetRollover, onSetBudgetRollover) }
-        }
-        item { ManageSectionTitle("홈 화면") }
-        item {
-            FinanceCard {
-                ManageRow(
-                    Icons.Rounded.Home,
-                    "홈 카드 구성",
-                    "${homeDashboardCards.size}개 표시 · 월 목표 지출은 항상 표시",
-                    onClick = { showHomeCardsDialog = true },
-                )
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                ManageRow(
-                    Icons.Rounded.AutoAwesome,
-                    "무지출 챌린지",
-                    if (noSpendChallenge.enabled) "${noSpendChallenge.goalDays}일 목표 · 홈에서 진행 확인" else "목표 기간을 정하고 시작",
-                    onClick = { showNoSpendDialog = true },
-                )
-            }
-        }
-        item { ManageSectionTitle("가계부 구성") }
-        item {
-            FinanceCard {
-                ManageRow(Icons.Rounded.AccountBalance, "계좌·지갑과 이체", "", onClick = onOpenAccounts)
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                ManageRow(Icons.Rounded.Category, "카테고리", "", onClick = { showCategoryDialog = true })
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                ManageRow(
-                    Icons.Rounded.Category,
-                    "카테고리별 예산",
-                    if (categoryBudgets.isEmpty()) "미설정" else "${categoryBudgets.size}개 설정",
-                    onClick = { showCategoryBudgetsDialog = true },
-                )
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                ManageRow(Icons.Rounded.AccountBalance, "결제수단", "${paymentMethods.joinToString(" · ")}", onClick = { showPaymentMethodsDialog = true })
-            }
-        }
-        item { ManageSectionTitle("앱 설정") }
-        item {
-            FinanceCard {
-                ManageRow(Icons.Rounded.Wallet, "전체 백업 내보내기", "", onClick = onExportBackup)
-                ManageRow(Icons.Rounded.Wallet, "백업 복원", "", onClick = onRestoreBackup)
-                ManageRow(Icons.Rounded.Wallet, "복원 전 백업 내보내기", "", onClick = onExportSafetyBackup)
-                ManageRow(Icons.Rounded.CalendarMonth, "연말정산 자료 정리", "연간 수입·지출 및 CSV", onClick = {
-                    selectedReportYear = java.time.LocalDate.now().year
-                    showYearEndDialog = true
-                })
-                ManageRow(Icons.Rounded.CalendarMonth, "월별 PDF 리포트", formatMonth(uiState.month), onClick = onExportPdf)
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                ManageRow(Icons.Rounded.Security, "로그인·계정", accountStatus, onClick = onOpenAuth)
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                ManageRow(Icons.AutoMirrored.Rounded.HelpOutline, "기능 안내", "처음 보는 기능 다시 보기", onClick = onOpenGuide)
-            }
-        }
-        item {
-            FinanceCard {
-                SettingSwitchRow(
-                    icon = Icons.Rounded.DarkMode,
-                    title = "다크 모드",
-                    message = "",
-                    checked = darkTheme,
-                    onCheckedChange = onDarkThemeChanged,
-                )
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                SettingSwitchRow(
-                    icon = Icons.Rounded.Palette,
-                    title = "모션 줄이기",
-                    message = "",
-                    checked = reduceMotion,
-                    onCheckedChange = onReduceMotionChanged,
-                )
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                SettingSwitchRow(
-                    icon = Icons.Rounded.Security,
-                    title = "앱 잠금",
-                    message = "생체 인증 또는 기기 잠금",
-                    checked = appLockEnabled,
-                    onCheckedChange = onSetAppLockEnabled,
-                )
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                SettingSwitchRow(
-                    icon = Icons.Rounded.NotificationsActive,
-                    title = "예산·고정비 알림",
-                    message = "예산 50%·초과 · 고정비 전날",
-                    checked = financeRemindersEnabled,
-                    onCheckedChange = onSetFinanceRemindersEnabled,
-                )
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                ManageRow(
-                    Icons.Rounded.NotificationsActive,
-                    "결제 알림 감지",
-                    notificationStatusMessage(
-                        notificationAccessEnabled = notificationAccessEnabled,
-                        serviceConnectedAt = notificationServiceConnectedAt,
-                        serviceDisconnectedAt = notificationServiceDisconnectedAt,
-                        lastSeenAt = notificationLastSeenAt,
-                        pendingCount = pendingCandidates.size,
-                    ),
-                    onClick = onOpenNotificationSettings,
-                )
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                ManageRow(
-                    Icons.Rounded.NotificationsActive,
-                    "인식 알림 표시",
-                    if (appNotificationsEnabled) "허용됨" else "알림 권한 필요",
-                    onClick = onOpenAppNotificationSettings,
-                )
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                SettingSwitchRow(
-                    icon = Icons.Rounded.Security,
-                    title = "AI 알림 오탐 줄이기",
-                    message = if (aiLoginRequired) "AI 판별은 로그인 필요" else "",
-                    checked = aiNotificationClassificationEnabled,
-                    onCheckedChange = { enabled ->
-                        if (enabled) showAiNotificationConsent = true
-                        else onSetAiNotificationClassificationEnabled(false)
-                    },
-                )
-                HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                ManageRow(Icons.Rounded.Security, "개인정보와 데이터", "", onClick = { showPrivacyDialog = true })
-            }
-        }
-        item {
-            FinanceCard {
-                ManageRow(Icons.Rounded.NotificationsActive, "알림 후보함", "확인 대기 ${pendingCandidates.size}건", onClick = onOpenCandidates)
-            }
-        }
-        item {
-            AppUpdateCard(
-                updateState = updateState,
-                onCheckForUpdate = onCheckForUpdate,
-                onInstallUpdate = onInstallUpdate,
-                onContinueInstall = onContinueInstall,
-            )
-        }
-        item {
-            Text(
-                "모아씀 ${com.moasseum.app.BuildConfig.VERSION_NAME}",
-                color = colors.textSecondary,
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 5.dp),
-            )
         }
     }
 
@@ -955,33 +854,43 @@ private fun CategoryWeightCard(
     uiState: LedgerUiState,
     budgets: Map<String, Long>,
     onEditBudgets: () -> Unit,
-    onAddCategory: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
     val specs = allCategorySpecs()
     val totals = uiState.categoryTotals.associateBy { it.key }
     val budgeted = specs.filter { it.key in budgets }
     val unbudgeted = specs.filterNot { it.key in budgets }
+    val spendingLeaders = uiState.categoryTotals.filter { it.total > 0L }.sortedByDescending { it.total }.take(4)
+    val displayCategories = (spendingLeaders.map { it.key } + budgeted.map { it.key }).distinct().take(5)
+    val totalCategorySpend = uiState.categoryTotals.sumOf { it.total }.coerceAtLeast(1L)
     var showUnbudgeted by rememberSaveable { mutableStateOf(false) }
     FinanceCard {
         Column(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            budgeted.forEach { spec ->
-                val spent = totals[spec.key]?.total ?: 0L
-                val limit = budgets[spec.key] ?: 1L
+            if (displayCategories.isEmpty()) {
+                Text("거래를 기록하면 많이 쓴 카테고리를 보여드려요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+            }
+            displayCategories.forEach { key ->
+                val spec = specs.firstOrNull { it.key == key } ?: return@forEach
+                val spent = totals[key]?.total ?: 0L
+                val limit = budgets[key]
                 Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(spec.icon, contentDescription = null, tint = spec.color, modifier = Modifier.size(17.dp))
                         Spacer(Modifier.width(7.dp))
                         Text(categoryLabel(spec.key), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                        Text("${formatWon(spent)} / ${formatWon(limit)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                        val sharePercent = ((spent.toDouble() / totalCategorySpend) * 100).toInt()
+                        Text(
+                            if (limit == null) "${formatWon(spent)} · ${sharePercent}%" else "${formatWon(spent)} / ${formatWon(limit)}",
+                            color = colors.textSecondary,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
                     }
-                    LinearProgressIndicator(
-                        progress = { (spent.toFloat() / limit.coerceAtLeast(1L)).coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth(),
-                        color = if (spent > limit) colors.expense else spec.color,
+                    ManageProgressBar(
+                        progress = spent.toFloat() / (limit ?: totalCategorySpend).coerceAtLeast(1L),
+                        color = if (limit != null && spent > limit) colors.expense else spec.color,
                         trackColor = colors.surfaceRaised,
                     )
                 }
@@ -990,7 +899,7 @@ private fun CategoryWeightCard(
                 modifier = Modifier.fillMaxWidth().clickable { showUnbudgeted = !showUnbudgeted }.padding(vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("예산 없음 (${unbudgeted.size})", color = colors.textSecondary, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                Text("예산 미설정 (${unbudgeted.size})", color = colors.textSecondary, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
                 TextButton(onClick = onEditBudgets) { Text("예산 설정") }
                 Icon(
                     imageVector = if (showUnbudgeted) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
@@ -1011,7 +920,6 @@ private fun CategoryWeightCard(
                     }
                 }
             }
-            OutlinedButton(onClick = onAddCategory, modifier = Modifier.fillMaxWidth()) { Text("+ 카테고리 추가") }
         }
     }
 }
@@ -1660,6 +1568,31 @@ private fun relativeNotificationTime(timestamp: Long): String {
 @Composable
 private fun ManageSectionTitle(title: String) {
     Text(title, color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 4.dp, start = 4.dp))
+}
+
+@Composable
+private fun ManageProgressBar(progress: Float, color: Color, trackColor: Color) {
+    val value = progress.coerceIn(0f, 1f)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(6.dp)
+            .clip(CircleShape)
+            .background(trackColor)
+            .semantics {
+                contentDescription = "진행률 ${(value * 100).toInt()}%"
+            },
+    ) {
+        if (value > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(value)
+                    .fillMaxHeight()
+                    .clip(CircleShape)
+                    .background(color),
+            )
+        }
+    }
 }
 
 @Composable
