@@ -55,6 +55,15 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.37" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_37_calendar,
+                imageAspectRatio = 904f / 1260f,
+                title = "선택한 날짜를 한눈에",
+                description = "내역 달력에서 선택한 날짜가 원의 가운데 보이도록 다듬었어요. 거래가 있는 날은 작은 점으로 확인할 수 있어요.",
+                imageDescription = "선택한 12일 숫자가 민트색 원의 중앙에 표시된 소비내역 달력",
+            ),
+        )
         "0.1.36" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_28_photo_import,

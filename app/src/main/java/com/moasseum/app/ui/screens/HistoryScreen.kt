@@ -544,10 +544,9 @@ private fun CalendarDay(
         contentAlignment = Alignment.Center,
     ) {
         if (date != null) {
-            Column(
+            Box(
                 modifier = Modifier.size(40.dp).background(if (selected) colors.accent else Color.Transparent, CircleShape),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                contentAlignment = Alignment.Center,
             ) {
                 Text(
                     date.dayOfMonth.toString(),
@@ -559,13 +558,13 @@ private fun CalendarDay(
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                 )
-                Box(
+                if (count > 0) Box(
                     modifier = Modifier
-                        .size(if (count > 0) 4.dp else 2.dp)
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 4.dp)
+                        .size(4.dp)
                         .background(
-                            if (count > 0) {
-                                if (selected) MaterialTheme.colorScheme.onPrimary else colors.accent
-                            } else Color.Transparent,
+                            if (selected) MaterialTheme.colorScheme.onPrimary else colors.accent,
                             CircleShape,
                         ),
                 )

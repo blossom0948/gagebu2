@@ -14,6 +14,15 @@ class ReleaseNotesPolicyTest {
     }
 
     @Test
+    fun `v0137 release note shows the centered selected date`() {
+        val slides = ReleaseNotesCatalog.slides("0.1.37")
+        assertEquals(1, slides.size)
+        assertTrue(slides.single().title.contains("날짜"))
+        assertTrue(slides.single().description.contains("가운데"))
+        assertTrue(slides.single().imageAspectRatio in 0.5f..0.8f)
+    }
+
+    @Test
     fun `v0136 release note covers sharing multiple screenshots into review`() {
         val slides = ReleaseNotesCatalog.slides("0.1.36")
         assertEquals(1, slides.size)
