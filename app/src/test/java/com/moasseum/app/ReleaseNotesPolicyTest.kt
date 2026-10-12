@@ -14,6 +14,16 @@ class ReleaseNotesPolicyTest {
     }
 
     @Test
+    fun `v0142 explains suggested manage searches and uses the Fold QA capture`() {
+        val slide = ReleaseNotesCatalog.slides("0.1.42").single()
+        assertTrue(slide.title.contains("관리 메뉴"))
+        assertTrue(slide.description.contains("곧바로 이동하지 않고"))
+        assertTrue(slide.description.contains("카드값"))
+        assertTrue(slide.imageDescription.contains("Galaxy Z Fold4"))
+        assertTrue(slide.imageAspectRatio in 1.5f..1.8f)
+    }
+
+    @Test
     fun `v0141 explains local recent menu history and uses the Fold QA capture`() {
         val slide = ReleaseNotesCatalog.slides("0.1.41").single()
         assertTrue(slide.title.contains("최근 찾은 메뉴"))

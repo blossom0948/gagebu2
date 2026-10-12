@@ -29,6 +29,7 @@ import androidx.compose.runtime.mutableStateOf
 import com.moasseum.app.data.ManageSettingSearchResult
 import com.moasseum.app.ui.screens.ManageNaturalSearch
 import com.moasseum.app.ui.screens.ManageSearchEntry
+import com.moasseum.app.ui.screens.ManageSearchCatalog
 import com.moasseum.app.ui.theme.MoasseumTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -197,6 +198,7 @@ class ManageNaturalSearchInteractionTest {
         }
 
         composeRule.onNodeWithText("최근 찾은 메뉴").assertExists()
+        assertEquals(0, composeRule.onAllNodesWithText("자주 찾는 검색").fetchSemanticsNodes().size)
         composeRule.waitForIdle()
         val fullScreenshot = composeRule.onRoot().captureToImage().asAndroidBitmap()
         val screenshotCrop = Bitmap.createBitmap(
@@ -242,5 +244,67 @@ class ManageNaturalSearchInteractionTest {
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithText("최근 찾은 메뉴").fetchSemanticsNodes().isEmpty()
         }
+    }
+
+    @Test fun suggestedSearchShowsResultsBeforeAnyFeatureAction() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        check(context.packageName.endsWith(".qa")) { "Screenshot capture is restricted to the isolated QA app." }
+        var openedId: String? = null
+        val entries = ManageSearchCatalog.entries.map { descriptor ->
+            ManageSearchEntry(
+                id = descriptor.id,
+                title = descriptor.title,
+                description = descriptor.description,
+                aliases = descriptor.aliases,
+                actionLabel = descriptor.actionLabel,
+                onSelect = { openedId = descriptor.id },
+            )
+        }
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                    ManageNaturalSearch(
+                        entries = entries,
+                        aiAvailable = false,
+                        onAiSearch = { _, _ -> Result.failure(IllegalStateException("unused")) },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 30.dp),
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("자주 찾는 검색").assertExists()
+        composeRule.onNodeWithTag("manage_suggestion_card-usage").assertExists()
+        composeRule.waitForIdle()
+        val fullScreenshot = composeRule.onRoot().captureToImage().asAndroidBitmap()
+        val screenshotCrop = Bitmap.createBitmap(
+            fullScreenshot,
+            0,
+            0,
+            fullScreenshot.width,
+            (fullScreenshot.height * 0.24f).toInt().coerceAtLeast(1),
+        )
+        val screenshotBytes = ByteArrayOutputStream().use { output ->
+            screenshotCrop.compress(Bitmap.CompressFormat.JPEG, 90, output)
+            output.toByteArray()
+        }
+        Base64.encodeToString(screenshotBytes, Base64.NO_WRAP).chunked(2_000).forEachIndexed { index, chunk ->
+            Log.i("MOASSEUM_CAPTURE", "MSS_MANAGE_SUGGESTIONS|$index|$chunk")
+        }
+        val captureDirectory = requireNotNull(context.getExternalFilesDir("captures"))
+        captureDirectory.mkdirs()
+        val captureFile = File(captureDirectory, "manage_search_suggestions.jpg")
+        captureFile.outputStream().use { output -> screenshotCrop.compress(Bitmap.CompressFormat.JPEG, 90, output) }
+        Log.i("MOASSEUM_CAPTURE", "MANAGE_SUGGESTIONS_SCREEN|${captureFile.absolutePath}")
+
+        composeRule.onNodeWithTag("manage_suggestion_card-usage").performClick()
+        composeRule.onNodeWithText("결제일 기준 보기").assertExists()
+        assertEquals(0, composeRule.onAllNodesWithText("선택한 기능").fetchSemanticsNodes().size)
+        assertEquals(null, openedId)
+
+        composeRule.onNodeWithText("결제일 기준 보기").performClick()
+        composeRule.onNodeWithText("선택한 기능").assertExists()
+        composeRule.onNodeWithText("카드 사용액 보기").performClick()
+        assertEquals("card-usage", openedId)
     }
 }

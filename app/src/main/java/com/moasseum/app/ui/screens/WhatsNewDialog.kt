@@ -58,6 +58,15 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.42" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_42_search_suggestions,
+                imageAspectRatio = 904f / 555f,
+                title = "관리 메뉴, 검색을 바로 시작해요",
+                description = "처음 관리 화면을 열면 예산·카드값·알림 감지·백업 검색 칩이 보여요. 눌러도 곧바로 이동하지 않고 검색 결과와 설명을 먼저 확인한 뒤 실행해요. 카드값처럼 여러 메뉴에 걸칠 수 있는 표현도 실제 문장 테스트로 순위를 보정했어요.",
+                imageDescription = "Galaxy Z Fold4 격리 QA 화면에서 캡처한 모아씀 관리 검색의 예산·카드값·알림 감지·백업 추천 칩.",
+            ),
+        )
         "0.1.41" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_41_recent_search,

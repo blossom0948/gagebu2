@@ -58,10 +58,10 @@ fun ManageNaturalSearch(
     entries: List<ManageSearchEntry>,
     aiAvailable: Boolean,
     onAiSearch: suspend (String, List<ManageSettingSearchOption>) -> Result<ManageSettingSearchResult>,
+    modifier: Modifier = Modifier,
     recentIds: List<String> = emptyList(),
     onRememberSelected: suspend (String) -> Unit = {},
     onClearRecent: suspend () -> Unit = {},
-    modifier: Modifier = Modifier,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -137,6 +137,29 @@ fun ManageNaturalSearch(
                         },
                         modifier = Modifier.testTag("manage_recent_${entry.id}"),
                         label = { Text(entry.title, maxLines = 1) },
+                    )
+                }
+            }
+        }
+        if (normalizedQuery.isBlank() && recentEntries.isEmpty()) {
+            Text("자주 찾는 검색", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                ManageSearchCatalog.shortcuts.forEach { shortcut ->
+                    AssistChip(
+                        onClick = {
+                            query = shortcut.query
+                            selectedId = null
+                            aiQuery = ""
+                            aiRankedIds = emptyList()
+                            aiIntent = ""
+                            aiUnavailable = false
+                            aiSearchSucceeded = false
+                        },
+                        modifier = Modifier.testTag("manage_suggestion_${shortcut.id}"),
+                        label = { Text(shortcut.label, maxLines = 1) },
                     )
                 }
             }

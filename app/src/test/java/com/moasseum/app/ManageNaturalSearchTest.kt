@@ -75,4 +75,31 @@ class ManageNaturalSearchTest {
             assertEquals("'$query' should rank the right menu first", expectedId, results.firstOrNull()?.id)
         }
     }
+
+    @Test fun colloquialQueriesCoverMoreRealManageIntents() {
+        val expected = mapOf(
+            "이번달 예산에서 돈 얼마나 남았어" to "budget",
+            "카드값 이번달 얼마나 써" to "card-usage",
+            "금융앱 입출금 알림 감지" to "notification-access",
+            "카톡에서 사람들 숫자 적은 건 무시" to "ai-notifications",
+            "알림 후보 한번에 전부 삭제" to "candidate-inbox",
+            "한 달마다 나가는 구독 어디서 봐" to "fixed-costs",
+            "예산 절반 쓰면 알려줘" to "reminders",
+            "은행 계좌 추가하는 메뉴" to "accounts",
+            "남은 돈 다음달로 이월" to "rollover",
+            "달러 기준으로 표시" to "currency",
+            "날짜별 예산 시작일 바꾸기" to "payday",
+        )
+        expected.forEach { (query, expectedId) ->
+            val results = rankManageSearch(query, entries)
+            assertEquals("'$query' should rank the right menu first", expectedId, results.firstOrNull()?.id)
+        }
+    }
+
+    @Test fun everySuggestedSearchRanksItsIntendedFeatureFirst() {
+        ManageSearchCatalog.shortcuts.forEach { shortcut ->
+            val first = rankManageSearch(shortcut.query, entries).firstOrNull()
+            assertEquals("suggestion '${shortcut.label}' should resolve to ${shortcut.id}", shortcut.id, first?.id)
+        }
+    }
 }

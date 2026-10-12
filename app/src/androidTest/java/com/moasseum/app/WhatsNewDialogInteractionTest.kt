@@ -65,4 +65,24 @@ class WhatsNewDialogInteractionTest {
         composeRule.onNodeWithText("확인").performScrollTo().performClick()
         assertTrue(dismissed)
     }
+
+    @Test fun v0142ReleasePopupShowsTheRealSuggestedSearchCapture() {
+        var dismissed = false
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Box(Modifier.fillMaxSize().background(LocalFinanceColors.current.surfaceBase)) {
+                    WhatsNewDialog(versionName = "0.1.42", onDismiss = { dismissed = true })
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("v0.1.42 신기능").assertExists()
+        composeRule.onNodeWithText("관리 메뉴, 검색을 바로 시작해요").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4 격리 QA 화면에서 캡처한 모아씀 관리 검색의 예산·카드값·알림 감지·백업 추천 칩.",
+        ).assertExists()
+        composeRule.onNodeWithText("1 / 1").assertExists()
+        composeRule.onNodeWithText("확인").performScrollTo().performClick()
+        assertTrue(dismissed)
+    }
 }

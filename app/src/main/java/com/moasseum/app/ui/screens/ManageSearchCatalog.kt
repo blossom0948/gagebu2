@@ -9,28 +9,41 @@ data class ManageSearchDescriptor(
     val actionLabel: String = "설정 열기",
 )
 
+data class ManageSearchShortcut(
+    val id: String,
+    val label: String,
+    val query: String,
+)
+
 object ManageSearchCatalog {
+    val shortcuts = listOf(
+        ManageSearchShortcut("budget", "예산", "이번 달 예산"),
+        ManageSearchShortcut("card-usage", "카드값", "이번 달 카드값"),
+        ManageSearchShortcut("notification-access", "알림 감지", "금융 알림 감지"),
+        ManageSearchShortcut("backup", "백업", "백업 파일 저장"),
+    )
+
     val entries = listOf(
-        ManageSearchDescriptor("budget", "월 예산 설정", "목표와 이번 예산 기간의 사용액", listOf("예산", "생활비", "남은 생활비", "생활비 잔액", "지출 한도", "이번 달 얼마", "얼마 남았어", "소비 목표", "예산 얼마나 썼어", "이번 달 한도"), "예산 수정"),
+        ManageSearchDescriptor("budget", "월 예산 설정", "목표와 이번 예산 기간의 사용액", listOf("예산", "생활비", "남은 생활비", "생활비 잔액", "지출 한도", "이번 달 얼마", "얼마 남았어", "소비 목표", "예산 얼마나 썼어", "이번 달 한도", "예산에서 돈 얼마나 남았어", "이번달 예산 얼마나 남았어", "생활비 얼마 남았어"), "예산 수정"),
         ManageSearchDescriptor("income", "월 수입 목표", "월급·수입 목표 금액", listOf("수입", "월급", "월급 목표", "급여", "소득", "매달 버는 돈", "수입 목표"), "목표 수정"),
         ManageSearchDescriptor("payday", "예산 시작일", "월 예산을 시작하는 날짜", listOf("예산 시작", "예산 계산 시작일", "급여일", "월급날", "월급날 기준", "월초", "매달 며칠부터", "예산 기간"), "시작일 변경"),
-        ManageSearchDescriptor("rollover", "남은 예산 다음 달 이월", "사용하지 않은 예산을 다음 달에 반영", listOf("이월", "미사용 예산", "남은 돈", "예산 남으면", "다음 달로", "잔액 넘기기"), "이월 설정 변경"),
+        ManageSearchDescriptor("rollover", "남은 예산 다음 달 이월", "사용하지 않은 예산을 다음 달에 반영", listOf("이월", "미사용 예산", "남은 돈", "예산 남으면", "다음 달로", "잔액 넘기기", "남은 돈 다음달로 이월"), "이월 설정 변경"),
         ManageSearchDescriptor("no-spend", "무지출 챌린지", "정한 기간 동안 지출 없는 날을 기록", listOf("절약", "돈 안 쓰기", "지출 줄이기", "소비 줄이기", "무지출", "챌린지"), "챌린지 설정"),
         ManageSearchDescriptor("categories", "카테고리 관리", "항목 이름과 사용 여부", listOf("분류", "식비", "카테고리 이름", "항목 이름 바꾸기", "지출 항목", "소비 종류"), "카테고리 관리"),
         ManageSearchDescriptor("category-budgets", "카테고리별 예산", "식비·교통비 등 항목마다 한도 설정", listOf("항목별 한도", "식비 한도", "카테고리 한도", "분류별 예산", "카테고리 예산"), "한도 설정"),
         ManageSearchDescriptor("category-order", "카테고리 순서", "자주 쓰는 항목을 앞으로", listOf("분류 순서", "항목 정렬", "카테고리 정렬", "목록 순서"), "순서 변경"),
-        ManageSearchDescriptor("accounts", "계좌·지갑과 이체", "잔액·계좌 간 이동 관리", listOf("계좌", "계좌 잔액", "지갑", "통장", "송금", "이체", "잔액"), "계좌 열기"),
+        ManageSearchDescriptor("accounts", "계좌·지갑과 이체", "잔액·계좌 간 이동 관리", listOf("계좌", "계좌 잔액", "지갑", "통장", "송금", "이체", "잔액", "은행 계좌 추가"), "계좌 열기"),
         ManageSearchDescriptor("payment-methods", "결제수단", "현금·카드·이체 이름 관리", listOf("결제 방식", "지불 수단", "현금", "카드 종류", "결제 방법", "결제수단 이름"), "결제수단 관리"),
         ManageSearchDescriptor("installments", "할부 관리", "할부 내역과 남은 회차", listOf("할부", "할부 잔액", "무이자", "몇 개월 남았어", "나눠 내기", "분할 결제"), "할부 내역 보기"),
-        ManageSearchDescriptor("card-usage", "결제일 기준 보기", "카드 결제일에 맞춘 사용 금액", listOf("카드값", "카드 대금", "이번 달 카드값", "청구 금액", "결제 예정", "이번 카드값", "결제일별 사용", "카드 이용 기간"), "카드 사용액 보기"),
+        ManageSearchDescriptor("card-usage", "결제일 기준 보기", "카드 결제일에 맞춘 사용 금액", listOf("카드값", "카드 대금", "이번 달 카드값", "청구 금액", "결제 예정", "이번 카드값", "결제일별 사용", "카드 이용 기간", "카드값 이번달", "카드값 이번달 얼마나 써", "이번달 카드값 얼마나 썼어", "이번 달 카드값 얼마", "이번달 카드 결제 얼마"), "카드 사용액 보기"),
         ManageSearchDescriptor("cards", "카드·결제일", "카드와 결제일 등록", listOf("신용카드", "체크카드", "카드 등록", "결제 날짜", "청구일", "카드 결제일"), "카드 관리"),
         ManageSearchDescriptor("recurring", "반복 거래 관리", "매달 자동으로 기록할 거래", listOf("정기 거래", "정기 지출", "반복 지출", "매달 나가는 돈", "정기적으로 나가는 비용", "자동으로 빠져나가는 비용", "월세", "자동 기록"), "반복 거래 관리"),
-        ManageSearchDescriptor("fixed-costs", "구독·고정비 레이더", "정기 결제와 월 예정액 확인", listOf("구독", "구독료", "고정비", "월 고정비", "정기 결제", "자동 결제", "매달 빠져나가는 돈", "월 지출"), "예정 내역 보기"),
-        ManageSearchDescriptor("reminders", "예산·고정비·기념일 알림", "예산·고정 결제·기념일 알림", listOf("알림", "예산 알림", "결제 예정 알림", "기념일", "리마인더", "고정비 알림"), "알림 설정 변경"),
-        ManageSearchDescriptor("notification-access", "결제 알림 감지", "금융 앱 알림을 거래 후보로 인식", listOf("알림 읽기", "알림 읽는 권한", "알림 접근", "알림 허용", "카드 알림", "금융 알림", "거래 알림", "결제 감지", "입금 감지", "출금 감지", "자동 기록", "문자 알림", "거래 인식"), "권한 설정 열기"),
+        ManageSearchDescriptor("fixed-costs", "구독·고정비 레이더", "정기 결제와 월 예정액 확인", listOf("구독", "구독료", "고정비", "월 고정비", "정기 결제", "자동 결제", "매달 빠져나가는 돈", "월 지출", "한 달마다 나가는 구독 어디서 봐", "자동결제 찾기"), "예정 내역 보기"),
+        ManageSearchDescriptor("reminders", "예산·고정비·기념일 알림", "예산·고정 결제·기념일 알림", listOf("알림", "예산 알림", "결제 예정 알림", "기념일", "리마인더", "고정비 알림", "예산 절반 쓰면 알려줘", "정기결제 미리 알려줘", "결제 전날 알림"), "알림 설정 변경"),
+        ManageSearchDescriptor("notification-access", "결제 알림 감지", "금융 앱 알림을 거래 후보로 인식", listOf("알림 읽기", "알림 읽는 권한", "알림 접근", "알림 허용", "카드 알림", "금융 알림", "거래 알림", "결제 감지", "입금 감지", "출금 감지", "자동 기록", "문자 알림", "거래 인식", "금융앱 입출금 알림 감지", "은행 입금 알림 감지", "금융 알림 자동 기록"), "권한 설정 열기"),
         ManageSearchDescriptor("app-notifications", "인식 알림 표시", "감지된 거래를 앱 알림으로 안내", listOf("푸시 알림", "앱 알림", "추가할까요", "알림 표시", "알림 권한", "모아씀 알림"), "알림 권한 설정"),
-        ManageSearchDescriptor("ai-notifications", "AI 알림 오탐 줄이기", "숫자만 있는 알림을 걸러 금융 거래인지 판별", listOf("AI 알림", "오탐", "잘못 감지", "카톡 숫자", "쓸모없는 알림", "금융인지 판단", "알림 ai 분류"), "AI 판별 설정"),
-        ManageSearchDescriptor("candidate-inbox", "알림 후보함", "감지된 거래 검토·추가·삭제", listOf("감지 내역", "인식된 거래", "추가할까요", "알림 기록", "결제 후보", "입금 후보", "감지된 알림 한 번에 지우기", "알림 후보 모두 삭제", "후보 일괄 삭제", "인식 내역 지우기"), "후보함 열기"),
+        ManageSearchDescriptor("ai-notifications", "AI 알림 오탐 줄이기", "숫자만 있는 알림을 걸러 금융 거래인지 판별", listOf("AI 알림", "오탐", "잘못 감지", "카톡 숫자", "쓸모없는 알림", "금융인지 판단", "알림 ai 분류", "카톡 숫자 알림 거르기", "오픈채팅 숫자 감지", "카톡 숫자 감지 끄기", "사람들 숫자 적은 건 무시"), "AI 판별 설정"),
+        ManageSearchDescriptor("candidate-inbox", "알림 후보함", "감지된 거래 검토·추가·삭제", listOf("감지 내역", "인식된 거래", "추가할까요", "알림 기록", "결제 후보", "입금 후보", "감지된 알림 한 번에 지우기", "알림 후보 모두 삭제", "후보 일괄 삭제", "인식 내역 지우기", "알림 후보 한번에 전부 삭제"), "후보함 열기"),
         ManageSearchDescriptor("backup", "전체 백업 내보내기", "기기 거래와 설정을 파일로 보관", listOf("백업", "기록 저장", "자료 내보내기", "파일로 저장", "데이터 보관"), "백업 내보내기"),
         ManageSearchDescriptor("restore", "백업 복원", "저장한 백업 파일 불러오기", listOf("복원", "백업 가져오기", "파일 불러오기", "기록 가져오기", "데이터 복구"), "백업 파일 선택"),
         ManageSearchDescriptor("safety-backup", "복원 전 백업 내보내기", "복원하기 전에 현재 기록 보관", listOf("복원 전 백업", "안전 백업", "기존 기록 저장"), "안전 백업 내보내기"),
