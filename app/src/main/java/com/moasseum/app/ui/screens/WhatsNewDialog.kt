@@ -58,6 +58,29 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.46" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_46_budget_report,
+                imageAspectRatio = 830f / 684f,
+                title = "리포트에서 예산 페이스 바로 확인",
+                description = "리포트에서 달을 바꾸고, 이번 달 목표 대비 사용률과 남은 금액을 한눈에 봐요. 예산을 넘기면 초과 금액을 표시하고, 아직 예산이 없으면 같은 화면에서 설정할 수 있어요.",
+                imageDescription = "Galaxy Z Fold4 격리 QA 앱에서 합성 10월 지출 12만 원·9월 28일 지출 3만 원, 월급날 25일과 예산 30만 원으로 촬영한 리포트. 예산 주기 50% 사용과 15만 원 잔액이 보이며 실제 거래 기록은 없습니다.",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_46_manage_search,
+                imageAspectRatio = 904f / 555f,
+                title = "비슷한 메뉴도 말뜻에 맞게 찾아요",
+                description = "‘월급 들어오는 날 기준으로 예산 맞추기’, ‘남은 돈 다음 달로 넘기기’처럼 말해도 급여일·예산 이월을 구분해요. 대표 자연어 질의 35개를 회귀 검사했고, 결과는 설명을 먼저 본 뒤 직접 실행하도록 유지했어요.",
+                imageDescription = "모아씀 격리 QA 앱의 관리 검색 추천 화면. 예산·카드값·알림 감지·백업 예시만 있으며 개인 기록은 포함하지 않습니다.",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_46_together_preview,
+                imageAspectRatio = 840f / 1039f,
+                title = "함께 장부 미리보기를 더 알차게",
+                description = "공동 목표 진행률과 공동 수입·생활비·고정비 예시를 한 번에 볼 수 있어요. 화면의 금액은 모두 합성 예시이고, 실제 거래는 자동 공유되지 않아요. 무료로 쓰고 공유할 항목은 직접 고릅니다.",
+                imageDescription = "모아씀 격리 QA 앱의 함께 기능 미리보기에서 촬영한 합성 목표와 공동 재정 요약. 실제 계정이나 거래는 사용하지 않았습니다.",
+            ),
+        )
         "0.1.45" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_45_budget_presets,

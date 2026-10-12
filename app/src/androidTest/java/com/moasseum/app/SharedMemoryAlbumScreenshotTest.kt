@@ -1,35 +1,198 @@
 package com.moasseum.app
 
 import android.graphics.Bitmap
+import android.util.Base64
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.Modifier
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.moasseum.app.data.SharedLedgerSnapshot
+import com.moasseum.app.data.SharedLedgerGoal
+import com.moasseum.app.data.SharedFinanceItem
+import com.moasseum.app.data.SharedFinanceKind
 import com.moasseum.app.data.SharedMemoryPhoto
 import com.moasseum.app.domain.AiAdviceCards
 import com.moasseum.app.domain.SpendingAnalysisState
 import com.moasseum.app.domain.SpendingQuestionState
+import com.moasseum.app.domain.Transaction
+import com.moasseum.app.domain.TransactionType
 import com.moasseum.app.ui.screens.TogetherScreen
 import com.moasseum.app.ui.theme.MoasseumTheme
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.time.LocalDate
+import java.time.YearMonth
+import java.time.ZoneId
 
 @RunWith(AndroidJUnit4::class)
 class SharedMemoryAlbumScreenshotTest {
     @get:Rule val composeRule = createComposeRule()
+
+    @Test fun unconnectedTogetherPreviewShowsARealisticFreeExampleWithoutSharingData() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        check(context.packageName.endsWith(".qa")) { "Screenshot capture is restricted to the isolated QA app." }
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                    TogetherScreen(
+                        email = null,
+                        userId = null,
+                        snapshot = SharedLedgerSnapshot(),
+                        personalTransactions = emptyList(),
+                        busy = false,
+                        error = null,
+                        onLogin = {},
+                        onCreateInvite = { error("Preview must not create an invite") },
+                        onJoin = { error("Preview must not join a ledger") },
+                        onRefresh = {},
+                        onToggleShare = { _, _ -> },
+                        onCopyInvite = {},
+                        onSaveGoal = { _, _, _, _, _ -> },
+                        onDeleteGoal = {},
+                        onSaveFinanceItem = {},
+                        onDeleteFinanceItem = {},
+                        onSaveSettings = {},
+                        onLeaveSharedLedger = {},
+                        onExportReport = {},
+                        aiAdviceCards = AiAdviceCards.defaults,
+                        onAddMemoryPhotos = { _, _, _, _ -> },
+                        onViewMemory = {},
+                        onDeleteMemory = {},
+                        viewingMemory = null,
+                        viewingMemoryBitmap = null,
+                        memoryLoading = false,
+                        onCloseMemoryViewer = {},
+                        aiAnalysisState = SpendingAnalysisState.Idle,
+                        aiQuestionState = SpendingQuestionState.Idle,
+                        onAnalyzeShared = {},
+                        onAskShared = { _, _ -> },
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("함께 기능 미리보기").performClick()
+        composeRule.onNodeWithText("함께 쓰기 미리보기").assertExists()
+        composeRule.onNodeWithText("예시 장부").assertExists()
+        composeRule.onNodeWithText("₩1,180,000 / ₩1,700,000 · 69%").assertExists()
+        composeRule.onNodeWithText("예시 금액은 실제 기록이 아니에요.").assertExists()
+        check(composeRule.onAllNodesWithText("무료 · 거래는 직접 선택해 공유").fetchSemanticsNodes().isNotEmpty())
+        composeRule.waitForIdle()
+        val bitmap = composeRule.onNodeWithTag("together_feature_preview_dialog_root").captureToImage().asAndroidBitmap()
+        val file = File(context.getExternalFilesDir(null), "moasseum-together-preview-qa.png")
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        check(file.length() > 10_000) { "The together preview screenshot was not written." }
+        val previewBytes = ByteArrayOutputStream().use { output ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 88, output)
+            output.toByteArray()
+        }
+        Base64.encodeToString(previewBytes, Base64.NO_WRAP).chunked(2_000).forEachIndexed { index, chunk ->
+            Log.i("MOASSEUM_CAPTURE", "MSS_TOGETHER_PREVIEW|$index|$chunk")
+        }
+    }
+
+    @Test fun connectedTogetherDashboardRendersSyntheticSharedDataOnFold() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        check(context.packageName.endsWith(".qa")) { "Shared dashboard capture is restricted to the isolated QA app." }
+        val today = LocalDate.now()
+        val month = YearMonth.from(today).toString()
+        val timestamp = today.atTime(12, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val transactions = listOf(
+            Transaction(1, TransactionType.EXPENSE, 8_500, timestamp, "FOOD", "점심", "", "체크카드", "QA", ownerId = "qa-owner"),
+            Transaction(2, TransactionType.EXPENSE, 14_000, timestamp, "CAFE", "커피", "", "체크카드", "QA", ownerId = "qa-partner"),
+            Transaction(3, TransactionType.INCOME, 1_200_000, timestamp, "SALARY", "월급", "", "계좌", "QA", ownerId = "qa-partner"),
+        )
+        val snapshot = SharedLedgerSnapshot(
+            ledgerId = "qa-shared-ledger",
+            memberCount = 2,
+            transactions = transactions,
+            goals = listOf(SharedLedgerGoal("qa-goal", "qa-owner", "폴드 여행 자금", 1_700_000, 1_180_000, month)),
+            financeItems = listOf(
+                SharedFinanceItem("qa-income", "qa-owner", SharedFinanceKind.MONTHLY_INCOME, "공동 월급", 5_200_000, 25),
+                SharedFinanceItem("qa-fixed", "qa-partner", SharedFinanceKind.FIXED_EXPENSE, "월 고정비", 1_640_000, 20),
+                SharedFinanceItem("qa-budget", "qa-owner", SharedFinanceKind.LIVING_BUDGET, "생활비", 1_200_000, monthKey = month),
+                SharedFinanceItem("qa-allowance", "qa-partner", SharedFinanceKind.ALLOWANCE, "용돈", 400_000, 1),
+            ),
+        )
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ) {
+                    TogetherScreen(
+                        email = "qa@example.invalid",
+                        userId = "qa-owner",
+                        snapshot = snapshot,
+                        personalTransactions = emptyList(),
+                        busy = false,
+                        error = null,
+                        onLogin = {},
+                        onCreateInvite = {},
+                        onJoin = {},
+                        onRefresh = {},
+                        onToggleShare = { _, _ -> },
+                        onCopyInvite = {},
+                        onSaveGoal = { _, _, _, _, _ -> },
+                        onDeleteGoal = {},
+                        onSaveFinanceItem = {},
+                        onDeleteFinanceItem = {},
+                        onSaveSettings = {},
+                        onLeaveSharedLedger = {},
+                        onExportReport = {},
+                        aiAdviceCards = AiAdviceCards.defaults,
+                        onAddMemoryPhotos = { _, _, _, _ -> },
+                        onViewMemory = {},
+                        onDeleteMemory = {},
+                        viewingMemory = null,
+                        viewingMemoryBitmap = null,
+                        memoryLoading = false,
+                        onCloseMemoryViewer = {},
+                        aiAnalysisState = SpendingAnalysisState.Idle,
+                        aiQuestionState = SpendingQuestionState.Idle,
+                        onAnalyzeShared = {},
+                        onAskShared = { _, _ -> },
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("공유 장부 연결됨").assertExists()
+        composeRule.onNodeWithText("우리 지출").assertExists()
+        composeRule.onNodeWithText("공유 거래").assertExists()
+        val screenshot = composeRule.onRoot().captureToImage().asAndroidBitmap()
+        val preview = ByteArrayOutputStream().use { output ->
+            screenshot.compress(Bitmap.CompressFormat.JPEG, 88, output)
+            output.toByteArray()
+        }
+        Base64.encodeToString(preview, Base64.NO_WRAP).chunked(2_000).forEachIndexed { index, chunk ->
+            Log.i("MOASSEUM_CAPTURE", "MSS_TOGETHER_CONNECTED|$index|$chunk")
+        }
+        composeRule.onNodeWithTag("together_screen_list").performScrollToNode(hasText("폴드 여행 자금"))
+        composeRule.onNodeWithText("폴드 여행 자금").assertExists()
+        composeRule.onNodeWithTag("together_screen_list").performScrollToNode(hasText("공동 월급"))
+        composeRule.onNodeWithText("공동 월급").assertExists()
+    }
 
     @Test fun renderRealSharedAlbumForReleaseCapture() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext

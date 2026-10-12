@@ -14,6 +14,23 @@ class ReleaseNotesPolicyTest {
     }
 
     @Test
+    fun `v0146 documents report pacing search accuracy and the shared preview`() {
+        val slides = ReleaseNotesCatalog.slides("0.1.46")
+        assertEquals(3, slides.size)
+        assertTrue(slides[0].title.contains("예산 페이스"))
+        assertTrue(slides[0].description.contains("남은 금액"))
+        assertTrue(slides[0].imageDescription.contains("실제 거래 기록은 없습니다"))
+        assertTrue(slides[0].imageAspectRatio in 1.1f..1.3f)
+        assertTrue(slides[1].description.contains("자연어 질의 35개"))
+        assertTrue(slides[1].description.contains("설명을 먼저"))
+        assertTrue(slides[1].imageDescription.contains("개인 기록은 포함하지 않습니다"))
+        assertTrue(slides[1].imageAspectRatio in 1.5f..1.7f)
+        assertTrue(slides[2].description.contains("직접 고릅니다"))
+        assertTrue(slides[2].imageDescription.contains("실제 계정이나 거래는 사용하지 않았습니다"))
+        assertTrue(slides[2].imageAspectRatio in 0.78f..0.84f)
+    }
+
+    @Test
     fun `v0145 explains fast budget amount selection`() {
         val slides = ReleaseNotesCatalog.slides("0.1.45")
         assertEquals(4, slides.size)

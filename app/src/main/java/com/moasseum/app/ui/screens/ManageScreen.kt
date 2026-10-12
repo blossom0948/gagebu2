@@ -59,7 +59,6 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import com.moasseum.app.ui.components.FinanceTextField as OutlinedTextField
@@ -98,6 +97,7 @@ import com.moasseum.app.domain.formatDate
 import com.moasseum.app.domain.formatMonth
 import com.moasseum.app.domain.cardUsage
 import com.moasseum.app.ui.components.FinanceCard
+import com.moasseum.app.ui.components.FinanceProgressBar
 import com.moasseum.app.ui.components.formatDisplayWon
 import com.moasseum.app.ui.components.rememberSaveActionState
 import com.moasseum.app.ui.components.CategorySpecs
@@ -752,11 +752,12 @@ private fun YearEndSummaryDialog(
                             Text("총급여를 입력하면 기준을 계산해요.", color = colors.textSecondary, style = MaterialTheme.typography.bodySmall)
                         } else {
                             Text(formatDisplayWon(taxProgress.minimumSpend), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            LinearProgressIndicator(
-                                progress = { taxProgress.progress },
-                                modifier = Modifier.fillMaxWidth().height(6.dp),
+                            FinanceProgressBar(
+                                progress = taxProgress.progress,
+                                modifier = Modifier.fillMaxWidth(),
                                 color = colors.accent,
                                 trackColor = colors.surfaceOverlay,
+                                height = 6.dp,
                             )
                             Text(
                                 if (taxProgress.remainingToMinimum > 0L) "등록 지출 기준까지 ${formatDisplayWon(taxProgress.remainingToMinimum)} 남았어요."
@@ -796,8 +797,8 @@ private fun YearEndSummaryDialog(
                             Text("지출 ${formatDisplayWon(month.expenseTotal)}", modifier = Modifier.weight(1f), color = colors.expense, style = MaterialTheme.typography.labelMedium)
                             Text("수입 ${formatDisplayWon(month.incomeTotal)}", color = colors.income, style = MaterialTheme.typography.labelMedium)
                         }
-                        LinearProgressIndicator(
-                            progress = { (month.expenseTotal.toFloat() / maxMonthlyExpense).coerceIn(0f, 1f) },
+                        FinanceProgressBar(
+                            progress = (month.expenseTotal.toFloat() / maxMonthlyExpense).coerceIn(0f, 1f),
                             modifier = Modifier.fillMaxWidth().padding(start = 40.dp),
                             color = colors.accent,
                             trackColor = colors.surfaceOverlay,

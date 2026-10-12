@@ -22,6 +22,33 @@ import org.junit.runner.RunWith
 class WhatsNewDialogInteractionTest {
     @get:Rule val composeRule = createComposeRule()
 
+    @Test fun v0146ReleasePopupShowsAllThreeFoldCapturesAndAdvances() {
+        var dismissed = false
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Box(Modifier.fillMaxSize().background(LocalFinanceColors.current.surfaceBase)) {
+                    WhatsNewDialog(versionName = "0.1.46", onDismiss = { dismissed = true })
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("v0.1.46 신기능").assertExists()
+        composeRule.onNodeWithText("리포트에서 예산 페이스 바로 확인").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4 격리 QA 앱에서 합성 10월 지출 12만 원·9월 28일 지출 3만 원, 월급날 25일과 예산 30만 원으로 촬영한 리포트. 예산 주기 50% 사용과 15만 원 잔액이 보이며 실제 거래 기록은 없습니다.",
+        ).assertExists()
+        composeRule.onNodeWithText("1 / 3").assertExists()
+
+        composeRule.onNodeWithText("다음").performScrollTo().performClick()
+        composeRule.onNodeWithText("비슷한 메뉴도 말뜻에 맞게 찾아요").assertExists()
+        composeRule.onNodeWithText("2 / 3").assertExists()
+        composeRule.onNodeWithText("다음").performScrollTo().performClick()
+        composeRule.onNodeWithText("함께 장부 미리보기를 더 알차게").assertExists()
+        composeRule.onNodeWithText("3 / 3").assertExists()
+        composeRule.onNodeWithText("확인").performScrollTo().performClick()
+        assertTrue(dismissed)
+    }
+
     @Test fun v0145ReleasePopupShowsTheFoldBudgetPresetCapture() {
         var dismissed = false
         composeRule.setContent {

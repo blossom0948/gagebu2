@@ -9,6 +9,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -47,7 +48,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
@@ -68,6 +68,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.moasseum.app.data.SharedLedgerSnapshot
@@ -93,6 +94,7 @@ import com.moasseum.app.ui.components.categoryColor
 import com.moasseum.app.ui.components.categoryLabel
 import com.moasseum.app.ui.components.EmptyState
 import com.moasseum.app.ui.components.FinanceCard
+import com.moasseum.app.ui.components.FinanceProgressBar
 import com.moasseum.app.ui.components.FinanceTextField
 import com.moasseum.app.ui.components.formatDisplaySignedWon
 import com.moasseum.app.ui.components.formatDisplayWon
@@ -187,6 +189,7 @@ fun TogetherScreen(
     }
     LazyColumn(
         state = listState,
+        modifier = Modifier.testTag("together_screen_list"),
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -497,16 +500,49 @@ fun TogetherScreen(
     if (showFeaturePreview) {
         AlertDialog(
             onDismissRequest = { showFeaturePreview = false },
-            title = { Text("함께 쓰는 기능") },
+            modifier = Modifier.testTag("together_feature_preview_dialog_root"),
+            title = { Text("함께 쓰기 미리보기") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("초대 코드를 나누고 연결하면 두 사람이 선택한 기록만 함께 보여요.")
-                    Text("• 월 지출·수입과 카테고리 합산")
-                    Text("• 공동 수입·고정비·생활비 예산·용돈·기념일")
-                    Text("• 공동 저축 목표와 진행률")
-                    Text("• 함께 쓰는 AI 소비 분석과 월간 PDF")
-                    Text("• 기념일 전날·당일 알림과 부담 없는 예산 응원")
-                    Text("개인 거래는 자동 공유되지 않습니다.", color = colors.textSecondary)
+                Column(
+                    modifier = Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState())
+                        .testTag("together_feature_preview_dialog"),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    FinanceCard(highlighted = true) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("예시 장부", color = colors.accent, style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier.weight(1f))
+                                Text("이번 달", color = colors.textSecondary, style = MaterialTheme.typography.labelSmall)
+                            }
+                            Text("여행 자금", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                            Text("₩1,180,000", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                            FinanceProgressBar(
+                                progress = 0.69f,
+                                modifier = Modifier.fillMaxWidth(),
+                                color = colors.accent,
+                                trackColor = colors.surfaceOverlay,
+                                height = 7.dp,
+                            )
+                            Text("₩1,180,000 / ₩1,700,000 · 69%", color = colors.textSecondary,
+                                style = MaterialTheme.typography.labelSmall)
+                            HorizontalDivider(color = colors.divider)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SharedPreviewStat("공동 수입", "₩5,200,000", Modifier.weight(1f))
+                                SharedPreviewStat("생활비", "₩842,000", Modifier.weight(1f))
+                                SharedPreviewStat("고정비", "₩1,640,000", Modifier.weight(1f))
+                            }
+                        }
+                    }
+                    Text("공동 목표 · 생활비 · 고정 지출 · 용돈 · 기념일 · 월간 AI 리포트",
+                        color = colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                    Text("예시 금액은 실제 기록이 아니에요.", color = colors.textSecondary,
+                        style = MaterialTheme.typography.labelSmall)
+                    Text("무료 · 거래는 직접 선택해 공유", color = colors.accent,
+                        style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                 }
             },
             confirmButton = { TextButton(onClick = { showFeaturePreview = false }) { Text("확인") } },
@@ -678,11 +714,12 @@ private fun SharedMemoryAlbumHeader(
                 }
                 Text("$count/30", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
             }
-            LinearProgressIndicator(
-                progress = { (usedBytes.toFloat() / (15L * 1_048_576L)).coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxWidth().height(5.dp),
+            FinanceProgressBar(
+                progress = (usedBytes.toFloat() / (15L * 1_048_576L)).coerceIn(0f, 1f),
+                modifier = Modifier.fillMaxWidth(),
                 color = colors.accent,
                 trackColor = colors.surfaceOverlay,
+                height = 5.dp,
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("${formatMemorySize(usedBytes)} / 15 MB", modifier = Modifier.weight(1f), color = colors.textSecondary,
@@ -874,6 +911,17 @@ private fun SharedMoneyMetric(label: String, amount: Long, color: Color) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, style = MaterialTheme.typography.bodySmall, color = LocalFinanceColors.current.textSecondary, modifier = Modifier.weight(1f))
         Text(formatDisplayWon(amount), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = color)
+    }
+}
+
+@Composable
+private fun SharedPreviewStat(label: String, value: String, modifier: Modifier = Modifier) {
+    val colors = LocalFinanceColors.current
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(label, color = colors.textSecondary, style = MaterialTheme.typography.labelSmall,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
