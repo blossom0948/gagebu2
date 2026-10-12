@@ -123,6 +123,7 @@ import com.moasseum.app.data.PhotoTransactionImport
 import com.moasseum.app.domain.AiParseState
 import com.moasseum.app.domain.buildActivityNotices
 import com.moasseum.app.domain.HomeDashboardCards
+import com.moasseum.app.domain.incomingSharePayload
 import com.moasseum.app.domain.NoSpendChallengeSettings
 import com.moasseum.app.domain.NotificationCandidate
 import com.moasseum.app.domain.NetworkReconnectGate
@@ -386,24 +387,41 @@ class MainActivity : FragmentActivity() {
         intent?.getLongExtra(EXTRA_NOTIFICATION_CANDIDATE_ID, 0L)?.takeIf { it > 0L }
 
     private fun extractShare(incoming: Intent?): IncomingShare? {
-        if (incoming?.action != Intent.ACTION_SEND) return null
-        val text = runCatching { incoming.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()?.trim()?.take(4000)?.takeIf(String::isNotBlank) }
-            .getOrNull()
+        val shareIntent = incoming ?: return null
+        if (shareIntent.action != Intent.ACTION_SEND && shareIntent.action != Intent.ACTION_SEND_MULTIPLE) return null
         @Suppress("DEPRECATION")
-        val stream = runCatching {
-            if (Build.VERSION.SDK_INT >= 33) incoming.getParcelableExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java)
-            else incoming.getParcelableExtra(Intent.EXTRA_STREAM)
-        }.getOrNull()
-        val clipUri = runCatching { incoming.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri }.getOrNull()
-        val uri = (stream ?: clipUri)
-            ?.takeIf { incoming.type?.startsWith("image/") == true }
-        if (text == null && uri == null) return null
+        val streams = runCatching {
+            when (shareIntent.action) {
+                Intent.ACTION_SEND -> listOfNotNull(
+                    if (Build.VERSION.SDK_INT >= 33) shareIntent.getParcelableExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java)
+                    else shareIntent.getParcelableExtra(Intent.EXTRA_STREAM),
+                )
+                Intent.ACTION_SEND_MULTIPLE -> if (Build.VERSION.SDK_INT >= 33) {
+                    shareIntent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java).orEmpty()
+                } else {
+                    shareIntent.getParcelableArrayListExtra<android.net.Uri>(Intent.EXTRA_STREAM).orEmpty()
+                }
+                else -> emptyList()
+            }
+        }.getOrDefault(emptyList())
+        val clipUris = runCatching {
+            val clip = shareIntent.clipData
+            if (clip == null) emptyList() else (0 until clip.itemCount).mapNotNull { index -> clip.getItemAt(index).uri }
+        }.getOrDefault(emptyList())
+        val text = runCatching { shareIntent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString() }.getOrNull()
+        val payload = incomingSharePayload(
+            action = shareIntent.action,
+            mimeType = shareIntent.type,
+            text = text,
+            streamUris = streams.map(android.net.Uri::toString),
+            clipUris = clipUris.map(android.net.Uri::toString),
+        ) ?: return null
         sharedContentSequence++
-        return IncomingShare(sharedContentSequence, text, uri)
+        return IncomingShare(sharedContentSequence, payload.text, payload.imageUris.map(android.net.Uri::parse))
     }
 }
 
-private data class IncomingShare(val token: Long, val text: String?, val imageUri: android.net.Uri?)
+private data class IncomingShare(val token: Long, val text: String?, val imageUris: List<android.net.Uri>)
 
 @Composable
 private fun UpdateSystemBars(darkTheme: Boolean) {
@@ -787,9 +805,9 @@ private fun MoasseumApp(
     LaunchedEffect(incomingSharedContent?.token) {
         val incoming = incomingSharedContent ?: return@LaunchedEffect
         navigateTo(navController, ROUTE_HOME)
-        if (incoming.imageUri != null) {
+        if (incoming.imageUris.isNotEmpty()) {
             sharedPrefillText = null
-            processPhotoUris(listOf(incoming.imageUri))
+            processPhotoUris(incoming.imageUris)
         } else {
             sharedPrefillText = incoming.text
             sharedPrefillKey = incoming.token.toString()

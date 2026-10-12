@@ -1,5 +1,7 @@
 package com.moasseum.app
 
+import android.content.Intent
+import android.content.pm.PackageManager
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -20,6 +22,15 @@ import java.time.YearMonth
 class FinanceIntegrationTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     @Before fun requireIsolatedQaApp() { check(context.packageName.endsWith(".qa")) { "Tests must never run against the user's production ledger." } }
+
+    @Test fun appCanReceiveMultipleSharedImages() {
+        val intent = Intent(Intent.ACTION_SEND_MULTIPLE).setType("image/jpeg")
+        val matchingActivity = context.packageManager
+            .queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+            .any { it.activityInfo.packageName == context.packageName && it.activityInfo.name.endsWith("MainActivity") }
+        assertTrue("The app should appear in Android's multi-image share targets.", matchingActivity)
+    }
+
     @Test fun csvTimezoneAndEditedTransferDateArePreservedInRoom() = runBlocking {
         val database = Room.inMemoryDatabaseBuilder(context, FinanceDatabase::class.java).build()
         try {

@@ -14,6 +14,14 @@ class ReleaseNotesPolicyTest {
     }
 
     @Test
+    fun `v0136 release note covers sharing multiple screenshots into review`() {
+        val slides = ReleaseNotesCatalog.slides("0.1.36")
+        assertEquals(1, slides.size)
+        assertTrue(slides.single().title.contains("여러 장"))
+        assertTrue(slides.single().description.contains("기존 내역"))
+    }
+
+    @Test
     fun `v0134 release note covers the shipped screens with valid screenshot ratios`() {
         val slides = ReleaseNotesCatalog.slides("0.1.34")
         assertEquals(5, slides.size)

@@ -55,6 +55,15 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.36" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_28_photo_import,
+                imageAspectRatio = 904f / 950f,
+                title = "다른 앱에서 여러 장 바로 공유",
+                description = "금융앱 캡처를 여러 장 선택해 모아씀으로 공유하면 한 번에 분석해요. 기존 내역과 겹치는 거래는 걸러내고, 새 거래만 확인한 뒤 기록할 수 있어요.",
+                imageDescription = "여러 금융앱 캡처에서 중복 거래를 제외하고 새 거래를 검토하는 모아씀 화면",
+            ),
+        )
         "0.1.35" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_35_manage,
