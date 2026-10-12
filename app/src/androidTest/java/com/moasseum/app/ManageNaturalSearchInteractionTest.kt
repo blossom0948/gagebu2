@@ -3,12 +3,16 @@ package com.moasseum.app
 import android.graphics.Bitmap
 import android.util.Base64
 import android.util.Log
+import androidx.compose.foundation.layout.padding
 import java.io.ByteArrayOutputStream
+import java.io.File
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -20,6 +24,8 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.compose.runtime.mutableStateOf
 import com.moasseum.app.data.ManageSettingSearchResult
 import com.moasseum.app.ui.screens.ManageNaturalSearch
 import com.moasseum.app.ui.screens.ManageSearchEntry
@@ -168,5 +174,73 @@ class ManageNaturalSearchInteractionTest {
         assertEquals(false, rolloverEnabled)
         composeRule.onNodeWithText("이월 켜기").performClick()
         assertEquals(true, rolloverEnabled)
+    }
+
+    @Test fun recentFeatureReopensItsSearchResultAndRemembersOnlyAfterAction() {
+        val recentIds = mutableStateOf(listOf("budget"))
+        var rememberedId: String? = null
+        var openedCount = 0
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                    ManageNaturalSearch(
+                        entries = listOf(ManageSearchEntry("budget", "월 예산 설정", "목표와 사용액", listOf("생활비"), "예산 수정") { openedCount++ }),
+                        aiAvailable = false,
+                        onAiSearch = { _, _ -> Result.failure(IllegalStateException("unused")) },
+                        recentIds = recentIds.value,
+                        onRememberSelected = { rememberedId = it },
+                        onClearRecent = { recentIds.value = emptyList() },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 30.dp),
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("최근 찾은 메뉴").assertExists()
+        composeRule.waitForIdle()
+        val fullScreenshot = composeRule.onRoot().captureToImage().asAndroidBitmap()
+        val screenshotCrop = Bitmap.createBitmap(
+            fullScreenshot,
+            0,
+            0,
+            fullScreenshot.width,
+            (fullScreenshot.height * 0.22f).toInt().coerceAtLeast(1),
+        )
+        val captureDirectory = requireNotNull(
+            InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir("captures"),
+        )
+        captureDirectory.mkdirs()
+        val captureFile = File(captureDirectory, "manage_recent_search.jpg")
+        captureFile.outputStream().use { output -> screenshotCrop.compress(Bitmap.CompressFormat.JPEG, 90, output) }
+        Log.i("MOASSEUM_CAPTURE", "MANAGE_RECENT_SCREEN|${captureFile.absolutePath}")
+        composeRule.onNodeWithTag("manage_recent_budget").performClick()
+        composeRule.onNodeWithText("예산 수정").assertExists()
+        assertEquals(null, rememberedId)
+        assertEquals(0, openedCount)
+
+        composeRule.onNodeWithText("예산 수정").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) { rememberedId == "budget" }
+        assertEquals(1, openedCount)
+    }
+
+    @Test fun recentFeatureIdsCanBeClearedWithoutSavingSearchText() {
+        val recentIds = mutableStateOf(listOf("budget"))
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                ManageNaturalSearch(
+                    entries = listOf(ManageSearchEntry("budget", "월 예산 설정", "목표와 사용액", listOf("생활비")) {}),
+                    aiAvailable = false,
+                    onAiSearch = { _, _ -> Result.failure(IllegalStateException("unused")) },
+                    recentIds = recentIds.value,
+                    onClearRecent = { recentIds.value = emptyList() },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("최근 찾은 메뉴").assertExists()
+        composeRule.onNodeWithText("지우기").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("최근 찾은 메뉴").fetchSemanticsNodes().isEmpty()
+        }
     }
 }

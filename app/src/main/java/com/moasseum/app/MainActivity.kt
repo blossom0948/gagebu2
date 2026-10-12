@@ -648,6 +648,7 @@ private fun MoasseumApp(
     val sharedQuestionRequests = remember { com.moasseum.app.domain.LatestRequestGate() }
     val notificationSaving = com.moasseum.app.ui.components.rememberSaveActionState()
     val coroutineScope = rememberCoroutineScope()
+    val recentManageSearchIds by application.preferencesRepository.recentManageSearchIds.collectAsStateWithLifecycle(initialValue = emptyList())
     val aiClient = remember { application.aiClient }
     val accounts by application.financeRepository.observeAccounts().collectAsStateWithLifecycle(initialValue = emptyList())
     var showAccounts by rememberSaveable { mutableStateOf(false) }
@@ -1552,6 +1553,9 @@ private fun MoasseumApp(
                         accountStatus = authState.user?.email ?: if (application.authRepository.configured) "로그인 안 됨" else "서버 연결 필요",
                         scrollToTopRequest = manageScrollToTopRequest,
                         aiLoginRequired = authState.user == null,
+                        recentManageSearchIds = recentManageSearchIds,
+                        onRememberManageSearchId = application.preferencesRepository::rememberManageSearchId,
+                        onClearRecentManageSearches = application.preferencesRepository::clearRecentManageSearches,
                         onSetBudgetRollover = viewModel::setBudgetRollover,
                         onExportBackup = { exportJsonLauncher.launch("moasseum-full-${java.time.LocalDate.now()}.json") },
                         onRestoreBackup = { importJsonLauncher.launch(arrayOf("application/json", "text/*")) },

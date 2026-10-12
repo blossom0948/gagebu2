@@ -311,6 +311,29 @@ class UserPreferencesRepository(
             .toSet()
     }
 
+    /** Keeps only feature IDs, never the user's free-text search query. */
+    val recentManageSearchIds: Flow<List<String>> = context.settingsDataStore.data.map { preferences ->
+        preferences[RECENT_MANAGE_SEARCH_IDS].orEmpty().lineSequence()
+            .filter { it.matches(MANAGE_SEARCH_ID) }
+            .distinct()
+            .take(MAX_RECENT_MANAGE_SEARCHES)
+            .toList()
+    }
+
+    suspend fun rememberManageSearchId(id: String) {
+        require(id.matches(MANAGE_SEARCH_ID))
+        context.settingsDataStore.edit { preferences ->
+            val recent = preferences[RECENT_MANAGE_SEARCH_IDS].orEmpty().lineSequence()
+                .filter { it.matches(MANAGE_SEARCH_ID) && it != id }
+                .toList()
+            preferences[RECENT_MANAGE_SEARCH_IDS] = (listOf(id) + recent).take(MAX_RECENT_MANAGE_SEARCHES).joinToString("\n")
+        }
+    }
+
+    suspend fun clearRecentManageSearches() {
+        context.settingsDataStore.edit { preferences -> preferences.remove(RECENT_MANAGE_SEARCH_IDS) }
+    }
+
     suspend fun hideQuickEntrySuggestion(key: String) {
         require(key.matches(Regex("[a-f0-9]{64}")))
         context.settingsDataStore.edit { preferences ->
@@ -561,6 +584,9 @@ class UserPreferencesRepository(
     private companion object {
         val HIDDEN_QUICK_ENTRY_SUGGESTIONS = stringPreferencesKey("hidden_quick_entry_suggestions")
         const val MAX_HIDDEN_QUICK_ENTRY_SUGGESTIONS = 500
+        val RECENT_MANAGE_SEARCH_IDS = stringPreferencesKey("recent_manage_search_ids")
+        const val MAX_RECENT_MANAGE_SEARCHES = 5
+        val MANAGE_SEARCH_ID = Regex("[a-z0-9-]{1,64}")
         val DARK_THEME = booleanPreferencesKey("dark_theme")
         val REDUCE_MOTION = booleanPreferencesKey("reduce_motion")
         val NOTIFICATION_ACCESS_PROMPT_SHOWN = booleanPreferencesKey("notification_access_prompt_shown")

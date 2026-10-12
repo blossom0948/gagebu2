@@ -45,4 +45,24 @@ class WhatsNewDialogInteractionTest {
         composeRule.onNodeWithText("확인").performScrollTo().performClick()
         assertTrue(dismissed)
     }
+
+    @Test fun v0141ReleasePopupShowsTheRealRecentMenuCapture() {
+        var dismissed = false
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Box(Modifier.fillMaxSize().background(LocalFinanceColors.current.surfaceBase)) {
+                    WhatsNewDialog(versionName = "0.1.41", onDismiss = { dismissed = true })
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("v0.1.41 신기능").assertExists()
+        composeRule.onNodeWithText("최근 찾은 메뉴, 한 번에 다시 열어요").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4의 격리된 QA 앱에서 캡처한 실제 관리 검색창과 최근 메뉴 칩. 예산 메뉴 한 개만 예시로 표시했습니다.",
+        ).assertExists()
+        composeRule.onNodeWithText("1 / 1").assertExists()
+        composeRule.onNodeWithText("확인").performScrollTo().performClick()
+        assertTrue(dismissed)
+    }
 }

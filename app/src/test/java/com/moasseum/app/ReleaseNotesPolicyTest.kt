@@ -14,6 +14,16 @@ class ReleaseNotesPolicyTest {
     }
 
     @Test
+    fun `v0141 explains local recent menu history and uses the Fold QA capture`() {
+        val slide = ReleaseNotesCatalog.slides("0.1.41").single()
+        assertTrue(slide.title.contains("최근 찾은 메뉴"))
+        assertTrue(slide.description.contains("검색어 원문을 남기지 않고"))
+        assertTrue(slide.description.contains("언제든 비울 수 있어요"))
+        assertTrue(slide.imageDescription.contains("Galaxy Z Fold4"))
+        assertTrue(slide.imageAspectRatio in 1.5f..2.0f)
+    }
+
+    @Test
     fun `v0140 explains natural search privacy and local-only profile with real screenshots`() {
         val slides = ReleaseNotesCatalog.slides("0.1.40")
         assertEquals(2, slides.size)

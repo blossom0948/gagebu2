@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -18,6 +19,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -55,6 +58,9 @@ fun ManageNaturalSearch(
     entries: List<ManageSearchEntry>,
     aiAvailable: Boolean,
     onAiSearch: suspend (String, List<ManageSettingSearchOption>) -> Result<ManageSettingSearchResult>,
+    recentIds: List<String> = emptyList(),
+    onRememberSelected: suspend (String) -> Unit = {},
+    onClearRecent: suspend () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
@@ -71,6 +77,7 @@ fun ManageNaturalSearch(
     val isSearchableQuery = normalizeSearchText(normalizedQuery).length >= 2
     val localResults = remember(normalizedQuery, entries) { rankManageSearch(normalizedQuery, entries) }
     val entriesById = remember(entries) { entries.associateBy { it.id } }
+    val recentEntries = remember(recentIds, entriesById) { recentIds.distinct().mapNotNull(entriesById::get).take(5) }
     val results = remember(normalizedQuery, localResults, entriesById, aiQuery, aiRankedIds) {
         if (normalizedQuery == aiQuery && aiRankedIds.isNotEmpty()) {
             (aiRankedIds.mapNotNull(entriesById::get) + localResults.filterNot { it.id in aiRankedIds }).take(5)
@@ -108,6 +115,32 @@ fun ManageNaturalSearch(
                 }
             } else null,
         )
+        if (normalizedQuery.isBlank() && recentEntries.isNotEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("최근 찾은 메뉴", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                TextButton(onClick = { scope.launch { onClearRecent() } }) { Text("지우기") }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                recentEntries.forEach { entry ->
+                    AssistChip(
+                        onClick = {
+                            query = entry.title
+                            selectedId = entry.id
+                            aiQuery = ""
+                            aiRankedIds = emptyList()
+                            aiIntent = ""
+                            aiUnavailable = false
+                            aiSearchSucceeded = false
+                        },
+                        modifier = Modifier.testTag("manage_recent_${entry.id}"),
+                        label = { Text(entry.title, maxLines = 1) },
+                    )
+                }
+            }
+        }
         if (isSearchableQuery) {
             OutlinedButton(
                 onClick = {
@@ -231,7 +264,19 @@ fun ManageNaturalSearch(
                             Text(selected.description, color = colors.textSecondary, style = MaterialTheme.typography.bodySmall)
                         }
                         OutlinedButton(
-                            onClick = { selected.onSelect(); selectedId = null },
+                            onClick = {
+                                scope.launch {
+                                    try {
+                                        onRememberSelected(selected.id)
+                                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                        throw cancelled
+                                    } catch (_: Exception) {
+                                        // A failed local history write must not block the requested feature action.
+                                    }
+                                    selected.onSelect()
+                                    selectedId = null
+                                }
+                            },
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text(selected.actionLabel) }
                     }

@@ -58,6 +58,15 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.41" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_41_recent_search,
+                imageAspectRatio = 904f / 509f,
+                title = "최근 찾은 메뉴, 한 번에 다시 열어요",
+                description = "관리에서 실행한 메뉴 최대 5개를 검색 칩으로 다시 찾을 수 있어요. 칩을 눌러도 바로 이동하지 않고 기능 설명을 먼저 보여줘요. 최근 메뉴 기록에는 검색어 원문을 남기지 않고 기능 ID만 기기에 저장해요. ‘지우기’로 언제든 비울 수 있어요.",
+                imageDescription = "Galaxy Z Fold4의 격리된 QA 앱에서 캡처한 실제 관리 검색창과 최근 메뉴 칩. 예산 메뉴 한 개만 예시로 표시했습니다.",
+            ),
+        )
         "0.1.40" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_40_search,
