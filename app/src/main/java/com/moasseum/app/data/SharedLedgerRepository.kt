@@ -501,19 +501,24 @@ class SharedLedgerApi(
     override suspend fun fetchSettings(token: String, ledgerId: String): SharedLedgerSettings {
         val rows = JSONArray(request(
             "GET",
-            "shared_ledger_settings?select=money_mode&ledger_id=eq.${enc(ledgerId)}&limit=1",
+            "shared_ledger_settings?select=money_mode,relationship_start_date&ledger_id=eq.${enc(ledgerId)}&limit=1",
             token,
         ))
-        val mode = rows.optJSONObject(0)?.optString("money_mode")
+        val row = rows.optJSONObject(0)
+        val mode = row?.optString("money_mode")
             ?.let { runCatching { SharedMoneyMode.valueOf(it) }.getOrNull() }
             ?: SharedMoneyMode.EQUAL_SPLIT
-        return SharedLedgerSettings(moneyMode = mode)
+        val relationshipStartDate = row?.optString("relationship_start_date")
+            ?.takeIf { it.isNotBlank() && it != "null" }
+            ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        return SharedLedgerSettings(moneyMode = mode, relationshipStartDate = relationshipStartDate)
     }
 
     override suspend fun saveSettings(token: String, ledgerId: String, userId: String, settings: SharedLedgerSettings) {
         val body = JSONObject()
             .put("ledger_id", ledgerId)
             .put("money_mode", settings.moneyMode.name)
+            .put("relationship_start_date", settings.relationshipStartDate?.toString() ?: JSONObject.NULL)
             .put("updated_by", userId)
             .put("updated_at", Instant.now().toString())
         val saved = JSONArray(request(

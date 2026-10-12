@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
@@ -30,11 +31,14 @@ import com.moasseum.app.data.SharedMemoryPhoto
 import com.moasseum.app.domain.AiAdviceCards
 import com.moasseum.app.domain.SpendingAnalysisState
 import com.moasseum.app.domain.SpendingQuestionState
+import com.moasseum.app.domain.SharedLedgerSettings
 import com.moasseum.app.domain.Transaction
 import com.moasseum.app.domain.TransactionType
 import com.moasseum.app.ui.screens.TogetherScreen
 import com.moasseum.app.ui.theme.MoasseumTheme
 import org.junit.Rule
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.ByteArrayOutputStream
@@ -121,10 +125,35 @@ class SharedMemoryAlbumScreenshotTest {
             Transaction(2, TransactionType.EXPENSE, 14_000, timestamp, "CAFE", "커피", "", "체크카드", "QA", ownerId = "qa-partner"),
             Transaction(3, TransactionType.INCOME, 1_200_000, timestamp, "SALARY", "월급", "", "계좌", "QA", ownerId = "qa-partner"),
         )
+        val relationshipStart = today.minusDays(127)
+        val coverPhoto = SharedMemoryPhoto(
+            id = "qa-cover-photo",
+            ledgerId = "qa-shared-ledger",
+            ownerId = "qa-owner",
+            title = "주말 여행",
+            memo = "합성 화면 테스트",
+            photoDate = today,
+            objectPath = "qa-shared-ledger/qa-cover-photo.jpg",
+            sizeBytes = 16_384,
+        )
+        val coverBitmap = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(android.graphics.Color.rgb(55, 104, 99))
+            val canvas = android.graphics.Canvas(this)
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.rgb(132, 173, 151)
+            }
+            canvas.drawCircle(505f, 70f, 130f, paint)
+            paint.color = android.graphics.Color.rgb(218, 174, 130)
+            canvas.drawCircle(580f, 240f, 90f, paint)
+        }
+        var savedSettings: SharedLedgerSettings? = null
+        var viewedMemoryId: String? = null
         val snapshot = SharedLedgerSnapshot(
             ledgerId = "qa-shared-ledger",
             memberCount = 2,
             transactions = transactions,
+            memories = listOf(coverPhoto),
+            settings = SharedLedgerSettings(relationshipStartDate = relationshipStart),
             goals = listOf(SharedLedgerGoal("qa-goal", "qa-owner", "폴드 여행 자금", 1_700_000, 1_180_000, month)),
             financeItems = listOf(
                 SharedFinanceItem("qa-income", "qa-owner", SharedFinanceKind.MONTHLY_INCOME, "공동 월급", 5_200_000, 25),
@@ -157,12 +186,12 @@ class SharedMemoryAlbumScreenshotTest {
                         onDeleteGoal = {},
                         onSaveFinanceItem = {},
                         onDeleteFinanceItem = {},
-                        onSaveSettings = {},
+                        onSaveSettings = { savedSettings = it },
                         onLeaveSharedLedger = {},
                         onExportReport = {},
                         aiAdviceCards = AiAdviceCards.defaults,
                         onAddMemoryPhotos = { _, _, _, _ -> },
-                        onViewMemory = {},
+                        onViewMemory = { viewedMemoryId = it.id },
                         onDeleteMemory = {},
                         viewingMemory = null,
                         viewingMemoryBitmap = null,
@@ -172,14 +201,25 @@ class SharedMemoryAlbumScreenshotTest {
                         aiQuestionState = SpendingQuestionState.Idle,
                         onAnalyzeShared = {},
                         onAskShared = { _, _ -> },
+                        featuredMemoryPhoto = coverPhoto,
+                        featuredMemoryBitmap = coverBitmap,
                     )
                 }
             }
         }
 
         composeRule.onNodeWithText("공유 장부 연결됨").assertExists()
+        composeRule.onNodeWithText("D+128").assertExists()
         composeRule.onNodeWithText("우리 지출").assertExists()
         composeRule.onNodeWithText("공유 거래").assertExists()
+        val relationshipHero = composeRule.onNodeWithTag("shared_relationship_hero_card").captureToImage().asAndroidBitmap()
+        val relationshipBytes = ByteArrayOutputStream().use { output ->
+            relationshipHero.compress(Bitmap.CompressFormat.JPEG, 90, output)
+            output.toByteArray()
+        }
+        Base64.encodeToString(relationshipBytes, Base64.NO_WRAP).chunked(2_000).forEachIndexed { index, chunk ->
+            Log.i("MOASSEUM_CAPTURE", "MSS_RELATIONSHIP_HERO|$index|$chunk")
+        }
         val screenshot = composeRule.onRoot().captureToImage().asAndroidBitmap()
         val preview = ByteArrayOutputStream().use { output ->
             screenshot.compress(Bitmap.CompressFormat.JPEG, 88, output)
@@ -188,6 +228,14 @@ class SharedMemoryAlbumScreenshotTest {
         Base64.encodeToString(preview, Base64.NO_WRAP).chunked(2_000).forEachIndexed { index, chunk ->
             Log.i("MOASSEUM_CAPTURE", "MSS_TOGETHER_CONNECTED|$index|$chunk")
         }
+        composeRule.onNodeWithTag("relationship_date_edit").performClick()
+        composeRule.onNodeWithTag("relationship_date_save").performClick()
+        assertEquals(relationshipStart, savedSettings?.relationshipStartDate)
+        composeRule.onNodeWithTag("relationship_date_edit").performClick()
+        composeRule.onNodeWithText("삭제").performClick()
+        assertNull(savedSettings?.relationshipStartDate)
+        composeRule.onNodeWithContentDescription("최근 공유 사진 주말 여행").performClick()
+        assertEquals(coverPhoto.id, viewedMemoryId)
         composeRule.onNodeWithTag("together_screen_list").performScrollToNode(hasText("폴드 여행 자금"))
         composeRule.onNodeWithText("폴드 여행 자금").assertExists()
         composeRule.onNodeWithTag("together_screen_list").performScrollToNode(hasText("공동 월급"))

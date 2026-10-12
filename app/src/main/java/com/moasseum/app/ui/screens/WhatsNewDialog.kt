@@ -58,6 +58,15 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.47" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_47_relationship,
+                imageAspectRatio = 830f / 467f,
+                title = "함께한 날과 최근 사진을 한눈에",
+                description = "관계 시작일을 함께 설정하면 두 사람 화면에 D+가 표시돼요. 시작일은 언제든 바꾸거나 지울 수 있고, 커플 앨범에 직접 공유한 최신 사진은 상단 카드에 보여요. 사진을 누르면 크게 확인할 수 있어요.",
+                imageDescription = "Galaxy Z Fold4 격리 QA 앱에서 만든 시작일·D+128 화면 캡처. 배경 그림과 날짜는 모두 합성 예시이며 실제 계정이나 사진은 사용하지 않았습니다.",
+            ),
+        )
         "0.1.46" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_46_budget_report,

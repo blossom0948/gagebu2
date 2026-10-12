@@ -14,6 +14,17 @@ class ReleaseNotesPolicyTest {
     }
 
     @Test
+    fun `v0147 documents the shared relationship counter and latest shared photo`() {
+        val slide = ReleaseNotesCatalog.slides("0.1.47").single()
+        assertTrue(slide.title.contains("함께한 날"))
+        assertTrue(slide.description.contains("D+"))
+        assertTrue(slide.description.contains("최신 사진"))
+        assertTrue(slide.description.contains("바꾸거나 지울 수"))
+        assertTrue(slide.imageDescription.contains("합성 예시"))
+        assertTrue(slide.imageAspectRatio in 1.7f..1.85f)
+    }
+
+    @Test
     fun `v0146 documents report pacing search accuracy and the shared preview`() {
         val slides = ReleaseNotesCatalog.slides("0.1.46")
         assertEquals(3, slides.size)

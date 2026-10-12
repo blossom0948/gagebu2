@@ -1,5 +1,8 @@
 package com.moasseum.app.domain
 
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
+
 enum class SharedMoneyMode(val label: String, val description: String) {
     EQUAL_SPLIT("반반 정산", "공유한 지출을 50:50으로 나눠 참고 정산액을 보여줘요."),
     SHARED_FUND("공동 자금", "공유한 수입과 지출을 하나의 공동 장부로 합산해요."),
@@ -10,7 +13,15 @@ enum class SharedMoneyMode(val label: String, val description: String) {
 
 data class SharedLedgerSettings(
     val moneyMode: SharedMoneyMode = SharedMoneyMode.EQUAL_SPLIT,
+    val relationshipStartDate: LocalDate? = null,
 )
+
+/** Korean D+ counters count the start date itself as day one. */
+fun daysTogetherInclusive(startDate: LocalDate?, today: LocalDate): Long? {
+    val start = startDate ?: return null
+    if (start.isAfter(today)) return null
+    return ChronoUnit.DAYS.between(start, today) + 1
+}
 
 data class SharedPayerTotals(
     val myExpense: Long,

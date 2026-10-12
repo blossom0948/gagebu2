@@ -664,6 +664,42 @@ private fun MoasseumApp(
     var viewingSharedMemory by remember { mutableStateOf<SharedMemoryPhoto?>(null) }
     var viewingSharedMemoryBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var loadingSharedMemoryId by remember { mutableStateOf<String?>(null) }
+    var featuredSharedMemoryBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var loadingFeaturedSharedMemoryId by remember { mutableStateOf<String?>(null) }
+    val featuredSharedMemory = sharedSnapshot.memories.firstOrNull()
+    LaunchedEffect(currentRoute, authState.user?.id, sharedSnapshot.ledgerId, featuredSharedMemory?.id) {
+        val photo = featuredSharedMemory
+        if (currentRoute != ROUTE_TOGETHER || sharedSnapshot.ledgerId == null || photo == null) {
+            featuredSharedMemoryBitmap = null
+            loadingFeaturedSharedMemoryId = null
+            return@LaunchedEffect
+        }
+        featuredSharedMemoryBitmap = null
+        loadingFeaturedSharedMemoryId = photo.id
+        val decoded = withContext(Dispatchers.IO) {
+            runCatching {
+                val bytes = application.sharedLedgerRepository.downloadMemoryPhoto(photo)
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+                var sample = 1
+                while (bounds.outWidth / sample > 1280 || bounds.outHeight / sample > 720) sample *= 2
+                BitmapFactory.decodeByteArray(
+                    bytes,
+                    0,
+                    bytes.size,
+                    BitmapFactory.Options().apply {
+                        inSampleSize = sample
+                        inPreferredConfig = Bitmap.Config.RGB_565
+                    },
+                )
+            }.getOrNull()
+        }
+        if (currentRoute == ROUTE_TOGETHER && sharedSnapshot.memories.firstOrNull()?.id == photo.id) {
+            featuredSharedMemoryBitmap = decoded
+            loadingFeaturedSharedMemoryId = null
+        }
+    }
     LaunchedEffect(currentRoute, authState.user?.id) {
         if (authState.user != null && (currentRoute == ROUTE_TOGETHER || sharedSnapshot.ledgerId == null) && !sharedBusy) {
             sharedBusy = true
@@ -1580,6 +1616,9 @@ private fun MoasseumApp(
                         onAskShared = ::askSharedSpendingQuestion,
                         scrollToTopRequest = togetherScrollToTopRequest,
                         isOnline = isInternetValidated,
+                        featuredMemoryPhoto = featuredSharedMemory,
+                        featuredMemoryBitmap = featuredSharedMemoryBitmap,
+                        featuredMemoryLoading = loadingFeaturedSharedMemoryId == featuredSharedMemory?.id,
                     )
                 }
                 composable(ROUTE_MANAGE) {

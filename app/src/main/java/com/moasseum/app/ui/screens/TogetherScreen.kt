@@ -7,6 +7,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +46,9 @@ import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -60,6 +64,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Alignment
@@ -83,6 +89,7 @@ import com.moasseum.app.domain.SpendingQuestionState
 import com.moasseum.app.domain.formatDate
 import com.moasseum.app.domain.formatMonth
 import com.moasseum.app.domain.daysUntilNextAnniversary
+import com.moasseum.app.domain.daysTogetherInclusive
 import com.moasseum.app.domain.SharedLedgerSettings
 import com.moasseum.app.domain.SharedMoneyMode
 import com.moasseum.app.domain.AiAdviceCards
@@ -101,8 +108,11 @@ import com.moasseum.app.ui.components.formatDisplayWon
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import java.time.YearMonth
 import java.time.LocalDate
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun TogetherScreen(
     email: String?,
     userId: String?,
@@ -137,6 +147,9 @@ fun TogetherScreen(
     onAskShared: (String, YearMonth) -> Unit,
     scrollToTopRequest: Int = 0,
     isOnline: Boolean = true,
+    featuredMemoryPhoto: SharedMemoryPhoto? = null,
+    featuredMemoryBitmap: Bitmap? = null,
+    featuredMemoryLoading: Boolean = false,
 ) {
     val colors = LocalFinanceColors.current
     var code by rememberSaveable { mutableStateOf("") }
@@ -149,6 +162,7 @@ fun TogetherScreen(
     var sharedQuestion by rememberSaveable { mutableStateOf("") }
     var showMoneyModeMenu by rememberSaveable { mutableStateOf(false) }
     var showLeaveConfirmation by rememberSaveable { mutableStateOf(false) }
+    var showRelationshipDatePicker by rememberSaveable { mutableStateOf(false) }
     var selectedMemoryUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var showMemoryDetails by rememberSaveable { mutableStateOf(false) }
     var memoryTitle by rememberSaveable { mutableStateOf("함께한 순간") }
@@ -321,6 +335,17 @@ fun TogetherScreen(
                 }
             }
             item {
+                SharedRelationshipHeroCard(
+                    startDate = snapshot.settings.relationshipStartDate,
+                    today = LocalDate.now(),
+                    photo = featuredMemoryPhoto,
+                    bitmap = featuredMemoryBitmap,
+                    photoLoading = featuredMemoryLoading,
+                    onOpenPhoto = { featuredMemoryPhoto?.let(onViewMemory) },
+                    onEditStartDate = { showRelationshipDatePicker = true },
+                )
+            }
+            item {
                 SharedMonthlyOverview(
                     month = selectedMonth,
                     expense = monthlyExpense,
@@ -373,7 +398,7 @@ fun TogetherScreen(
                     busy = busy || !snapshot.settingsSyncAvailable,
                     menuExpanded = showMoneyModeMenu,
                     onMenuExpanded = { showMoneyModeMenu = it },
-                    onSelectMode = { mode -> onSaveSettings(SharedLedgerSettings(mode)) },
+                    onSelectMode = { mode -> onSaveSettings(snapshot.settings.copy(moneyMode = mode)) },
                 )
             }
             if (!snapshot.settingsSyncAvailable) item {
@@ -547,6 +572,41 @@ fun TogetherScreen(
             },
             confirmButton = { TextButton(onClick = { showFeaturePreview = false }) { Text("확인") } },
         )
+    }
+    if (showRelationshipDatePicker) {
+        val currentDate = snapshot.settings.relationshipStartDate
+        val initialMillis = currentDate?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli()
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
+        val selectedDate = datePickerState.selectedDateMillis?.let { millis ->
+            java.time.Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
+        }
+        DatePickerDialog(
+            onDismissRequest = { if (!busy) showRelationshipDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    enabled = !busy && selectedDate != null && !selectedDate.isAfter(LocalDate.now()),
+                    onClick = {
+                        selectedDate?.let { onSaveSettings(snapshot.settings.copy(relationshipStartDate = it)) }
+                        showRelationshipDatePicker = false
+                    },
+                    modifier = Modifier.testTag("relationship_date_save"),
+                ) { Text(if (busy) "저장 중…" else "저장") }
+            },
+            dismissButton = {
+                Row {
+                    if (currentDate != null) TextButton(
+                        enabled = !busy,
+                        onClick = {
+                            onSaveSettings(snapshot.settings.copy(relationshipStartDate = null))
+                            showRelationshipDatePicker = false
+                        },
+                    ) { Text("삭제") }
+                    TextButton(enabled = !busy, onClick = { showRelationshipDatePicker = false }) { Text("취소") }
+                }
+            },
+        ) {
+            DatePicker(state = datePickerState, showModeToggle = false)
+        }
     }
     if (editingGoalId != null) {
         val editingGoal = snapshot.goals.firstOrNull { it.id == editingGoalId }
@@ -922,6 +982,91 @@ private fun SharedPreviewStat(label: String, value: String, modifier: Modifier =
             maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun SharedRelationshipHeroCard(
+    startDate: LocalDate?,
+    today: LocalDate,
+    photo: SharedMemoryPhoto?,
+    bitmap: Bitmap?,
+    photoLoading: Boolean,
+    onOpenPhoto: () -> Unit,
+    onEditStartDate: () -> Unit,
+) {
+    val colors = LocalFinanceColors.current
+    val daysTogether = daysTogetherInclusive(startDate, today)
+    val dateLabel = startDate?.format(DateTimeFormatter.ofPattern("yyyy년 M월 d일"))
+    FinanceCard(modifier = Modifier.testTag("shared_relationship_hero_card"), highlighted = bitmap == null) {
+        Box(
+            modifier = Modifier.fillMaxWidth().height(178.dp)
+                .background(Brush.linearGradient(listOf(colors.accent.copy(alpha = 0.82f), colors.surfaceRaised))),
+        ) {
+            if (bitmap != null && photo != null) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = "최근 공유 사진 ${photo.title}",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().height(178.dp)
+                        .clickable(onClick = onOpenPhoto),
+                )
+                Box(
+                    Modifier.fillMaxWidth().height(178.dp)
+                        .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f)))),
+                )
+            } else {
+                Icon(
+                    Icons.Rounded.Group,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.12f),
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 18.dp).size(104.dp),
+                )
+            }
+            TextButton(
+                onClick = onEditStartDate,
+                modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).testTag("relationship_date_edit"),
+                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = Color.White),
+            ) { Text(if (startDate == null) "시작일 설정" else "날짜 변경") }
+            Column(
+                modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    photo?.title ?: "함께한 날",
+                    color = Color.White.copy(alpha = 0.82f),
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    daysTogether?.let { "D+$it" } ?: "우리의 시작일",
+                    modifier = Modifier.testTag("relationship_day_count"),
+                    color = Color.White,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    when {
+                        dateLabel != null -> dateLabel
+                        photoLoading -> "공유 사진을 불러오는 중이에요"
+                        photo != null -> "최근 함께 공유한 사진"
+                        else -> "시작일을 정하면 함께한 날을 셀 수 있어요"
+                    },
+                    color = Color.White.copy(alpha = 0.82f),
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (photoLoading && bitmap == null) {
+                CircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.Center).size(22.dp),
+                    color = Color.White,
+                    strokeWidth = 2.dp,
+                )
+            }
+        }
     }
 }
 

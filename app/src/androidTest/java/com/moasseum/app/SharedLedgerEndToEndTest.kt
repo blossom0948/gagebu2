@@ -12,6 +12,7 @@ import com.moasseum.app.data.*
 import com.moasseum.app.data.local.FinanceDatabase
 import com.moasseum.app.data.local.TransactionEntity
 import com.moasseum.app.domain.SharedLedgerSettings
+import com.moasseum.app.domain.SharedMoneyMode
 import com.moasseum.app.domain.CurrencyConversion
 import com.moasseum.app.domain.TransactionType
 import kotlinx.coroutines.runBlocking
@@ -58,6 +59,10 @@ class SharedLedgerEndToEndTest {
             val joined = repoB.join(requireNotNull(invite.invite).code)
             assertEquals(2, joined.memberCount)
             assertEquals(2, repoA.refresh().memberCount)
+
+            val relationshipStart = LocalDate.parse("2023-05-21")
+            repoA.saveSettings(SharedLedgerSettings(SharedMoneyMode.SHARED_FUND, relationshipStart))
+            assertEquals(relationshipStart, repoB.refresh().settings.relationshipStartDate)
 
             val selectedPhotoBytes = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xD9.toByte())
             val photoSnapshot = repoA.addMemoryPhoto("선택한 QA 사진", "임의 테스트 메모", LocalDate.parse("2026-10-12"), selectedPhotoBytes)
@@ -150,6 +155,7 @@ class SharedLedgerEndToEndTest {
         private val photos = mutableMapOf<String, MutableMap<String, SharedMemoryPhoto>>()
         private val photoBytes = mutableMapOf<String, ByteArray>()
         private val uploadedPhotoPaths = mutableSetOf<String>()
+        private val settings = mutableMapOf<String, SharedLedgerSettings>()
         private fun user(token: String): String = token.removePrefix("qa-access-").also {
             require(it != token && it.isNotBlank()) { "Unknown synthetic identity" }
         }
@@ -211,8 +217,15 @@ class SharedLedgerEndToEndTest {
                 uploadedPhotoPaths.remove(it.objectPath)
             }
         }
-        override suspend fun fetchSettings(token: String, ledgerId: String): SharedLedgerSettings { member(token, ledgerId); return SharedLedgerSettings() }
-        override suspend fun saveSettings(token: String, ledgerId: String, userId: String, settings: SharedLedgerSettings) = member(token, ledgerId)
+        override suspend fun fetchSettings(token: String, ledgerId: String): SharedLedgerSettings {
+            member(token, ledgerId)
+            return settings[ledgerId] ?: SharedLedgerSettings()
+        }
+        override suspend fun saveSettings(token: String, ledgerId: String, userId: String, settings: SharedLedgerSettings) {
+            member(token, ledgerId)
+            check(user(token) == userId)
+            this.settings[ledgerId] = settings
+        }
         override suspend fun leave(token: String): String? {
             val account = user(token)
             val ledger = memberships.remove(account) ?: return null
