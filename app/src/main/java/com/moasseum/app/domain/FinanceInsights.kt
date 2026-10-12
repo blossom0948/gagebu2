@@ -55,6 +55,27 @@ data class AnnualFinanceSummary(
     val months: List<AnnualMonthSummary>,
 )
 
+data class YearEndTaxProgress(
+    val grossSalary: Long,
+    val minimumSpend: Long,
+    val recordedExpense: Long,
+) {
+    val remainingToMinimum: Long get() = (minimumSpend - recordedExpense).coerceAtLeast(0L)
+    val recordedOverMinimum: Long get() = (recordedExpense - minimumSpend).coerceAtLeast(0L)
+    val progress: Float get() = if (minimumSpend <= 0L) 0f
+        else (recordedExpense.toDouble() / minimumSpend.toDouble()).toFloat().coerceIn(0f, 1f)
+}
+
+/** Shows the statutory 25% spending threshold only; it deliberately does not estimate deductions or refunds. */
+fun yearEndTaxProgress(summary: AnnualFinanceSummary, grossSalary: Long?): YearEndTaxProgress? {
+    val salary = grossSalary?.takeIf { it in 1..100_000_000_000L } ?: return null
+    return YearEndTaxProgress(
+        grossSalary = salary,
+        minimumSpend = salary / 4L,
+        recordedExpense = summary.expenseTotal.coerceAtLeast(0L),
+    )
+}
+
 /** A year-end record organizer; this is not a tax deduction or refund estimate. */
 fun annualFinanceSummary(transactions: List<Transaction>, year: Int): AnnualFinanceSummary {
     require(year in 1900..9999)

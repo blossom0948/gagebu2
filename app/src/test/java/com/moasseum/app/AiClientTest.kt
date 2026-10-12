@@ -27,15 +27,17 @@ class AiClientTest {
     }
 
     @Test
-    fun `server outage falls back to on-device parser`() = runBlocking {
+    fun `server outage fallback does not invent an unmentioned payment method`() = runBlocking {
         val result = AiClient(baseUrl = "https://127.0.0.1:1").parseTransaction(
             text = "점심 8000원",
             today = LocalDate.of(2026, 10, 4),
+            paymentMethods = listOf("현금"),
         )
 
         val candidate = result.getOrThrow()
         assertEquals(8_000L, candidate.amount)
         assertEquals(AiCandidateSource.LOCAL, candidate.source)
+        assertEquals("", candidate.paymentMethod)
     }
 
     @Test
@@ -43,6 +45,17 @@ class AiClientTest {
         val candidate = AiClient(baseUrl = "").parseTransaction("오늘 스타벅스 커피 5500원").getOrThrow()
 
         assertEquals("CAFE", candidate.categoryKey)
+    }
+
+    @Test
+    fun `local parser recognizes only a configured payment method explicitly present in the sentence`() = runBlocking {
+        val candidate = AiClient(baseUrl = "").parseTransaction(
+            "오늘 스타벅스 4,500원 토스뱅크 체크카드",
+            paymentMethods = listOf("토스뱅크 체크카드", "현금"),
+        ).getOrThrow()
+
+        assertEquals("토스뱅크 체크카드", candidate.paymentMethod)
+        assertEquals(4_500L, candidate.amount)
     }
 
     @Test

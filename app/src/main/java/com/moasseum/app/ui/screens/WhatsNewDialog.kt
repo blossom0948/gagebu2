@@ -55,6 +55,36 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.38" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_38_album,
+                imageAspectRatio = 840f / 740f,
+                title = "함께한 사진과 기념일 알림",
+                description = "직접 고른 사진만 커플 앨범에 공유해요. 위치 정보(EXIF)는 제거하며 최대 30장·15 MB까지 저장할 수 있어요. 기념일 알림과 함께 보는 응원도 추가했어요.",
+                imageDescription = "모아씀 함께 화면의 선택 사진 앨범과 공동 응원 카드. 화면 QA용 가상 항목이 표시된 실제 앱 캡처",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_38_tax,
+                imageAspectRatio = 840f / 1647f,
+                title = "연말정산 기준과 기록을 한눈에",
+                description = "총급여 25% 기준과 연간 기록을 확인하고 CSV로 내보내요. 공제액이나 환급액을 계산하지는 않으며, 지출을 늘리도록 권하지 않아요.",
+                imageDescription = "Fold4 QA 앱에서 캡처한 실제 앱 캡처: 연말정산 도우미 화면",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_38_payday,
+                imageAspectRatio = 840f / 900f,
+                title = "급여일에 맞춘 예산 기간",
+                description = "매월 예산 시작일을 정하면 목표·사용액·남은 금액·하루 사용 가능액이 그 주기로 계산돼요. 해당 날짜가 없는 달은 말일로 처리합니다.",
+                imageDescription = "Fold4 QA 앱에서 캡처한 실제 앱 캡처: 예산 시작일 설정 화면",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_38_ai_cards,
+                imageAspectRatio = 840f / 1100f,
+                title = "AI 조언은 필요한 화면만",
+                description = "홈 요약·홈 리포트·함께 요약·함께 리포트를 각각 켜고 끌 수 있어요. 문장에 직접 적은 결제수단도 AI 거래 후보에 반영합니다.",
+                imageDescription = "Fold4 QA 앱에서 캡처한 실제 앱 캡처: AI 조언 카드 설정 화면",
+            ),
+        )
         "0.1.37" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_37_calendar,

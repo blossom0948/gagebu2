@@ -73,6 +73,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import com.moasseum.app.domain.LedgerUiState
 import com.moasseum.app.domain.HomeDashboardCards
+import com.moasseum.app.domain.AiAdviceCards
 import com.moasseum.app.domain.NoSpendChallengeSettings
 import com.moasseum.app.domain.NotificationCandidate
 import com.moasseum.app.domain.PaymentCard
@@ -99,8 +100,14 @@ fun ManageScreen(
     uiState: LedgerUiState,
     homeDashboardCards: Set<String>,
     onSaveHomeDashboardCards: suspend (Set<String>) -> Unit,
+    aiAdviceCards: Set<String>,
+    onSaveAiAdviceCards: suspend (Set<String>) -> Unit,
+    budgetPayday: Int,
+    onSaveBudgetPayday: suspend (Int) -> Unit,
     noSpendChallenge: NoSpendChallengeSettings,
     onSaveNoSpendChallenge: suspend (Boolean, Int) -> Unit,
+    yearEndGrossSalaries: Map<Int, Long>,
+    onSaveYearEndGrossSalary: suspend (Int, Long?) -> Unit,
     paymentMethods: List<String>,
     paymentCards: List<PaymentCard>,
     onSavePaymentCards: suspend (List<PaymentCard>) -> Unit,
@@ -177,9 +184,11 @@ fun ManageScreen(
     var showCardUsageDialog by rememberSaveable { mutableStateOf(false) }
     var showFixedRadarDialog by rememberSaveable { mutableStateOf(false) }
     var showHomeCardsDialog by rememberSaveable { mutableStateOf(false) }
+    var showAiAdviceDialog by rememberSaveable { mutableStateOf(false) }
     var showNoSpendDialog by rememberSaveable { mutableStateOf(false) }
     var showInstallmentDialog by rememberSaveable { mutableStateOf(false) }
     var showYearEndDialog by rememberSaveable { mutableStateOf(false) }
+    var showBudgetPaydayDialog by rememberSaveable { mutableStateOf(false) }
     var selectedReportYear by rememberSaveable { mutableStateOf(java.time.LocalDate.now().year) }
     val colors = LocalFinanceColors.current
     val listState = rememberLazyListState()
@@ -194,7 +203,7 @@ fun ManageScreen(
         item { Text("관리", style = MaterialTheme.typography.headlineSmall) }
         item {
             val budget = uiState.budgetAmount?.takeIf { it > 0L }
-            val spent = uiState.expenseTotal
+            val spent = uiState.budgetPeriodExpenseTotal
             FinanceCard(
                 modifier = Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button) { showBudgetDialog = true },
                 highlighted = true,
@@ -204,7 +213,7 @@ fun ManageScreen(
                         Icon(Icons.Rounded.Wallet, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("${formatMonth(uiState.month)} 목표 지출", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("예산 기간 · ${uiState.budgetCycle.label}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         }
                         Icon(Icons.Rounded.ChevronRight, contentDescription = null, modifier = Modifier.size(24.dp))
                     }
@@ -228,6 +237,8 @@ fun ManageScreen(
                 ManageSectionTitle("예산과 장부")
                 FinanceCard {
                     ManageRow(Icons.Rounded.AccountBalance, "월 수입 목표", monthlyIncomeTarget?.let(::formatWon) ?: "설정 안 됨", onClick = { showIncomeTargetDialog = true })
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    ManageRow(Icons.Rounded.CalendarMonth, "예산 시작일", "매월 ${budgetPayday}일", onClick = { showBudgetPaydayDialog = true })
                     HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                     SettingSwitchRow(Icons.Rounded.Wallet, "남은 예산 다음 달 이월", "", uiState.budgetRollover, onSetBudgetRollover)
                     HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
@@ -267,7 +278,7 @@ fun ManageScreen(
                     ManageRow(Icons.Rounded.Wallet, "구독·고정비 레이더", "월 예정 ${formatWon(recurringRules.filter { it.isActive && it.type == TransactionType.EXPENSE }.sumOf { it.amount })}", onClick = { showFixedRadarDialog = true })
                 }
                 FinanceCard {
-                    SettingSwitchRow(Icons.Rounded.NotificationsActive, "예산·고정비 알림", "예산 50%·초과 · 고정비 전날", financeRemindersEnabled, onSetFinanceRemindersEnabled)
+                    SettingSwitchRow(Icons.Rounded.NotificationsActive, "예산·고정비·기념일 알림", "예산 · 고정 결제 · 기념일", financeRemindersEnabled, onSetFinanceRemindersEnabled)
                     HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                     ManageRow(Icons.Rounded.NotificationsActive, "결제 알림 감지", notificationStatusMessage(notificationAccessEnabled, notificationServiceConnectedAt, notificationServiceDisconnectedAt, notificationLastSeenAt, pendingCandidates.size), onClick = onOpenNotificationSettings)
                     HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
@@ -294,7 +305,7 @@ fun ManageScreen(
                     ManageRow(Icons.Rounded.Wallet, "백업 복원", "", onClick = onRestoreBackup)
                     ManageRow(Icons.Rounded.Wallet, "복원 전 백업 내보내기", "", onClick = onExportSafetyBackup)
                     HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                    ManageRow(Icons.Rounded.CalendarMonth, "연말정산 자료 정리", "연간 수입·지출 및 CSV", onClick = { selectedReportYear = java.time.LocalDate.now().year; showYearEndDialog = true })
+                    ManageRow(Icons.Rounded.CalendarMonth, "연말정산 도우미", "25% 기준 · 연간 기록 · CSV", onClick = { selectedReportYear = java.time.LocalDate.now().year; showYearEndDialog = true })
                     ManageRow(Icons.Rounded.CalendarMonth, "월별 PDF 리포트", formatMonth(uiState.month), onClick = onExportPdf)
                     HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                     ManageRow(Icons.Rounded.Security, "로그인·계정", accountStatus, onClick = onOpenAuth)
@@ -302,6 +313,8 @@ fun ManageScreen(
                 }
                 FinanceCard {
                     ManageRow(Icons.Rounded.Home, "홈 카드 구성", "${homeDashboardCards.size}개 표시", onClick = { showHomeCardsDialog = true })
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    ManageRow(Icons.Rounded.AutoAwesome, "AI 조언 카드", "${aiAdviceCards.size}/4 표시", onClick = { showAiAdviceDialog = true })
                     HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                     SettingSwitchRow(Icons.Rounded.DarkMode, "다크 모드", "", darkTheme, onDarkThemeChanged)
                     HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
@@ -319,13 +332,21 @@ fun ManageScreen(
 
     if (showBudgetDialog) {
         BudgetDialog(
-            month = uiState.month,
+            month = uiState.budgetCycle.startMonth,
             initialValue = uiState.baseBudgetAmount?.toString().orEmpty(),
             onDismiss = { showBudgetDialog = false },
             onSave = { input ->
                 onUpdateBudget(input)
                 showBudgetDialog = false
             },
+        )
+    }
+
+    if (showBudgetPaydayDialog) {
+        BudgetPaydayDialog(
+            currentDay = budgetPayday,
+            onDismiss = { showBudgetPaydayDialog = false },
+            onSave = { day -> onSaveBudgetPayday(day); showBudgetPaydayDialog = false },
         )
     }
     if (showIncomeTargetDialog) {
@@ -419,6 +440,13 @@ fun ManageScreen(
             },
         )
     }
+    if (showAiAdviceDialog) {
+        AiAdviceCardsDialog(
+            selectedCards = aiAdviceCards,
+            onDismiss = { showAiAdviceDialog = false },
+            onSave = onSaveAiAdviceCards,
+        )
+    }
     if (showNoSpendDialog) {
         NoSpendChallengeDialog(
             settings = noSpendChallenge,
@@ -444,7 +472,9 @@ fun ManageScreen(
         YearEndSummaryDialog(
             year = selectedReportYear,
             transactions = uiState.transactions,
+            initialGrossSalary = yearEndGrossSalaries[selectedReportYear],
             onSelectYear = { selectedReportYear = it },
+            onSaveGrossSalary = onSaveYearEndGrossSalary,
             onExport = onExportYearTransactions,
             onDismiss = { showYearEndDialog = false },
         )
@@ -454,7 +484,7 @@ fun ManageScreen(
             onDismissRequest = { showPrivacyDialog = false },
             title = { Text("개인정보와 데이터") },
             text = {
-                Text("가계부는 기기에 저장됩니다. AI 입력은 문장, 소비 분석·질문은 집계와 질문, AI 알림 판별은 선별된 알림 내용을 외부 AI 서버로 전송합니다. 영수증 사진은 기기에서만 처리합니다. 로그인만으로 기록이 공유되지는 않습니다.")
+                Text("가계부는 기기에 저장됩니다. AI 입력은 문장과 날짜 해석용 기준일·시간대, 소비 분석·질문은 집계와 질문, AI 알림 판별은 선별된 알림 내용을 외부 AI 서버로 전송합니다. 거래 검색·수정 대상 선택·사진 거래 인식은 기기 안에서 합니다. 함께 쓰기에서 직접 고른 커플 사진만 EXIF를 제거해 비공개 Supabase Storage에 저장하며 두 멤버가 볼 수 있습니다. 로그인만으로 거래나 사진이 공유되지는 않습니다.")
             },
             confirmButton = { TextButton(onClick = { showPrivacyDialog = false }) { Text("닫기") } },
             dismissButton = {
@@ -535,21 +565,87 @@ fun ManageScreen(
 private fun YearEndSummaryDialog(
     year: Int,
     transactions: List<com.moasseum.app.domain.Transaction>,
+    initialGrossSalary: Long?,
     onSelectYear: (Int) -> Unit,
+    onSaveGrossSalary: suspend (Int, Long?) -> Unit,
     onExport: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
     val summary = remember(transactions, year) { com.moasseum.app.domain.annualFinanceSummary(transactions, year) }
+    val taxProgress = remember(summary, initialGrossSalary) { com.moasseum.app.domain.yearEndTaxProgress(summary, initialGrossSalary) }
+    var salaryDraft by rememberSaveable(year) { mutableStateOf(initialGrossSalary?.div(10_000L)?.toString().orEmpty()) }
+    var salaryInputError by rememberSaveable(year) { mutableStateOf(false) }
+    val salarySave = rememberSaveActionState()
+    LaunchedEffect(year, initialGrossSalary) {
+        salaryDraft = initialGrossSalary?.div(10_000L)?.toString().orEmpty()
+        salaryInputError = false
+    }
     val maxMonthlyExpense = summary.months.maxOfOrNull { it.expenseTotal }?.coerceAtLeast(1L) ?: 1L
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("연말정산 자료 정리") },
+        title = { Text("연말정산 도우미") },
         text = {
             Column(Modifier.heightIn(max = 470.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     (year - 2..year).forEach { option ->
                         FilterChip(selected = year == option, onClick = { onSelectYear(option) }, label = { Text("${option}년") })
+                    }
+                }
+                Text("총급여와 기록 지출을 비교해 25% 기준까지의 흐름을 확인해요.", color = colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(
+                    value = salaryDraft,
+                    onValueChange = { salaryDraft = it.filter(Char::isDigit).take(8); salaryInputError = false },
+                    label = { Text("총급여 (만원)") },
+                    placeholder = { Text("예: 4,800") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    if (salaryInputError) Text("1만원 이상 금액을 확인해 주세요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
+                    else salarySave.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f)) }
+                    TextButton(enabled = !salarySave.busy, onClick = {
+                        val salaryManwon = salaryDraft.toLongOrNull()
+                        val salaryWon = salaryManwon?.takeIf { it in 1..10_000_000L }?.times(10_000L)
+                        if (salaryDraft.isNotBlank() && salaryWon == null) {
+                            salaryInputError = true
+                        } else {
+                            salarySave.save({ onSaveGrossSalary(year, salaryWon) })
+                        }
+                    }) { Text(if (salarySave.busy) "저장 중…" else "저장") }
+                }
+                FinanceCard(highlighted = true) {
+                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text("총급여 25% 기준", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        if (taxProgress == null) {
+                            Text("총급여를 입력하면 기준을 계산해요.", color = colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            Text(formatWon(taxProgress.minimumSpend), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            LinearProgressIndicator(
+                                progress = { taxProgress.progress },
+                                modifier = Modifier.fillMaxWidth().height(6.dp),
+                                color = colors.accent,
+                                trackColor = colors.surfaceOverlay,
+                            )
+                            Text(
+                                if (taxProgress.remainingToMinimum > 0L) "등록 지출 기준까지 ${formatWon(taxProgress.remainingToMinimum)} 남았어요."
+                                else "등록 지출 기준으로 ${formatWon(taxProgress.recordedOverMinimum)} 초과했어요.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
+                val coach = when {
+                    taxProgress == null -> "필요한 지출을 늘릴 필요는 없어요. 총급여와 홈택스 자료를 확인하는 용도로 이용해 주세요."
+                    taxProgress.remainingToMinimum > 0L -> "기록 지출만으로 본 참고치예요. 공제 때문에 소비를 늘리기보다 빠진 기록과 결제수단을 확인해 보세요."
+                    else -> "기록 지출이 기준을 넘었어요. 홈택스에서 취소·제외 항목과 실제 공제 대상 금액을 확인해 보세요."
+                }
+                FinanceCard {
+                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text("이번 연말정산 체크", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(coach, color = colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                        Text("신용카드 15% · 체크카드·현금영수증 30% · 대중교통·전통시장 40% 공제율이 적용될 수 있어요.", style = MaterialTheme.typography.labelSmall)
                     }
                 }
                 FinanceCard {
@@ -594,7 +690,7 @@ private fun YearEndSummaryDialog(
                         Text("${formatWon(item.total)} · ${item.count}건", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                     }
                 }
-                Text("기록을 정리하는 기능이며 세액·공제·환급액은 계산하지 않아요. 실제 정산은 국세청 자료를 확인하세요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                Text("기록된 지출 전체로 계산한 참고 흐름이에요. 공제 제외 항목·결제자·실제 공제액과 환급액은 판정하지 않으니 홈택스 자료를 확인하세요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             }
         },
         confirmButton = { TextButton(onClick = { onExport(year) }) { Text("${year}년 CSV 내보내기", color = colors.accent) } },
@@ -762,6 +858,43 @@ private fun InstallmentPlansDialog(
             dismissButton = { TextButton(enabled = !saving.busy, onClick = { convertTarget = null }) { Text("취소") } },
         )
     }
+}
+
+@Composable
+private fun AiAdviceCardsDialog(
+    selectedCards: Set<String>,
+    onDismiss: () -> Unit,
+    onSave: suspend (Set<String>) -> Unit,
+) {
+    val saving = rememberSaveActionState()
+    var draft by remember(selectedCards) { mutableStateOf(selectedCards) }
+    val choices = listOf(
+        AiAdviceCards.HOME_SUMMARY to "홈 요약" to "홈의 AI 분석 요약",
+        AiAdviceCards.HOME_REPORT to "홈 리포트" to "월간 리포트의 AI 코멘트",
+        AiAdviceCards.COUPLE_SUMMARY to "커플 요약" to "함께 화면의 AI 요약",
+        AiAdviceCards.COUPLE_REPORT to "커플 리포트" to "함께 화면의 분석 포인트",
+    )
+    AlertDialog(
+        onDismissRequest = { if (!saving.busy) onDismiss() },
+        title = { Text("AI 조언 카드") },
+        text = {
+            Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                choices.forEach { (keyTitle, description) ->
+                    val (key, title) = keyTitle
+                    SettingSwitchRow(
+                        icon = Icons.Rounded.AutoAwesome,
+                        title = title,
+                        message = description,
+                        checked = key in draft,
+                        onCheckedChange = { checked -> draft = if (checked) draft + key else draft - key },
+                    )
+                }
+                saving.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium) }
+            }
+        },
+        confirmButton = { TextButton(enabled = !saving.busy, onClick = { saving.save({ onSave(draft) }, onDismiss) }) { Text("저장") } },
+        dismissButton = { TextButton(enabled = !saving.busy, onClick = onDismiss) { Text("취소") } },
+    )
 }
 
 @Composable
@@ -1677,6 +1810,51 @@ private fun BudgetDialog(
                 if (com.moasseum.app.domain.parseAmount(input) == null) showError = true
                 else saving.save({ onSave(input) })
             }) { Text("저장") }
+        },
+        dismissButton = { TextButton(enabled = !saving.busy, onClick = onDismiss) { Text("취소") } },
+    )
+}
+
+@Composable
+private fun BudgetPaydayDialog(
+    currentDay: Int,
+    onDismiss: () -> Unit,
+    onSave: suspend (Int) -> Unit,
+) {
+    val saving = rememberSaveActionState()
+    var input by rememberSaveable(currentDay) { mutableStateOf(currentDay.toString()) }
+    val day = input.toIntOrNull()?.takeIf { it in 1..31 }
+    AlertDialog(
+        onDismissRequest = { if (!saving.busy) onDismiss() },
+        title = { Text("예산 시작일", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("매월 시작일부터 다음 달 전날까지를 한 예산 기간으로 계산해요. 해당 날짜가 없는 달에는 말일부터 시작합니다.", color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    listOf(1, 5, 10, 15, 20, 25, 31).forEach { preset ->
+                        FilterChip(
+                            selected = input == preset.toString(),
+                            onClick = { input = preset.toString() },
+                            label = { Text(if (preset == 31) "말일" else "${preset}일", maxLines = 1) },
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { input = it.filter(Char::isDigit).take(2) },
+                    label = { Text("기준일 (1~31일)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    enabled = !saving.busy,
+                )
+                saving.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium) }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = day != null && !saving.busy, onClick = { day?.let { saving.save({ onSave(it) }, onDismiss) } }) { Text("저장") }
         },
         dismissButton = { TextButton(enabled = !saving.busy, onClick = onDismiss) { Text("취소") } },
     )

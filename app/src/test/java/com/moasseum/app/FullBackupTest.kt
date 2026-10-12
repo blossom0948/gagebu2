@@ -5,6 +5,7 @@ import com.moasseum.app.data.local.*
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
+import com.moasseum.app.domain.AiAdviceCards
 
 class FullBackupTest {
     private val account = AccountEntity("72a43f9d-00e0-44db-af34-4cf143314bb7", "계좌", 10000, false, 123)
@@ -19,6 +20,9 @@ class FullBackupTest {
             setOf(com.moasseum.app.domain.HomeDashboardCards.TODAY_WEEK, com.moasseum.app.domain.HomeDashboardCards.CATEGORIES),
             14,
             java.time.LocalDate.of(2026, 10, 2),
+            mapOf(2025 to 48_000_000L, 2026 to 52_000_000L),
+            setOf(AiAdviceCards.HOME_SUMMARY, AiAdviceCards.COUPLE_REPORT),
+            15,
         ),
     )
     @Test fun completeRoundTripPreservesAccountsRulesTombstonesAndSettings() {
@@ -53,12 +57,21 @@ class FullBackupTest {
         root.getJSONObject("settings").remove("homeDashboardCards")
         root.getJSONObject("settings").remove("noSpendChallengeGoalDays")
         root.getJSONObject("settings").remove("noSpendChallengeStartDate")
+        root.getJSONObject("settings").remove("yearEndGrossSalaries")
+        root.getJSONObject("settings").remove("aiAdviceCards")
+        root.getJSONObject("settings").remove("budgetPayday")
         val restored = FullBackupCodec.decode(root.toString())
         assertEquals(DEFAULT_CATEGORY_LABELS.keys.toList(), restored.settings?.categoryOrder)
         assertEquals(emptyMap<String, Long>(), restored.settings?.monthlyIncomeTargets)
         assertEquals(com.moasseum.app.domain.HomeDashboardCards.defaults, restored.settings?.homeDashboardCards)
         assertEquals(7, restored.settings?.noSpendChallengeGoalDays)
         assertNull(restored.settings?.noSpendChallengeStartDate)
+        assertEquals(emptyMap<Int, Long>(), restored.settings?.yearEndGrossSalaries)
+        assertEquals(AiAdviceCards.defaults, restored.settings?.aiAdviceCards)
+        assertEquals(1, restored.settings?.budgetPayday)
+    }
+    @Test fun budgetPaydaySurvivesSettingsBackup() {
+        assertEquals(15, FullBackupCodec.decode(FullBackupCodec.encode(backup())).settings?.budgetPayday)
     }
     @Test fun legacySevenCategorySettingsUpgradeToNineteenWithoutLosingOrder() {
         val root = JSONObject(FullBackupCodec.encode(backup()))

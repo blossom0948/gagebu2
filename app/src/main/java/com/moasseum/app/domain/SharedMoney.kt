@@ -30,6 +30,22 @@ data class SharedSavingsProgress(val target: Long, val current: Long) {
     val fraction: Float get() = if (target <= 0L) 0f else (current.toDouble() / target).toFloat().coerceIn(0f, 1f)
 }
 
+data class SharedMoneyNudge(val title: String, val message: String)
+
+/** A private, deterministic, non-judgmental prompt; it uses only shared monthly totals. */
+fun sharedMoneyNudge(expense: Long, budget: Long?, transactionCount: Int): SharedMoneyNudge {
+    val spent = expense.coerceAtLeast(0L)
+    val plan = budget?.takeIf { it > 0L }
+    return when {
+        transactionCount <= 0 -> SharedMoneyNudge("함께 시작해요", "공유할 기록을 하나씩 고르면 이번 달 흐름이 함께 보여요.")
+        plan == null -> SharedMoneyNudge("함께 정할 기준 하나", "이번 달 생활비 기준을 정하면 다음 선택이 더 편해져요.")
+        spent == 0L -> SharedMoneyNudge("좋은 출발이에요", "아직 공동 지출이 없어요. 필요한 기록만 편하게 남겨 보세요.")
+        spent > plan -> SharedMoneyNudge("다음 달을 위한 작은 대화", "계획보다 더 쓴 달도 괜찮아요. 다음 달에 조정할 항목 하나만 함께 골라봐요.")
+        spent.toDouble() / plan.toDouble() >= 0.75 -> SharedMoneyNudge("차근차근 조율해요", "예산의 ${(spent.toDouble() * 100.0 / plan).toInt().coerceIn(0, 100)}%를 사용했어요. 남은 일정에 맞춰 기준을 같이 살펴봐요.")
+        else -> SharedMoneyNudge("지금 흐름이 좋아요", "공동 지출이 목표 안에서 움직이고 있어요. 필요한 곳에 잘 쓰고 있어요.")
+    }
+}
+
 fun sharedSavingsProgress(goals: Iterable<SharedSavingsGoalAmount>): SharedSavingsProgress {
     var target = 0L
     var current = 0L

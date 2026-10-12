@@ -15,6 +15,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.time.LocalDate
 import java.time.Instant
 import java.util.UUID
 
@@ -64,6 +65,16 @@ data class SharedFinanceItem(
         }
     }
 }
+data class SharedMemoryPhoto(
+    val id: String,
+    val ledgerId: String,
+    val ownerId: String?,
+    val title: String,
+    val memo: String,
+    val photoDate: LocalDate,
+    val objectPath: String,
+    val sizeBytes: Long,
+)
 data class SharedLedgerSnapshot(
     val ledgerId: String? = null,
     val memberCount: Int = 0,
@@ -74,6 +85,8 @@ data class SharedLedgerSnapshot(
     val financeSyncAvailable: Boolean = true,
     val settings: SharedLedgerSettings = SharedLedgerSettings(),
     val settingsSyncAvailable: Boolean = true,
+    val memories: List<SharedMemoryPhoto> = emptyList(),
+    val memorySyncAvailable: Boolean = true,
 )
 
 class SharedApiException(val statusCode: Int, message: String) : java.io.IOException(message)
@@ -88,6 +101,13 @@ interface SharedLedgerGateway {
     suspend fun fetchFinanceItems(token: String, ledgerId: String): List<SharedFinanceItem>
     suspend fun saveFinanceItem(token: String, ledgerId: String, ownerId: String, item: SharedFinanceItem)
     suspend fun deleteFinanceItem(token: String, ledgerId: String, itemId: String)
+    suspend fun fetchMemories(token: String, ledgerId: String): List<SharedMemoryPhoto>
+    suspend fun reserveMemory(token: String, ledgerId: String, ownerId: String, id: String, title: String, memo: String, date: LocalDate, path: String, sizeBytes: Long)
+    suspend fun uploadMemoryObject(token: String, path: String, bytes: ByteArray)
+    suspend fun markMemoryUploaded(token: String, ledgerId: String, id: String)
+    suspend fun downloadMemoryObject(token: String, path: String): ByteArray
+    suspend fun deleteMemoryObject(token: String, path: String)
+    suspend fun deleteMemory(token: String, ledgerId: String, id: String)
     suspend fun fetchSettings(token: String, ledgerId: String): SharedLedgerSettings
     suspend fun saveSettings(token: String, ledgerId: String, userId: String, settings: SharedLedgerSettings)
     suspend fun leave(token: String): String?
@@ -165,6 +185,48 @@ class SharedLedgerRepository(
         return sync(identity, ledgerId)
     }
 
+    suspend fun addMemoryPhoto(title: String, memo: String, date: LocalDate, jpegBytes: ByteArray): SharedLedgerSnapshot {
+        require(title.trim().length in 1..60) { "사진 제목은 1~60자로 입력해 주세요." }
+        require(memo.length <= 300) { "메모는 300자까지 입력할 수 있어요." }
+        require(jpegBytes.size in 4..MAX_MEMORY_PHOTO_BYTES) { "사진은 1MB 이하만 공유할 수 있어요." }
+        require(jpegBytes[0] == 0xFF.toByte() && jpegBytes[1] == 0xD8.toByte()) { "JPEG 사진만 공유할 수 있어요." }
+        val identity = identity()
+        val ledgerId = api.findLedger(identity.token, identity.userId)
+            ?: error("먼저 파트너와 공유 장부를 연결해 주세요.")
+        val photoId = UUID.randomUUID().toString()
+        val path = "$ledgerId/$photoId.jpg"
+        api.reserveMemory(identity.token, ledgerId, identity.userId, photoId, title.trim(), memo.trim(), date, path, jpegBytes.size.toLong())
+        try {
+            api.uploadMemoryObject(identity.token, path, jpegBytes)
+            api.markMemoryUploaded(identity.token, ledgerId, photoId)
+        } catch (error: Exception) {
+            runCatching { api.deleteMemoryObject(identity.token, path) }
+            runCatching { api.deleteMemory(identity.token, ledgerId, photoId) }
+            throw error
+        }
+        return sync(identity, ledgerId)
+    }
+
+    suspend fun downloadMemoryPhoto(photo: SharedMemoryPhoto): ByteArray {
+        val identity = identity()
+        val ledgerId = api.findLedger(identity.token, identity.userId)
+            ?: error("먼저 파트너와 공유 장부를 연결해 주세요.")
+        require(photo.ledgerId == ledgerId && photo.objectPath.startsWith("$ledgerId/")) {
+            "다른 공유 장부의 사진은 열 수 없어요."
+        }
+        return api.downloadMemoryObject(identity.token, photo.objectPath)
+    }
+
+    suspend fun deleteMemoryPhoto(photo: SharedMemoryPhoto): SharedLedgerSnapshot {
+        val identity = identity()
+        val ledgerId = api.findLedger(identity.token, identity.userId)
+            ?: error("먼저 파트너와 공유 장부를 연결해 주세요.")
+        require(photo.ledgerId == ledgerId && photo.objectPath.startsWith("$ledgerId/"))
+        api.deleteMemoryObject(identity.token, photo.objectPath)
+        api.deleteMemory(identity.token, ledgerId, photo.id)
+        return sync(identity, ledgerId)
+    }
+
     suspend fun saveSettings(settings: SharedLedgerSettings): SharedLedgerSnapshot {
         val identity = identity()
         val ledgerId = api.findLedger(identity.token, identity.userId)
@@ -235,6 +297,10 @@ class SharedLedgerRepository(
         val settings = settingsResult.getOrElse { error ->
             if (error is SharedApiException && error.statusCode == 404) SharedLedgerSettings() else throw error
         }
+        val memoryResult = runCatching { api.fetchMemories(identity.token, ledgerId) }
+        val memories = memoryResult.getOrElse { error ->
+            if (error is SharedApiException && error.statusCode in setOf(400, 404)) emptyList() else throw error
+        }
         return SharedLedgerSnapshot(
             ledgerId = ledgerId,
             memberCount = api.countMembers(identity.token, ledgerId),
@@ -244,7 +310,15 @@ class SharedLedgerRepository(
             financeSyncAvailable = financeResult.isSuccess,
             settings = settings,
             settingsSyncAvailable = settingsResult.isSuccess,
+            memories = memories,
+            memorySyncAvailable = memoryResult.isSuccess,
         )
+    }
+
+    companion object {
+        const val MAX_MEMORY_PHOTO_BYTES = 1_048_576
+        const val MAX_MEMORY_BYTES = 15L * 1_048_576
+        const val MAX_MEMORY_PHOTOS = 30
     }
 
     private data class Identity(val userId: String, val token: String)
@@ -489,6 +563,171 @@ class SharedLedgerApi(
             token, prefer = "return=representation",
         ))
         check(deleted.length() == 1) { "공동 재정 항목이 이미 삭제되었어요." }
+    }
+
+    override suspend fun fetchMemories(token: String, ledgerId: String): List<SharedMemoryPhoto> =
+        fetchPagedRows(
+            token,
+            "shared_memory_photos?select=id,ledger_id,owner_id,title,memo,photo_date,object_path,size_bytes,uploaded_at&ledger_id=eq.${enc(ledgerId)}&uploaded_at=not.is.null&order=photo_date.desc,created_at.desc",
+            pageSize = 100,
+            maxRows = 30,
+        ).map { row ->
+            val rowLedgerId = UUID.fromString(row.getString("ledger_id")).toString()
+            require(rowLedgerId == ledgerId) { "다른 공유 장부의 사진 응답을 거부했어요." }
+            val id = UUID.fromString(row.getString("id")).toString()
+            val path = row.getString("object_path")
+            require(path == "$ledgerId/$id.jpg") { "공유 사진 경로가 올바르지 않아요." }
+            SharedMemoryPhoto(
+                id = id,
+                ledgerId = rowLedgerId,
+                ownerId = row.optString("owner_id").takeIf { it.isNotBlank() && it != "null" }
+                    ?.let { UUID.fromString(it).toString() },
+                title = row.getString("title").take(60),
+                memo = row.optString("memo").take(300),
+                photoDate = LocalDate.parse(row.getString("photo_date")),
+                objectPath = path,
+                sizeBytes = row.getLong("size_bytes").also { require(it in 1..SharedLedgerRepository.MAX_MEMORY_PHOTO_BYTES.toLong()) },
+            )
+        }
+
+    override suspend fun reserveMemory(
+        token: String,
+        ledgerId: String,
+        ownerId: String,
+        id: String,
+        title: String,
+        memo: String,
+        date: LocalDate,
+        path: String,
+        sizeBytes: Long,
+    ) {
+        UUID.fromString(ledgerId); UUID.fromString(ownerId); UUID.fromString(id)
+        require(path == "$ledgerId/$id.jpg")
+        val row = JSONObject()
+            .put("id", id)
+            .put("ledger_id", ledgerId)
+            .put("owner_id", ownerId)
+            .put("title", title.trim())
+            .put("memo", memo.trim())
+            .put("photo_date", date.toString())
+            .put("object_path", path)
+            .put("size_bytes", sizeBytes)
+        val response = JSONArray(request("POST", "shared_memory_photos", token, row, prefer = "return=representation"))
+        check(response.length() == 1) {
+            "공유 사진을 준비하지 못했어요. 커플 저장 한도(사진 30장·총 15MB)를 확인해 주세요."
+        }
+    }
+
+    override suspend fun uploadMemoryObject(token: String, path: String, bytes: ByteArray) {
+        require(bytes.size in 1..SharedLedgerRepository.MAX_MEMORY_PHOTO_BYTES)
+        storageRequest("POST", "object/couple_memory/${storagePath(path)}", token, bytes, "image/jpeg")
+    }
+
+    override suspend fun markMemoryUploaded(token: String, ledgerId: String, id: String) {
+        UUID.fromString(ledgerId); UUID.fromString(id)
+        val response = request(
+            "POST",
+            "rpc/finalize_shared_memory_photo",
+            token,
+            JSONObject().put("p_photo_id", id),
+        )
+        val finalized = runCatching { org.json.JSONTokener(response).nextValue() }.getOrNull()
+        check(finalized == true) { "사진을 올렸지만 앨범 등록을 확인하지 못했어요. 새로고침해 주세요." }
+    }
+
+    override suspend fun downloadMemoryObject(token: String, path: String): ByteArray {
+        requireMemoryPath(path)
+        return storageRequest("GET", "object/authenticated/couple_memory/${storagePath(path)}", token)
+            .also { require(it.size in 1..SharedLedgerRepository.MAX_MEMORY_PHOTO_BYTES) { "공유 사진 크기가 허용 범위를 벗어났어요." } }
+    }
+
+    override suspend fun deleteMemoryObject(token: String, path: String) {
+        requireMemoryPath(path)
+        val body = JSONObject().put("prefixes", JSONArray().put(path)).toString().toByteArray(Charsets.UTF_8)
+        try {
+            storageRequest("DELETE", "object/couple_memory", token, body, "application/json")
+        } catch (error: SharedApiException) {
+            if (error.statusCode != 404) throw error
+        }
+    }
+
+    override suspend fun deleteMemory(token: String, ledgerId: String, id: String) {
+        UUID.fromString(ledgerId); UUID.fromString(id)
+        val deleted = JSONArray(request(
+            "DELETE", "shared_memory_photos?id=eq.${enc(id)}&ledger_id=eq.${enc(ledgerId)}",
+            token, prefer = "return=representation",
+        ))
+        check(deleted.length() == 1) { "공유 사진 정보가 이미 삭제되었어요." }
+    }
+
+    private fun requireMemoryPath(path: String) {
+        require(path.matches(Regex("[0-9a-fA-F-]{36}/[0-9a-fA-F-]{36}\\.jpg"))) {
+            "공유 사진 경로가 올바르지 않아요."
+        }
+    }
+
+    private fun storagePath(path: String): String = path.split('/').joinToString("/") { enc(it) }
+
+    private suspend fun storageRequest(
+        method: String,
+        path: String,
+        token: String,
+        body: ByteArray? = null,
+        contentType: String = "application/octet-stream",
+    ): ByteArray = withContext(Dispatchers.IO) {
+        check(baseUrl.startsWith("https://") && publishableKey.startsWith("sb_publishable_")) {
+            "공유 서버 설정이 준비되지 않았어요. 관리자 키는 앱에 포함하지 않습니다."
+        }
+        val endpoint = URL("${baseUrl.trimEnd('/')}/storage/v1/$path")
+        require(endpoint.protocol == "https" && endpoint.userInfo == null)
+        val connection = endpoint.openConnection() as HttpURLConnection
+        try {
+            connection.requestMethod = method
+            connection.connectTimeout = 15000
+            connection.readTimeout = 30000
+            connection.instanceFollowRedirects = false
+            connection.setRequestProperty("apikey", publishableKey)
+            connection.setRequestProperty("Authorization", "Bearer $token")
+            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("Content-Type", contentType)
+            if (method == "POST") connection.setRequestProperty("x-upsert", "false")
+            if (body != null) {
+                connection.doOutput = true
+                connection.outputStream.use { it.write(body) }
+            }
+            val status = connection.responseCode
+            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+            val bytes = stream?.use { input ->
+                val output = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(8192)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    if (output.size() + count > SharedLedgerRepository.MAX_MEMORY_PHOTO_BYTES + 16_384) {
+                        throw java.io.IOException("공유 사진 응답이 너무 큽니다.")
+                    }
+                    output.write(buffer, 0, count)
+                }
+                output.toByteArray()
+            } ?: ByteArray(0)
+            if (status !in 200..299) {
+                val detail = bytes.toString(Charsets.UTF_8).take(240)
+                throw SharedApiException(status, when (status) {
+                    401, 403 -> "공유 사진 접근 권한을 확인할 수 없어요. 로그인과 공유 연결을 확인해 주세요."
+                    404 -> "공유 사진 또는 사진 서버 설정을 찾지 못했어요."
+                    413 -> "사진은 1MB 이하만 공유할 수 있어요."
+                    in 500..599 -> "공유 사진 서버가 잠시 응답하지 않아요."
+                    else -> "사진 공유 요청을 완료하지 못했어요. ${detail.takeIf(String::isNotBlank).orEmpty()}"
+                })
+            }
+            bytes
+        } catch (error: java.io.IOException) {
+            throw error
+        } catch (error: Exception) {
+            throw java.io.IOException("공유 사진 서버에 연결하지 못했어요. 네트워크를 확인해 주세요.", error)
+        } finally {
+            connection.disconnect()
+        }
     }
 
     override suspend fun deleteGoal(token: String, ledgerId: String, goalId: String) {

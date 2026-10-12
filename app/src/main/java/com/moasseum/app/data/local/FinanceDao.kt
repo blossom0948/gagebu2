@@ -281,8 +281,8 @@ interface FinanceDao {
     @Query("UPDATE transactions SET deletedAt = :now, updatedAt = :now WHERE id IN (:ids) AND deletedAt IS NULL AND ledgerId = 'personal' AND sharingScope = 'PRIVATE' AND type != 'TRANSFER' AND installmentGroupId IS NULL")
     suspend fun softDeletePersonalBatchRows(ids: List<Long>, now: Long): Int
 
-    @Query("UPDATE transactions SET amount = COALESCE(:amount, amount), currency = CASE WHEN :amount IS NULL THEN currency ELSE 'KRW' END, originalAmount = CASE WHEN :amount IS NULL THEN originalAmount ELSE NULL END, exchangeRate = CASE WHEN :amount IS NULL THEN exchangeRate ELSE NULL END, exchangeRateDate = CASE WHEN :amount IS NULL THEN exchangeRateDate ELSE NULL END, merchant = COALESCE(:merchant, merchant), categoryKey = COALESCE(:categoryKey, categoryKey), type = COALESCE(:type, type), occurredAt = COALESCE(:occurredAt, occurredAt), timezone = COALESCE(:timezone, timezone), memo = COALESCE(:memo, memo), updatedAt = :now WHERE id IN (:ids) AND deletedAt IS NULL AND ledgerId = 'personal' AND sharingScope = 'PRIVATE' AND type != 'TRANSFER' AND installmentGroupId IS NULL")
-    suspend fun updatePersonalBatchRows(ids: List<Long>, amount: Long?, merchant: String?, categoryKey: String?, type: String?, occurredAt: Long?, timezone: String?, memo: String?, now: Long): Int
+    @Query("UPDATE transactions SET amount = COALESCE(:amount, amount), currency = CASE WHEN :amount IS NULL THEN currency ELSE 'KRW' END, originalAmount = CASE WHEN :amount IS NULL THEN originalAmount ELSE NULL END, exchangeRate = CASE WHEN :amount IS NULL THEN exchangeRate ELSE NULL END, exchangeRateDate = CASE WHEN :amount IS NULL THEN exchangeRateDate ELSE NULL END, merchant = COALESCE(:merchant, merchant), categoryKey = COALESCE(:categoryKey, categoryKey), type = COALESCE(:type, type), occurredAt = COALESCE(:occurredAt, occurredAt), timezone = COALESCE(:timezone, timezone), memo = COALESCE(:memo, memo), paymentMethod = COALESCE(:paymentMethod, paymentMethod), updatedAt = :now WHERE id IN (:ids) AND deletedAt IS NULL AND ledgerId = 'personal' AND sharingScope = 'PRIVATE' AND type != 'TRANSFER' AND installmentGroupId IS NULL")
+    suspend fun updatePersonalBatchRows(ids: List<Long>, amount: Long?, merchant: String?, categoryKey: String?, type: String?, occurredAt: Long?, timezone: String?, memo: String?, paymentMethod: String?, now: Long): Int
 
     @Query("UPDATE transactions SET deletedAt = NULL, updatedAt = :now WHERE id IN (:ids) AND deletedAt IS NOT NULL AND ledgerId = 'personal' AND sharingScope = 'PRIVATE'")
     suspend fun restorePersonalBatchRows(ids: List<Long>, now: Long): Int
@@ -296,7 +296,7 @@ interface FinanceDao {
     }
 
     @Transaction
-    suspend fun applyPersonalBatchEdit(ids: List<Long>, amount: Long?, merchant: String?, categoryKey: String?, type: String?, occurredAt: Long?, timezone: String?, memo: String?, now: Long): Int {
+    suspend fun applyPersonalBatchEdit(ids: List<Long>, amount: Long?, merchant: String?, categoryKey: String?, type: String?, occurredAt: Long?, timezone: String?, memo: String?, paymentMethod: String?, now: Long): Int {
         require(ids.isNotEmpty() && ids.size <= 100 && ids.distinct().size == ids.size)
         require(amount == null || amount in 1..1_000_000_000_000L)
         require(merchant == null || merchant.isNotBlank())
@@ -304,8 +304,9 @@ interface FinanceDao {
         require(type == null || type in setOf("EXPENSE", "INCOME"))
         require(occurredAt == null || timezone != null)
         require(memo == null || memo.length <= 300)
-        require(amount != null || merchant != null || categoryKey != null || type != null || occurredAt != null || memo != null)
-        val changed = updatePersonalBatchRows(ids, amount, merchant, categoryKey, type, occurredAt, timezone, memo, now)
+        require(paymentMethod == null || paymentMethod.isNotBlank())
+        require(amount != null || merchant != null || categoryKey != null || type != null || occurredAt != null || memo != null || paymentMethod != null)
+        val changed = updatePersonalBatchRows(ids, amount, merchant, categoryKey, type, occurredAt, timezone, memo, paymentMethod, now)
         check(changed == ids.size) { "목록이 바뀌었어요. 거래를 다시 확인해 주세요." }
         return changed
     }

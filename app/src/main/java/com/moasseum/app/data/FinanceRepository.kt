@@ -202,7 +202,7 @@ class FinanceRepository(
                     ?: PaymentNotificationParser.inferCategoryFrom("${candidate.merchant} ${candidate.memo}"),
                 merchant = candidate.merchant.trim(),
                 memo = candidate.memo.trim(),
-                paymentMethod = paymentMethod,
+                paymentMethod = candidate.paymentMethod.takeIf(String::isNotBlank) ?: paymentMethod,
                 source = "AI_BATCH",
                 createdAt = now,
                 updatedAt = now,
@@ -227,6 +227,7 @@ class FinanceRepository(
             occurredAt = occurredAt,
             timezone = timezone,
             memo = values.memo?.trim(),
+            paymentMethod = values.paymentMethod?.trim(),
             now = System.currentTimeMillis(),
         )
     }

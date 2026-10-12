@@ -57,6 +57,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -70,6 +71,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.moasseum.app.domain.LedgerUiState
 import com.moasseum.app.domain.HomeDashboardCards
+import com.moasseum.app.domain.AiAdviceCards
 import com.moasseum.app.domain.NoSpendChallengeSettings
 import com.moasseum.app.domain.SpendingAnalysisState
 import com.moasseum.app.domain.SpendingQuestionState
@@ -121,12 +123,18 @@ fun HomeScreen(
     onSaveDisplayName: (String) -> Unit = {},
     pendingCount: Int = 0,
     homeDashboardCards: Set<String> = HomeDashboardCards.defaults,
+    aiAdviceCards: Set<String> = AiAdviceCards.defaults,
     noSpendChallenge: NoSpendChallengeSettings = NoSpendChallengeSettings(),
     scrollToTopRequest: Int = 0,
 ) {
     var selectedTabName by rememberSaveable { mutableStateOf(HomeTab.SUMMARY.name) }
     var showProfileEditor by rememberSaveable { mutableStateOf(false) }
-    val selectedTab = HomeTab.valueOf(selectedTabName)
+    val availableTabs = remember(aiAdviceCards) {
+        HomeTab.entries.filter { it != HomeTab.AI ||
+            AiAdviceCards.HOME_SUMMARY in aiAdviceCards || AiAdviceCards.HOME_REPORT in aiAdviceCards
+        }
+    }
+    val selectedTab = HomeTab.valueOf(selectedTabName).takeIf { it in availableTabs } ?: HomeTab.SUMMARY
     val listState = rememberLazyGridState()
     // The Fold4 inner display is about 690dp wide in portrait. Keep the cover
     // screen unchanged and use two dashboard columns only when the usable
@@ -135,6 +143,9 @@ fun HomeScreen(
 
     LaunchedEffect(scrollToTopRequest) {
         if (scrollToTopRequest > 0) listState.animateScrollToItem(0)
+    }
+    LaunchedEffect(selectedTab, availableTabs) {
+        if (HomeTab.valueOf(selectedTabName) !in availableTabs) selectedTabName = HomeTab.SUMMARY.name
     }
 
     LazyVerticalGrid(
@@ -165,6 +176,7 @@ fun HomeScreen(
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
             HomeTabs(
+                tabs = availableTabs,
                 selected = selectedTab,
                 onSelect = { selectedTabName = it.name },
             )
@@ -186,7 +198,16 @@ fun HomeScreen(
             }
 
             HomeTab.INSIGHTS -> item(span = { GridItemSpan(maxLineSpan) }) { InsightsContent(uiState, noSpendChallenge, onOpenManage) }
-            HomeTab.REPORT -> item(span = { GridItemSpan(maxLineSpan) }) { ReportContent(uiState, onExportPdf, onExportCsv) }
+            HomeTab.REPORT -> item(span = { GridItemSpan(maxLineSpan) }) {
+                ReportContent(
+                    uiState = uiState,
+                    onExportPdf = onExportPdf,
+                    onExportCsv = onExportCsv,
+                    aiState = aiAnalysisState,
+                    onGenerateAiReport = onGenerateAiAnalysis,
+                    showAiReport = AiAdviceCards.HOME_REPORT in aiAdviceCards,
+                )
+            }
             HomeTab.AI -> item(span = { GridItemSpan(maxLineSpan) }) {
                 AiAnalysisContent(
                     uiState = uiState,
@@ -194,6 +215,8 @@ fun HomeScreen(
                     onGenerate = onGenerateAiAnalysis,
                     questionState = aiQuestionState,
                     onAskQuestion = onAskAiQuestion,
+                    showSummary = AiAdviceCards.HOME_SUMMARY in aiAdviceCards,
+                    showReport = AiAdviceCards.HOME_REPORT in aiAdviceCards,
                 )
             }
         }
@@ -412,6 +435,7 @@ private fun QuickCaptureAction(
 
 @Composable
 private fun HomeTabs(
+    tabs: List<HomeTab>,
     selected: HomeTab,
     onSelect: (HomeTab) -> Unit,
 ) {
@@ -423,7 +447,7 @@ private fun HomeTabs(
             .padding(3.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        HomeTab.entries.forEach { tab ->
+        tabs.forEach { tab ->
             val tabColor by animateColorAsState(if (tab == selected) colors.accent else Color.Transparent, tween(if (LocalFinanceMotion.current.reduceMotion) 0 else 140), label = "homeTab")
             Surface(
                 modifier = Modifier.weight(1f).heightIn(min = 33.dp),
@@ -447,10 +471,10 @@ private fun MonthlySummaryCard(
     onSelectMonth: (YearMonth) -> Unit,
 ) {
     val colors = LocalFinanceColors.current
-    val change = uiState.expenseTotal - uiState.previousExpenseTotal
+    val change = uiState.budgetPeriodExpenseTotal - uiState.previousBudgetPeriodExpenseTotal
     val budget = uiState.budgetAmount
     val progress = if (budget != null && budget > 0) {
-        (uiState.expenseTotal.toFloat() / budget.toFloat()).coerceIn(0f, 1f)
+        (uiState.budgetPeriodExpenseTotal.toFloat() / budget.toFloat()).coerceIn(0f, 1f)
     } else {
         0f
     }
@@ -465,7 +489,7 @@ private fun MonthlySummaryCard(
                 modifier = Modifier.size(32.dp),
             ) { Icon(Icons.Rounded.ChevronLeft, contentDescription = "지난달") }
             TextButton(onClick = { onSelectMonth(YearMonth.now()) }) {
-                Text("${formatMonth(uiState.month)} · 이번 달 지출", color = colors.textSecondary,
+                Text("예산 기간 · ${uiState.budgetCycle.label}", color = colors.textSecondary,
                     style = MaterialTheme.typography.labelMedium, maxLines = 1)
             }
             androidx.compose.material3.IconButton(
@@ -473,10 +497,10 @@ private fun MonthlySummaryCard(
                 modifier = Modifier.size(32.dp),
             ) { Icon(Icons.Rounded.ChevronRight, contentDescription = "다음달") }
             Spacer(Modifier.weight(1f))
-            Text("${uiState.expenseCount}건", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            Text("${uiState.budgetPeriodExpenseCount}건", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         }
         FittedAmountText(
-            formatWon(uiState.expenseTotal),
+            formatWon(uiState.budgetPeriodExpenseTotal),
             MaterialTheme.typography.displaySmall.copy(fontSize = 30.sp, lineHeight = 36.sp, letterSpacing = (-0.5).sp),
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -510,13 +534,13 @@ private fun MonthlySummaryCard(
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "${(uiState.expenseTotal.toDouble() / budget.coerceAtLeast(1L) * 100).toInt()}% 사용",
+                    text = "${(uiState.budgetPeriodExpenseTotal.toDouble() / budget.coerceAtLeast(1L) * 100).toInt()}% 사용",
                     color = if (progress > 0.9f) colors.expense else colors.accent,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = "남은 금액 ${formatWon((budget - uiState.expenseTotal).coerceAtLeast(0))}",
+                    text = "남은 금액 ${formatWon((budget - uiState.budgetPeriodExpenseTotal).coerceAtLeast(0))}",
                     color = colors.textSecondary,
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.weight(1f).padding(start = 8.dp),
@@ -526,17 +550,17 @@ private fun MonthlySummaryCard(
         }
         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
             val pace = com.moasseum.app.domain.budgetPace(uiState)
-            if (uiState.carriedBudgetAmount > 0) Text("지난달 이월 ${formatWon(uiState.carriedBudgetAmount)} 포함", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            if (uiState.carriedBudgetAmount > 0) Text("지난 예산 기간 이월 ${formatWon(uiState.carriedBudgetAmount)} 포함", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             if (budget != null && pace.remainingDays > 0) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("남은 ${pace.remainingDays}일 · 하루 ${formatWon(pace.dailyAllowance)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
                     pace.projectedExpense?.let { Text("예상 ${formatWon(it)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium) }
                 }
-            } else pace.projectedExpense?.let { Text("현재 속도 월말 예상 ${formatWon(it)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium) }
-            if (pace.previousSamePeriodExpense > 0 && uiState.month == java.time.YearMonth.now()) Text("지난달 같은 기간 ${formatWon(pace.previousSamePeriodExpense)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-            if (uiState.previousExpenseTotal > 0L) {
+            } else pace.projectedExpense?.let { Text("현재 속도 기간 종료 예상 ${formatWon(it)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium) }
+            if (pace.previousSamePeriodExpense > 0 && uiState.month == java.time.YearMonth.now()) Text("지난 예산 기간 같은 시점 ${formatWon(pace.previousSamePeriodExpense)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            if (uiState.previousBudgetPeriodExpenseTotal > 0L) {
                 Text(
-                    text = if (change >= 0) "지난달보다 ${formatWon(change)} 더 썼어요" else "지난달보다 ${formatWon(-change)} 아꼈어요",
+                    text = if (change >= 0) "지난 예산 기간보다 ${formatWon(change)} 더 썼어요" else "지난 예산 기간보다 ${formatWon(-change)} 아꼈어요",
                     color = if (change > 0) colors.expense else colors.success,
                     style = MaterialTheme.typography.labelMedium,
                 )
@@ -807,13 +831,21 @@ private fun InsightRow(label: String, value: String) {
 }
 
 @Composable
-private fun ReportContent(uiState: LedgerUiState, onExportPdf: () -> Unit, onExportCsv: () -> Unit) {
+private fun ReportContent(
+    uiState: LedgerUiState,
+    onExportPdf: () -> Unit,
+    onExportCsv: () -> Unit,
+    aiState: SpendingAnalysisState,
+    onGenerateAiReport: () -> Unit,
+    showAiReport: Boolean,
+) {
     val colors = LocalFinanceColors.current
     val net = uiState.incomeTotal - uiState.expenseTotal
     val remainingBudget = uiState.budgetAmount?.minus(uiState.expenseTotal)
     val savingsRate = if (uiState.incomeTotal <= 0L) null else
         ((net.toDouble() / uiState.incomeTotal.toDouble()) * 100.0).roundToInt().coerceIn(-999, 999)
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (showAiReport) AiReportCard(uiState, aiState, onGenerateAiReport)
         FinanceCard {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -842,6 +874,47 @@ private fun ReportContent(uiState: LedgerUiState, onExportPdf: () -> Unit, onExp
                 }
                 androidx.compose.material3.TextButton(onClick = onExportCsv, modifier = Modifier.fillMaxWidth()) {
                     Text("거래 CSV 내보내기")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiReportCard(
+    uiState: LedgerUiState,
+    state: SpendingAnalysisState,
+    onGenerate: () -> Unit,
+) {
+    val colors = LocalFinanceColors.current
+    FinanceCard(highlighted = true) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(18.dp))
+                Text("AI 리포트", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            }
+            when (state) {
+                SpendingAnalysisState.Idle -> TextButton(onClick = onGenerate, enabled = uiState.expenseCount > 0) {
+                    Text(if (uiState.expenseCount > 0) "이번 달 분석 보기" else "거래를 기록하면 볼 수 있어요")
+                }
+                SpendingAnalysisState.Loading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("리포트를 만들고 있어요", color = colors.textSecondary)
+                }
+                is SpendingAnalysisState.Error -> {
+                    Text(state.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = onGenerate, enabled = uiState.expenseCount > 0) { Text("다시 시도") }
+                }
+                is SpendingAnalysisState.Success -> {
+                    if (state.month != uiState.month) TextButton(onClick = onGenerate, enabled = uiState.expenseCount > 0) {
+                        Text("${formatMonth(uiState.month)} 분석 만들기")
+                    } else {
+                        Text(state.analysis.summary, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        state.analysis.observations.take(2).forEach { Text("• $it", style = MaterialTheme.typography.bodySmall, color = colors.textSecondary) }
+                        state.analysis.suggestions.take(2).forEach { Text("• $it", style = MaterialTheme.typography.bodySmall, color = colors.accent) }
+                        TextButton(onClick = onGenerate, enabled = uiState.expenseCount > 0) { Text("다시 분석") }
+                    }
                 }
             }
         }
@@ -1025,6 +1098,8 @@ private fun AiAnalysisContent(
     onGenerate: () -> Unit,
     questionState: SpendingQuestionState,
     onAskQuestion: (String) -> Unit,
+    showSummary: Boolean,
+    showReport: Boolean,
 ) {
     val colors = LocalFinanceColors.current
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1056,12 +1131,12 @@ private fun AiAnalysisContent(
                             Text("분석 기준 월이 바뀌었어요. 새로 분석해 주세요.", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                             AnalysisButton(onGenerate, enabled = uiState.expenseCount > 0, label = "이번 달 다시 분석")
                         } else {
-                            Text(state.analysis.summary, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                            if (state.analysis.observations.isNotEmpty()) {
+                            if (showSummary) Text(state.analysis.summary, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                            if (showReport && state.analysis.observations.isNotEmpty()) {
                                 Text("살펴볼 점", color = colors.accent, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                                 state.analysis.observations.forEach { Text("• $it", color = colors.textPrimary, style = MaterialTheme.typography.bodyMedium) }
                             }
-                            if (state.analysis.suggestions.isNotEmpty()) {
+                            if (showReport && state.analysis.suggestions.isNotEmpty()) {
                                 Text("작은 제안", color = colors.accent, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                                 state.analysis.suggestions.forEach { Text("• $it", color = colors.textPrimary, style = MaterialTheme.typography.bodyMedium) }
                             }

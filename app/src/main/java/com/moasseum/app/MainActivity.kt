@@ -2,6 +2,8 @@ package com.moasseum.app
 
 import android.Manifest
 import android.app.Activity
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
@@ -110,6 +112,8 @@ import com.moasseum.app.ui.screens.WhatsNewDialog
 import com.moasseum.app.ui.screens.UpdateAvailableDialog
 import com.moasseum.app.ui.screens.UpdateDownloadDialog
 import com.moasseum.app.data.SharedLedgerSnapshot
+import com.moasseum.app.data.SharedMemoryPhoto
+import com.moasseum.app.data.SharedMemoryPhotoCodec
 import com.moasseum.app.ui.theme.MoasseumTheme
 import com.moasseum.app.data.AiClient
 import com.moasseum.app.data.CsvBackup
@@ -123,6 +127,7 @@ import com.moasseum.app.data.PhotoTransactionImport
 import com.moasseum.app.domain.AiParseState
 import com.moasseum.app.domain.buildActivityNotices
 import com.moasseum.app.domain.HomeDashboardCards
+import com.moasseum.app.domain.AiAdviceCards
 import com.moasseum.app.domain.incomingSharePayload
 import com.moasseum.app.domain.NoSpendChallengeSettings
 import com.moasseum.app.domain.NotificationCandidate
@@ -222,7 +227,7 @@ class MainActivity : FragmentActivity() {
         consumeAuthIntent(intent)
         setContent {
             val viewModel: LedgerViewModel = viewModel(
-                factory = LedgerViewModel.Factory(application.financeRepository),
+                factory = LedgerViewModel.Factory(application.financeRepository, application.preferencesRepository),
             )
             val darkTheme by application.preferencesRepository.isDarkTheme.collectAsStateWithLifecycle(initialValue = true)
             val reduceMotion by application.preferencesRepository.reduceMotion.collectAsStateWithLifecycle(initialValue = false)
@@ -234,7 +239,10 @@ class MainActivity : FragmentActivity() {
             val categoryBudgets by application.preferencesRepository.categoryBudgets.collectAsStateWithLifecycle(initialValue = emptyMap())
             val monthlyIncomeTargets by application.preferencesRepository.monthlyIncomeTargets.collectAsStateWithLifecycle(initialValue = emptyMap())
             val homeDashboardCards by application.preferencesRepository.homeDashboardCards.collectAsStateWithLifecycle(initialValue = HomeDashboardCards.defaults)
+            val aiAdviceCards by application.preferencesRepository.aiAdviceCards.collectAsStateWithLifecycle(initialValue = AiAdviceCards.defaults)
+            val budgetPayday by application.preferencesRepository.budgetPayday.collectAsStateWithLifecycle(initialValue = 1)
             val noSpendChallenge by application.preferencesRepository.noSpendChallenge.collectAsStateWithLifecycle(initialValue = NoSpendChallengeSettings())
+            val yearEndGrossSalaries by application.preferencesRepository.yearEndGrossSalaries.collectAsStateWithLifecycle(initialValue = emptyMap())
             val profileDisplayName by application.preferencesRepository.profileDisplayName.collectAsStateWithLifecycle(initialValue = "")
             val readActivityNoticeIds by application.preferencesRepository.readActivityNoticeIds.collectAsStateWithLifecycle(initialValue = emptySet())
             val postNotificationPermissionPromptShown by application.preferencesRepository.notificationPostPermissionPromptShown.collectAsStateWithLifecycle(initialValue = false)
@@ -282,7 +290,13 @@ class MainActivity : FragmentActivity() {
                         onSaveMonthlyIncomeTarget = { monthKey, amount -> application.preferencesRepository.saveMonthlyIncomeTarget(monthKey, amount) },
                         homeDashboardCards = homeDashboardCards,
                         onSaveHomeDashboardCards = { cards -> application.preferencesRepository.saveHomeDashboardCards(cards) },
+                        aiAdviceCards = aiAdviceCards,
+                        onSaveAiAdviceCards = { cards -> application.preferencesRepository.saveAiAdviceCards(cards) },
+                        budgetPayday = budgetPayday,
+                        onSaveBudgetPayday = viewModel::setBudgetPayday,
                         noSpendChallenge = noSpendChallenge,
+                        yearEndGrossSalaries = yearEndGrossSalaries,
+                        onSaveYearEndGrossSalary = application.preferencesRepository::saveYearEndGrossSalary,
                         profileDisplayName = profileDisplayName,
                         readActivityNoticeIds = readActivityNoticeIds,
                         onSaveDisplayName = { name ->
@@ -453,7 +467,13 @@ private fun MoasseumApp(
     onSaveMonthlyIncomeTarget: suspend (String, Long?) -> Unit,
     homeDashboardCards: Set<String>,
     onSaveHomeDashboardCards: suspend (Set<String>) -> Unit,
+    aiAdviceCards: Set<String>,
+    onSaveAiAdviceCards: suspend (Set<String>) -> Unit,
+    budgetPayday: Int,
+    onSaveBudgetPayday: suspend (Int) -> Unit,
     noSpendChallenge: NoSpendChallengeSettings,
+    yearEndGrossSalaries: Map<Int, Long>,
+    onSaveYearEndGrossSalary: suspend (Int, Long?) -> Unit,
     profileDisplayName: String,
     readActivityNoticeIds: Set<String>,
     onSaveDisplayName: (String) -> Unit,
@@ -612,12 +632,17 @@ private fun MoasseumApp(
     var sharedError by remember { mutableStateOf<String?>(null) }
     var sharedAiAnalysisState by remember { mutableStateOf<SpendingAnalysisState>(SpendingAnalysisState.Idle) }
     var sharedAiQuestionState by remember { mutableStateOf<SpendingQuestionState>(SpendingQuestionState.Idle) }
+    var viewingSharedMemory by remember { mutableStateOf<SharedMemoryPhoto?>(null) }
+    var viewingSharedMemoryBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var loadingSharedMemoryId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(currentRoute, authState.user?.id) {
         if (authState.user != null && (currentRoute == ROUTE_TOGETHER || sharedSnapshot.ledgerId == null) && !sharedBusy) {
             sharedBusy = true
             sharedError = null
             try {
-                sharedSnapshot = application.sharedLedgerRepository.refresh()
+                val refreshed = application.sharedLedgerRepository.refresh()
+                sharedSnapshot = refreshed
+                application.preferencesRepository.saveSharedAnniversaries(refreshed.financeItems)
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -630,13 +655,20 @@ private fun MoasseumApp(
     LaunchedEffect(authState.linkEvent) {
         if (authState.linkEvent > 0) showAuth = true
     }
+    LaunchedEffect(authState.user?.id, authState.initialized) {
+        if (authState.initialized && authState.user == null) {
+            application.preferencesRepository.saveSharedAnniversaries(emptyList())
+        }
+    }
     fun runSharedAction(successMessage: String? = null, action: suspend () -> SharedLedgerSnapshot) {
         if (sharedBusy) return
         sharedBusy = true
         sharedError = null
         coroutineScope.launch {
             try {
-                sharedSnapshot = action()
+                val updated = action()
+                sharedSnapshot = updated
+                application.preferencesRepository.saveSharedAnniversaries(updated.financeItems)
                 if (successMessage != null) snackbarHostState.showSnackbar(successMessage)
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
@@ -1260,6 +1292,7 @@ private fun MoasseumApp(
                         onSaveDisplayName = onSaveDisplayName,
                         pendingCount = pendingCandidates.size + unreadActivityNoticeCount,
                         homeDashboardCards = homeDashboardCards,
+                        aiAdviceCards = aiAdviceCards,
                         noSpendChallenge = noSpendChallenge,
                         scrollToTopRequest = homeScrollToTopRequest,
                     )
@@ -1407,6 +1440,74 @@ private fun MoasseumApp(
                             sharedReportMonth = month
                             exportSharedPdfLauncher.launch("moasseum-together-${month}.pdf")
                         },
+                        aiAdviceCards = aiAdviceCards,
+                        onAddMemoryPhotos = { uris, title, memo, date ->
+                            if (!sharedBusy) {
+                                sharedBusy = true
+                                sharedError = null
+                                coroutineScope.launch {
+                                    var uploaded = 0
+                                    var failure: String? = null
+                                    try {
+                                        for (uri in uris) {
+                                            val jpeg = SharedMemoryPhotoCodec.encode(context.contentResolver, uri)
+                                            sharedSnapshot = application.sharedLedgerRepository.addMemoryPhoto(title, memo, date, jpeg)
+                                            uploaded++
+                                        }
+                                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                        throw cancelled
+                                    } catch (error: Exception) {
+                                        failure = error.message ?: "사진을 공유하지 못했어요."
+                                        sharedError = failure
+                                    } finally {
+                                        sharedBusy = false
+                                    }
+                                    val message = when {
+                                        failure == null -> "사진 ${uploaded}장을 함께 공유했어요."
+                                        uploaded > 0 -> "사진 ${uploaded}장 공유 · 나머지는 실패했어요: $failure"
+                                        else -> failure ?: "사진을 공유하지 못했어요."
+                                    }
+                                    snackbarHostState.showSnackbar(message)
+                                }
+                            }
+                        },
+                        onViewMemory = { photo ->
+                            viewingSharedMemory = photo
+                            viewingSharedMemoryBitmap = null
+                            loadingSharedMemoryId = photo.id
+                            coroutineScope.launch {
+                                val result = withContext(Dispatchers.IO) {
+                                    runCatching {
+                                        val bytes = application.sharedLedgerRepository.downloadMemoryPhoto(photo)
+                                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                            ?: error("공유 사진을 표시할 수 없어요.")
+                                    }
+                                }
+                                if (viewingSharedMemory?.id == photo.id) {
+                                    loadingSharedMemoryId = null
+                                    result.onSuccess { viewingSharedMemoryBitmap = it }
+                                        .onFailure { error -> snackbarHostState.showSnackbar(error.message ?: "사진을 불러오지 못했어요.") }
+                                }
+                            }
+                        },
+                        onDeleteMemory = { photo ->
+                            runSharedAction("공유 사진을 삭제했어요.") {
+                                if (viewingSharedMemory?.id == photo.id) {
+                                    viewingSharedMemory = null
+                                    viewingSharedMemoryBitmap = null
+                                    loadingSharedMemoryId = null
+                                }
+                                application.sharedLedgerRepository.deleteMemoryPhoto(photo)
+                            }
+                        },
+                        viewingMemory = viewingSharedMemory,
+                        viewingMemoryBitmap = viewingSharedMemoryBitmap,
+                        memoryLoading = loadingSharedMemoryId != null,
+                        onCloseMemoryViewer = {
+                            viewingSharedMemory = null
+                            viewingSharedMemoryBitmap = null
+                            loadingSharedMemoryId = null
+                        },
                         aiAnalysisState = sharedAiAnalysisState,
                         aiQuestionState = sharedAiQuestionState,
                         onAnalyzeShared = ::generateSharedSpendingAnalysis,
@@ -1435,7 +1536,13 @@ private fun MoasseumApp(
                         uiState = uiState,
                         homeDashboardCards = homeDashboardCards,
                         onSaveHomeDashboardCards = onSaveHomeDashboardCards,
+                        aiAdviceCards = aiAdviceCards,
+                        onSaveAiAdviceCards = onSaveAiAdviceCards,
+                        budgetPayday = budgetPayday,
+                        onSaveBudgetPayday = onSaveBudgetPayday,
                         noSpendChallenge = noSpendChallenge,
+                        yearEndGrossSalaries = yearEndGrossSalaries,
+                        onSaveYearEndGrossSalary = onSaveYearEndGrossSalary,
                         onSaveNoSpendChallenge = onSaveNoSpendChallenge,
                         paymentMethods = paymentMethods,
                         paymentCards = paymentCards,
@@ -1540,7 +1647,7 @@ private fun MoasseumApp(
                 onParseAi = { text ->
                     aiState = AiParseState.Loading
                     coroutineScope.launch {
-                        val result = aiClient.parseTransaction(text)
+                        val result = aiClient.parseTransaction(text, paymentMethods = paymentMethods)
                         aiState = result.fold(
                             onSuccess = { candidate -> AiParseState.Success(candidate) },
                             onFailure = { error -> AiParseState.Error(error.message ?: "AI 해석에 실패했어요.") },
@@ -1631,7 +1738,9 @@ private fun MoasseumApp(
                         true
                     }
                 },
-                onParseBatchWithAi = { text -> aiClient.parseBatchCommand(text, uiState.transactions) },
+                onParseBatchWithAi = { text ->
+                    aiClient.parseBatchCommand(text, uiState.transactions, paymentMethods = paymentMethods)
+                },
                 onApplyBatch = { action, ids, edit ->
                     if (savingTransaction || ids.isEmpty()) false else {
                         savingTransaction = true
@@ -1709,6 +1818,7 @@ private fun MoasseumApp(
         onAccountDeleted = { userId ->
             showAuth = false
             sharedSnapshot = SharedLedgerSnapshot()
+            coroutineScope.launch { application.preferencesRepository.saveSharedAnniversaries(emptyList()) }
             sharedAiAnalysisState = SpendingAnalysisState.Idle
             sharedAiQuestionState = SpendingQuestionState.Idle
             coroutineScope.launch {

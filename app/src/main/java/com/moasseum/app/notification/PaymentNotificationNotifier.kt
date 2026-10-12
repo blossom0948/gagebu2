@@ -37,8 +37,8 @@ object PaymentNotificationNotifier {
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.getSystemService(NotificationManager::class.java).createNotificationChannel(
-                NotificationChannel(FINANCE_CHANNEL_ID, "예산·고정비 알림", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                    description = "예산 사용과 다가오는 고정 결제일을 알려드려요."
+                NotificationChannel(FINANCE_CHANNEL_ID, "예산·고정비·기념일 알림", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    description = "예산 흐름, 다가오는 고정 결제일과 공동 기념일을 알려드려요."
                 },
             )
         }

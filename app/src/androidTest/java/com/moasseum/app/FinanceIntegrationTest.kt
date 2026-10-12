@@ -31,6 +31,33 @@ class FinanceIntegrationTest {
         assertTrue("The app should appear in Android's multi-image share targets.", matchingActivity)
     }
 
+    @Test fun batchAiEntriesAndEditsPersistTheirIndividualPaymentMethods() = runBlocking {
+        val database = Room.inMemoryDatabaseBuilder(context, FinanceDatabase::class.java).build()
+        try {
+            val dao = database.financeDao()
+            val repo = FinanceRepository(dao)
+            fun candidate(method: String) = AiTransactionCandidate(
+                type = TransactionType.EXPENSE,
+                amount = 4_500,
+                occurredDate = LocalDate.parse("2026-10-12"),
+                categoryKey = "CAFE",
+                merchant = "QA 카페",
+                memo = "",
+                source = AiCandidateSource.LOCAL,
+                paymentMethod = method,
+            )
+
+            assertEquals(2, repo.addBatchTransactions(listOf(candidate("토스뱅크 체크카드"), candidate("")), "현금"))
+            val rows = repo.observeTransactions().first().sortedBy { it.id }
+            assertEquals(listOf("토스뱅크 체크카드", "현금"), rows.map { it.paymentMethod })
+
+            assertEquals(1, repo.applyBatchEdit(listOf(rows.first().id), BatchEditValues(paymentMethod = "현대카드")))
+            assertEquals("현대카드", repo.observeTransactions().first().first { it.id == rows.first().id }.paymentMethod)
+        } finally {
+            database.close()
+        }
+    }
+
     @Test fun csvTimezoneAndEditedTransferDateArePreservedInRoom() = runBlocking {
         val database = Room.inMemoryDatabaseBuilder(context, FinanceDatabase::class.java).build()
         try {

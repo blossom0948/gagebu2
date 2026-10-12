@@ -95,7 +95,7 @@ fun BatchCommandSheet(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
                 onClick = {
-                    val parsed = runCatching { BatchCommandParser.parse(command, transactions, LocalDate.now()) }
+                    val parsed = runCatching { BatchCommandParser.parse(command, transactions, LocalDate.now(), paymentMethods) }
                     parsed.onSuccess { plan = it; selectedIds = emptySet(); error = null }
                         .onFailure { plan = null; error = it.message ?: "문장을 해석하지 못했어요." }
                 },
@@ -145,7 +145,7 @@ fun BatchCommandSheet(
         }
         if (command.isNotBlank()) {
             Text(
-                "AI 해석은 입력 문장만 서버로 보내요. 결과를 확인해야 저장됩니다.",
+                "문장과 날짜 해석에 필요한 오늘 날짜·시간대만 서버로 보내요. 거래 목록은 기기 안에서 대조하고, 확인 후 저장해요.",
                 color = colors.textSecondary,
                 style = MaterialTheme.typography.labelSmall,
             )
@@ -155,7 +155,12 @@ fun BatchCommandSheet(
             is BatchCommandPlan.Add -> {
                 Text("추가할 거래 ${current.candidates.size}건", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 current.candidates.forEachIndexed { index, item ->
-                    BatchCandidateRow(index + 1, item, onEdit = { editingCandidateIndex = index })
+                    BatchCandidateRow(
+                        index + 1,
+                        item,
+                        item.paymentMethod.takeIf { it in paymentMethods } ?: paymentMethod,
+                        onEdit = { editingCandidateIndex = index },
+                    )
                 }
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     paymentMethods.forEach { method ->
@@ -164,7 +169,11 @@ fun BatchCommandSheet(
                     }
                 }
                 Button(
-                    onClick = { onAdd(current.candidates, paymentMethod) },
+                    onClick = {
+                        onAdd(current.candidates.map { candidate ->
+                            candidate.copy(paymentMethod = candidate.paymentMethod.takeIf { it in paymentMethods } ?: paymentMethod)
+                        }, paymentMethod)
+                    },
                     enabled = !saving,
                     modifier = Modifier.fillMaxWidth(),
                 ) { if (saving) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("${current.candidates.size}건 추가") }
@@ -189,6 +198,7 @@ fun BatchCommandSheet(
                         current.edit.type?.let { "유형 ${if (it.name == "INCOME") "수입" else "지출"}" },
                         current.edit.occurredDate?.let { "날짜 ${formatDate(it)}" },
                         current.edit.memo?.let { "메모 $it" },
+                        current.edit.paymentMethod?.let { "결제수단 $it" },
                     ).joinToString(" · ")
                     Surface(color = colors.accentSoft, shape = RoundedCornerShape(12.dp)) {
                         Text("변경: $patch", modifier = Modifier.padding(10.dp), style = MaterialTheme.typography.bodySmall)
@@ -236,6 +246,8 @@ fun BatchCommandSheet(
     if (editingCandidateIndex != null && candidateToEdit != null) {
         BatchCandidateEditDialog(
             candidate = candidateToEdit,
+            paymentMethods = paymentMethods,
+            defaultPaymentMethod = paymentMethod,
             onDismiss = { editingCandidateIndex = null },
             onSave = { edited ->
                 val index = editingCandidateIndex
@@ -264,7 +276,7 @@ fun BatchCommandSheet(
 }
 
 @Composable
-private fun BatchCandidateRow(index: Int, candidate: AiTransactionCandidate, onEdit: () -> Unit) {
+private fun BatchCandidateRow(index: Int, candidate: AiTransactionCandidate, paymentMethod: String, onEdit: () -> Unit) {
     val colors = LocalFinanceColors.current
     Surface(color = colors.surfaceRaised, shape = RoundedCornerShape(12.dp)) {
         Column {
@@ -272,7 +284,7 @@ private fun BatchCandidateRow(index: Int, candidate: AiTransactionCandidate, onE
                 Text("$index", color = colors.accent, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 9.dp))
                 Column(Modifier.weight(1f)) {
                     Text(candidate.merchant, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                    Text("${formatDate(candidate.occurredDate)} · ${categoryLabel(candidate.categoryKey)}",
+                    Text("${formatDate(candidate.occurredDate)} · ${categoryLabel(candidate.categoryKey)} · $paymentMethod",
                         style = MaterialTheme.typography.labelSmall, color = colors.textSecondary)
                 }
                 Text(formatSignedWon(candidate.amount, candidate.type), style = MaterialTheme.typography.labelLarge,
@@ -290,6 +302,7 @@ private fun BatchCandidateRow(index: Int, candidate: AiTransactionCandidate, onE
                             "date" -> "날짜"
                             "category" -> "분류"
                             "merchant" -> "가맹점"
+                            "paymentMethod" -> "결제수단"
                             else -> field
                         }
                     }}",
@@ -305,6 +318,8 @@ private fun BatchCandidateRow(index: Int, candidate: AiTransactionCandidate, onE
 @Composable
 private fun BatchCandidateEditDialog(
     candidate: AiTransactionCandidate,
+    paymentMethods: List<String>,
+    defaultPaymentMethod: String,
     onDismiss: () -> Unit,
     onSave: (AiTransactionCandidate) -> Unit,
 ) {
@@ -315,6 +330,9 @@ private fun BatchCandidateEditDialog(
     var memo by rememberSaveable(candidate.memo) { mutableStateOf(candidate.memo) }
     var type by rememberSaveable(candidate.type) { mutableStateOf(candidate.type) }
     var category by rememberSaveable(candidate.categoryKey) { mutableStateOf(candidate.categoryKey) }
+    var paymentMethod by rememberSaveable(candidate.paymentMethod, defaultPaymentMethod) {
+        mutableStateOf(candidate.paymentMethod.takeIf { it in paymentMethods } ?: defaultPaymentMethod)
+    }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -343,6 +361,12 @@ private fun BatchCandidateEditDialog(
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     com.moasseum.app.data.AiClient.ALLOWED_CATEGORIES.forEach { key ->
                         FilterChip(selected = category == key, onClick = { category = key }, label = { Text(categoryLabel(key)) })
+                    }
+                }
+                Text("결제수단", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    paymentMethods.forEach { method ->
+                        FilterChip(selected = paymentMethod == method, onClick = { paymentMethod = method }, label = { Text(method) })
                     }
                 }
                 FinanceTextField(value = date, onValueChange = { date = it.take(10) },
@@ -375,6 +399,7 @@ private fun BatchCandidateEditDialog(
                             memo = memo.trim(),
                             type = type,
                             categoryKey = category,
+                            paymentMethod = paymentMethod,
                             needsConfirmation = candidate.needsConfirmation.filterNot(changed::contains),
                         ))
                     }

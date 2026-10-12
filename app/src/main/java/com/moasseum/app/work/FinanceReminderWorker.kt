@@ -24,7 +24,9 @@ class FinanceReminderWorker(context: Context, parameters: WorkerParameters) : Co
         if (!app.preferencesRepository.financeRemindersEnabled.first()) return Result.success()
         if (!PaymentNotificationNotifier.areFinanceRemindersEnabled(applicationContext)) return Result.success()
         val today = LocalDate.now()
-        val month = YearMonth.from(today)
+        val payday = app.preferencesRepository.budgetPayday.first()
+        val budgetCycle = com.moasseum.app.domain.budgetCycleForDate(today, payday)
+        val budgetMonth = budgetCycle.startMonth
         val activeTransactions = app.database.financeDao().allTransactionsForBackup().filter { it.deletedAt == null && it.ledgerId == "personal" }
             .map { entity ->
                 com.moasseum.app.domain.Transaction(
@@ -43,20 +45,20 @@ class FinanceReminderWorker(context: Context, parameters: WorkerParameters) : Co
         val plans = app.database.financeDao().allBudgetsForBackup().mapNotNull { row ->
             runCatching { BudgetPlan(YearMonth.parse(row.monthKey), row.amount, row.rollover) }.getOrNull()
         }
-        val budget = effectiveBudget(month, plans, activeTransactions)?.total
+        val budget = effectiveBudget(budgetMonth, plans, activeTransactions, payday)?.total
         val spent = activeTransactions.filter {
-            it.type == TransactionType.EXPENSE && YearMonth.from(it.occurredDate) == month && !it.occurredDate.isAfter(today)
+            it.type == TransactionType.EXPENSE && it.occurredDate in budgetCycle.startDate..minOf(today, budgetCycle.endDate)
         }.sumOf { it.amount }
         if (budget != null && budget > 0L) {
             for (threshold in listOf(50, 100)) {
                 val boundary = if (threshold == 50) (budget + 1) / 2 else budget
                 if (spent >= boundary) {
-                    val key = "budget:$month:$threshold"
+                    val key = "budget:$budgetMonth:$threshold"
                     if (app.preferencesRepository.claimFinanceReminder(key)) {
                         PaymentNotificationNotifier.showFinanceReminder(
                             applicationContext,
-                            if (threshold == 50) "이번 달 예산의 절반을 썼어요" else "이번 달 목표 지출을 넘었어요",
-                            "${month.monthValue}월 ${com.moasseum.app.domain.formatWon(spent)} 사용 · 목표 ${com.moasseum.app.domain.formatWon(budget)}",
+                            if (threshold == 50) "예산 기간의 절반을 썼어요" else "예산 기간 목표를 넘었어요",
+                            "${budgetCycle.label} · ${com.moasseum.app.domain.formatWon(spent)} 사용 · 목표 ${com.moasseum.app.domain.formatWon(budget)}",
                             key,
                         )
                     }

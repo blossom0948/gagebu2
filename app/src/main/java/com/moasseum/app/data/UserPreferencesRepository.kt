@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.moasseum.app.domain.PaymentCard
 import com.moasseum.app.domain.HomeDashboardCards
+import com.moasseum.app.domain.AiAdviceCards
 import com.moasseum.app.domain.NoSpendChallengeSettings
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -16,6 +17,8 @@ import kotlinx.coroutines.flow.first
 import java.util.Locale
 import java.time.YearMonth
 import java.time.LocalDate
+import org.json.JSONArray
+import org.json.JSONObject
 
 val DEFAULT_PAYMENT_METHODS = listOf("카드", "현금", "이체", "기타")
 val DEFAULT_CATEGORY_LABELS = linkedMapOf(
@@ -43,6 +46,8 @@ val DEFAULT_CATEGORY_ORDER = DEFAULT_CATEGORY_LABELS.keys.toList()
 
 private val Context.settingsDataStore by preferencesDataStore(name = "moasseum_settings")
 
+data class LocalSharedAnniversary(val id: String, val title: String, val dateKey: String)
+
 class UserPreferencesRepository(
     private val context: Context,
 ) {
@@ -52,6 +57,7 @@ class UserPreferencesRepository(
             isDarkTheme.first(), reduceMotion.first(), paymentMethods.first(), paymentCards.first(),
             categoryLabels.first(), categoryBudgets.first(), categoryOrder.first(), monthlyIncomeTargets.first(),
             homeDashboardCards.first(), challenge.goalDays, challenge.startDate,
+            yearEndGrossSalaries.first(), aiAdviceCards.first(), budgetPayday.first(),
         )
     }
 
@@ -70,9 +76,14 @@ class UserPreferencesRepository(
             preferences[MONTHLY_INCOME_TARGETS] = settings.monthlyIncomeTargets.entries
                 .sortedBy { it.key }.takeLast(MAX_INCOME_TARGET_MONTHS).joinToString("\n") { "${it.key}=${it.value}" }
             preferences[HOME_DASHBOARD_CARDS] = settings.homeDashboardCards.filter { it in HomeDashboardCards.defaults }.sorted().joinToString("\n")
+            preferences[AI_ADVICE_CARDS] = settings.aiAdviceCards.filter { it in AiAdviceCards.defaults }.sorted().joinToString("\n")
+            preferences[BUDGET_PAYDAY] = settings.budgetPayday.takeIf { it in 1..31 } ?: 1
             preferences[NO_SPEND_CHALLENGE_GOAL] = settings.noSpendChallengeGoalDays.takeIf { it in SUPPORTED_CHALLENGE_GOALS } ?: 7
             settings.noSpendChallengeStartDate?.let { preferences[NO_SPEND_CHALLENGE_START] = it.toEpochDay() }
                 ?: preferences.remove(NO_SPEND_CHALLENGE_START)
+            preferences[YEAR_END_GROSS_SALARIES] = settings.yearEndGrossSalaries.entries
+                .filter { (year, salary) -> year in 1900..9999 && salary in 1..100_000_000_000L }
+                .sortedBy { it.key }.takeLast(10).joinToString("\n") { "${it.key}=${it.value}" }
         }
     }
     val isDarkTheme: Flow<Boolean> =
@@ -208,6 +219,17 @@ class UserPreferencesRepository(
             ?: HomeDashboardCards.defaults
     }
 
+    val aiAdviceCards: Flow<Set<String>> = context.settingsDataStore.data.map { preferences ->
+        preferences[AI_ADVICE_CARDS]?.lineSequence()
+            ?.filter { it in AiAdviceCards.defaults }
+            ?.toSet()
+            ?: AiAdviceCards.defaults
+    }
+
+    val budgetPayday: Flow<Int> = context.settingsDataStore.data.map { preferences ->
+        preferences[BUDGET_PAYDAY]?.takeIf { it in 1..31 } ?: 1
+    }
+
     val noSpendChallenge: Flow<NoSpendChallengeSettings> = context.settingsDataStore.data.map { preferences ->
         NoSpendChallengeSettings(
             startDate = preferences[NO_SPEND_CHALLENGE_START]?.let { epochDay ->
@@ -215,6 +237,30 @@ class UserPreferencesRepository(
             },
             goalDays = preferences[NO_SPEND_CHALLENGE_GOAL]?.takeIf { it in SUPPORTED_CHALLENGE_GOALS } ?: 7,
         )
+    }
+
+    val yearEndGrossSalaries: Flow<Map<Int, Long>> = context.settingsDataStore.data.map { preferences ->
+        preferences[YEAR_END_GROSS_SALARIES].orEmpty().lineSequence()
+            .mapNotNull { line ->
+                val year = line.substringBefore('=', "").toIntOrNull()
+                val salary = line.substringAfter('=', "").toLongOrNull()
+                if (year != null && year in 1900..9999 && salary != null && salary in 1..100_000_000_000L) year to salary else null
+            }.toMap()
+    }
+
+    val sharedAnniversaries: Flow<List<LocalSharedAnniversary>> = context.settingsDataStore.data.map { preferences ->
+        runCatching {
+            val rows = JSONArray(preferences[SHARED_ANNIVERSARIES].orEmpty())
+            (0 until rows.length()).mapNotNull { index ->
+                val row = rows.optJSONObject(index) ?: return@mapNotNull null
+                val id = row.optString("id").takeIf { it.isNotBlank() && it.length <= 120 } ?: return@mapNotNull null
+                val title = row.optString("title").trim().takeIf { it.isNotBlank() && it.length <= 80 } ?: return@mapNotNull null
+                val dateKey = row.optString("dateKey").takeIf { value ->
+                    runCatching { java.time.MonthDay.parse("--$value") }.isSuccess
+                } ?: return@mapNotNull null
+                LocalSharedAnniversary(id, title, dateKey)
+            }.take(100)
+        }.getOrDefault(emptyList())
     }
 
     val hiddenQuickEntrySuggestions: Flow<Set<String>> = context.settingsDataStore.data.map { preferences ->
@@ -244,6 +290,18 @@ class UserPreferencesRepository(
         }
     }
 
+    suspend fun saveAiAdviceCards(cards: Set<String>) {
+        require(cards.all { it in AiAdviceCards.defaults }) { "AI 카드 설정이 올바르지 않아요." }
+        context.settingsDataStore.edit { preferences ->
+            preferences[AI_ADVICE_CARDS] = cards.sorted().joinToString("\n")
+        }
+    }
+
+    suspend fun saveBudgetPayday(day: Int) {
+        require(day in 1..31) { "급여일은 1일부터 31일까지예요." }
+        context.settingsDataStore.edit { preferences -> preferences[BUDGET_PAYDAY] = day }
+    }
+
     suspend fun configureNoSpendChallenge(enabled: Boolean, goalDays: Int) {
         require(goalDays in SUPPORTED_CHALLENGE_GOALS) { "챌린지 기간은 7일, 14일, 30일 중에서 선택해 주세요." }
         context.settingsDataStore.edit { preferences ->
@@ -256,6 +314,26 @@ class UserPreferencesRepository(
                 preferences.remove(NO_SPEND_CHALLENGE_START)
             }
         }
+    }
+
+    suspend fun saveYearEndGrossSalary(year: Int, salary: Long?) {
+        require(year in 1900..9999)
+        require(salary == null || salary in 1..100_000_000_000L)
+        val updated = yearEndGrossSalaries.first().toMutableMap().apply {
+            if (salary == null) remove(year) else put(year, salary)
+        }.toSortedMap().toList().takeLast(10).toMap()
+        context.settingsDataStore.edit { preferences ->
+            preferences[YEAR_END_GROSS_SALARIES] = updated.entries.joinToString("\n") { "${it.key}=${it.value}" }
+        }
+    }
+
+    suspend fun saveSharedAnniversaries(items: List<SharedFinanceItem>) {
+        val json = JSONArray().apply {
+            items.asSequence().filter { it.kind == SharedFinanceKind.ANNIVERSARY }.take(100).forEach { item ->
+                put(JSONObject().put("id", item.id.take(120)).put("title", item.title.trim().take(80)).put("dateKey", item.dateKey.orEmpty()))
+            }
+        }
+        context.settingsDataStore.edit { preferences -> preferences[SHARED_ANNIVERSARIES] = json.toString() }
     }
 
     suspend fun setDarkTheme(enabled: Boolean) {
@@ -455,8 +533,12 @@ class UserPreferencesRepository(
         val CATEGORY_ORDER = stringPreferencesKey("category_order")
         val MONTHLY_INCOME_TARGETS = stringPreferencesKey("monthly_income_targets")
         val HOME_DASHBOARD_CARDS = stringPreferencesKey("home_dashboard_cards")
+        val AI_ADVICE_CARDS = stringPreferencesKey("ai_advice_cards")
+        val BUDGET_PAYDAY = intPreferencesKey("budget_payday")
         val NO_SPEND_CHALLENGE_START = longPreferencesKey("no_spend_challenge_start")
         val NO_SPEND_CHALLENGE_GOAL = intPreferencesKey("no_spend_challenge_goal")
+        val YEAR_END_GROSS_SALARIES = stringPreferencesKey("year_end_gross_salaries")
+        val SHARED_ANNIVERSARIES = stringPreferencesKey("shared_anniversaries_for_local_reminders")
         val CUSTOM_CATEGORY_KEY = Regex("CUSTOM_[A-F0-9]{12}")
         const val MAX_CUSTOM_CATEGORIES = 20
         const val MAX_CATEGORY_BUDGETS = 39

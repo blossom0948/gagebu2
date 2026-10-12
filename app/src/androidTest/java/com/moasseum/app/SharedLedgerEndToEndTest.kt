@@ -59,6 +59,14 @@ class SharedLedgerEndToEndTest {
             assertEquals(2, joined.memberCount)
             assertEquals(2, repoA.refresh().memberCount)
 
+            val selectedPhotoBytes = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xD9.toByte())
+            val photoSnapshot = repoA.addMemoryPhoto("선택한 QA 사진", "임의 테스트 메모", LocalDate.parse("2026-10-12"), selectedPhotoBytes)
+            assertEquals(1, photoSnapshot.memories.size)
+            val partnerPhoto = repoB.refresh().memories.single()
+            assertEquals("선택한 QA 사진", partnerPhoto.title)
+            assertEquals("임의 테스트 메모", partnerPhoto.memo)
+            assertEquals(selectedPhotoBytes.toList(), repoB.downloadMemoryPhoto(partnerPhoto).toList())
+
             val aRows = dbA.financeDao().allTransactionsForBackup().associateBy { it.merchant }
             val aSharedId = aRows.getValue("QA 공유 지출").id
             val aPrivateId = aRows.getValue("QA 개인 수입").id
@@ -93,6 +101,9 @@ class SharedLedgerEndToEndTest {
             assertEquals("SHARED", dbB.financeDao().getTransaction(bSharedId)!!.sharingScope)
             assertNull(repoUnrelated.refresh().ledgerId)
             assertTrue(repoUnrelated.refresh().transactions.isEmpty())
+            assertTrue(repoUnrelated.refresh().memories.isEmpty())
+            assertTrue(repoA.deleteMemoryPhoto(partnerPhoto).memories.isEmpty())
+            assertTrue(repoB.refresh().memories.isEmpty())
         } finally {
             dbA.close()
             dbB.close()
@@ -136,6 +147,9 @@ class SharedLedgerEndToEndTest {
         private val members = mutableMapOf<String, MutableSet<String>>()
         private val invites = mutableMapOf<String, String>()
         val rows = mutableMapOf<String, MutableMap<String, RemoteSharedTransaction>>()
+        private val photos = mutableMapOf<String, MutableMap<String, SharedMemoryPhoto>>()
+        private val photoBytes = mutableMapOf<String, ByteArray>()
+        private val uploadedPhotoPaths = mutableSetOf<String>()
         private fun user(token: String): String = token.removePrefix("qa-access-").also {
             require(it != token && it.isNotBlank()) { "Unknown synthetic identity" }
         }
@@ -153,6 +167,50 @@ class SharedLedgerEndToEndTest {
         override suspend fun fetchFinanceItems(token: String, ledgerId: String): List<SharedFinanceItem> { member(token, ledgerId); return emptyList() }
         override suspend fun saveFinanceItem(token: String, ledgerId: String, ownerId: String, item: SharedFinanceItem) = member(token, ledgerId)
         override suspend fun deleteFinanceItem(token: String, ledgerId: String, itemId: String) = member(token, ledgerId)
+        override suspend fun fetchMemories(token: String, ledgerId: String): List<SharedMemoryPhoto> {
+            member(token, ledgerId)
+            return photos[ledgerId]?.values?.filter { it.objectPath in uploadedPhotoPaths }?.toList().orEmpty()
+        }
+        override suspend fun reserveMemory(token: String, ledgerId: String, ownerId: String, id: String, title: String, memo: String, date: LocalDate, path: String, sizeBytes: Long) {
+            member(token, ledgerId)
+            check(user(token) == ownerId)
+            require(sizeBytes in 1..SharedLedgerRepository.MAX_MEMORY_PHOTO_BYTES.toLong())
+            val rows = photos.getOrPut(ledgerId) { mutableMapOf() }
+            check(rows.size < SharedLedgerRepository.MAX_MEMORY_PHOTOS)
+            check(rows.values.sumOf { it.sizeBytes } + sizeBytes <= SharedLedgerRepository.MAX_MEMORY_BYTES)
+            check(id !in rows)
+            rows[id] = SharedMemoryPhoto(id, ledgerId, ownerId, title, memo, date, path, sizeBytes)
+        }
+        override suspend fun uploadMemoryObject(token: String, path: String, bytes: ByteArray) {
+            val photo = photos.values.asSequence().flatMap { it.values.asSequence() }.single { it.objectPath == path }
+            member(token, photo.ledgerId)
+            photoBytes[path] = bytes.copyOf()
+        }
+        override suspend fun markMemoryUploaded(token: String, ledgerId: String, id: String) {
+            member(token, ledgerId)
+            val photo = requireNotNull(photos[ledgerId]?.get(id))
+            check(photo.objectPath in photoBytes)
+            uploadedPhotoPaths += photo.objectPath
+        }
+        override suspend fun downloadMemoryObject(token: String, path: String): ByteArray {
+            val photo = photos.values.asSequence().flatMap { it.values.asSequence() }.single { it.objectPath == path }
+            member(token, photo.ledgerId)
+            check(path in uploadedPhotoPaths)
+            return requireNotNull(photoBytes[path]).copyOf()
+        }
+        override suspend fun deleteMemoryObject(token: String, path: String) {
+            val photo = photos.values.asSequence().flatMap { it.values.asSequence() }.single { it.objectPath == path }
+            member(token, photo.ledgerId)
+            photoBytes.remove(path)
+            uploadedPhotoPaths.remove(path)
+        }
+        override suspend fun deleteMemory(token: String, ledgerId: String, id: String) {
+            member(token, ledgerId)
+            photos[ledgerId]?.remove(id)?.let {
+                photoBytes.remove(it.objectPath)
+                uploadedPhotoPaths.remove(it.objectPath)
+            }
+        }
         override suspend fun fetchSettings(token: String, ledgerId: String): SharedLedgerSettings { member(token, ledgerId); return SharedLedgerSettings() }
         override suspend fun saveSettings(token: String, ledgerId: String, userId: String, settings: SharedLedgerSettings) = member(token, ledgerId)
         override suspend fun leave(token: String): String? {

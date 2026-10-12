@@ -32,6 +32,7 @@ data class BatchEditValues(
     val type: TransactionType? = null,
     val occurredDate: LocalDate? = null,
     val memo: String? = null,
+    val paymentMethod: String? = null,
 )
 
 sealed interface BatchCommandPlan {
@@ -84,6 +85,7 @@ object BatchCommandParser {
         raw: String,
         transactions: List<Transaction>,
         today: LocalDate = LocalDate.now(),
+        paymentMethods: List<String> = emptyList(),
     ): BatchCommandPlan {
         val input = raw.trim()
         require(input.isNotEmpty()) { "문장을 입력해 주세요." }
@@ -98,21 +100,21 @@ object BatchCommandParser {
                 val splitAt = body.indexOf(arrow)
                 val targetText = body.substring(0, splitAt).trim()
                 val patchText = body.substring(splitAt + arrow.length).trim()
-                val edit = parseEdit(patchText)
+                val edit = parseEdit(patchText, paymentMethods)
                 makeChange(BatchCommandAction.UPDATE, targetText, edit, transactions, today)
             }
-            else -> parseAdd(input, today)
+            else -> parseAdd(input, today, paymentMethods)
         }
     }
 
-    private fun parseAdd(input: String, today: LocalDate): BatchCommandPlan.Add {
+    private fun parseAdd(input: String, today: LocalDate, paymentMethods: List<String>): BatchCommandPlan.Add {
         val body = input.removePrefix("추가:").removePrefix("기록:").trim()
         val pieces = body.split(Regex("\\r?\\n|\\s+그리고\\s+|\\s+또\\s+|,\\s*(?=[^0-9])"))
             .map(String::trim).filter(String::isNotBlank)
         require(pieces.size in 1..MAX_ITEMS) { "한 번에 1~${MAX_ITEMS}건까지 입력할 수 있어요." }
         val candidates = pieces.map { phrase ->
             runCatching {
-                val parsed = LocalNaturalLanguageParser.parse(phrase, today)
+                val parsed = LocalNaturalLanguageParser.parse(phrase, today, paymentMethods)
                 if (parsed.merchant == "알 수 없음") {
                     val fallback = listOf("점심", "저녁", "아침", "간식").firstOrNull(phrase::contains) ?: "기타 지출"
                     parsed.copy(merchant = fallback, needsConfirmation = parsed.needsConfirmation + "merchant")
@@ -163,9 +165,10 @@ object BatchCommandParser {
                 "수입 또는 지출 유형만 변경할 수 있어요."
             }
             require(edit.memo == null || edit.memo.length <= 300) { "메모는 300자 이내로 입력해 주세요." }
+            require(edit.paymentMethod == null || edit.paymentMethod.trim().length in 1..80) { "결제수단을 확인해 주세요." }
             require(
                 edit.amount != null || edit.merchant != null || edit.categoryKey != null ||
-                    edit.type != null || edit.occurredDate != null || edit.memo != null,
+                    edit.type != null || edit.occurredDate != null || edit.memo != null || edit.paymentMethod != null,
             ) { "변경할 내용을 확인해 주세요." }
         } else {
             require(edit == null) { "삭제 요청에 변경 내용이 포함되어 있어요." }
@@ -221,7 +224,7 @@ object BatchCommandParser {
         return BatchTarget(type, amount, category, merchantTokens, date?.first, date?.second)
     }
 
-    private fun parseEdit(text: String): BatchEditValues {
+    private fun parseEdit(text: String, paymentMethods: List<String>): BatchEditValues {
         val amount = LocalNaturalLanguageParser.findAmount(text)
         val merchant = Regex("(?:가맹점|이름)\\s*[=:]?\\s*([^,;]+)", RegexOption.IGNORE_CASE)
             .find(text)?.groupValues?.getOrNull(1)?.trim()?.takeIf(String::isNotBlank)?.take(120)
@@ -240,10 +243,15 @@ object BatchCommandParser {
             .find(text)?.groupValues?.getOrNull(1)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         val memo = Regex("메모\\s*[=:]\\s*([^,;]+)")
             .find(text)?.groupValues?.getOrNull(1)?.trim()?.takeIf(String::isNotBlank)?.take(300)
-        val values = BatchEditValues(amount, merchant, category, type, occurredDate, memo)
+        val paymentMethod = paymentMethods.asSequence()
+            .filter(String::isNotBlank)
+            .distinct()
+            .sortedByDescending(String::length)
+            .firstOrNull { method -> text.contains(method, ignoreCase = true) }
+        val values = BatchEditValues(amount, merchant, category, type, occurredDate, memo, paymentMethod)
         require(values.amount != null || values.merchant != null || values.categoryKey != null ||
-            values.type != null || values.occurredDate != null || values.memo != null) {
-            "금액·가맹점·카테고리·유형·날짜·메모 중 바꿀 값을 적어 주세요."
+            values.type != null || values.occurredDate != null || values.memo != null || values.paymentMethod != null) {
+            "금액·가맹점·카테고리·유형·날짜·메모·결제수단 중 바꿀 값을 적어 주세요."
         }
         return values
     }

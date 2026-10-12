@@ -58,4 +58,37 @@ class AccountsAndBudgetTest {
         assertNull(budgetPace(LedgerUiState(YearMonth.of(2026, 11), budgetAmount = 100), LocalDate.parse("2026-10-04")).projectedExpense)
         assertEquals(0, budgetPace(LedgerUiState(YearMonth.of(2026, 9), budgetAmount = 100), LocalDate.parse("2026-10-04")).remainingDays)
     }
+
+    @Test fun paydayCycleMovesAtBoundaryAndClampsShortMonths() {
+        assertEquals(BudgetCycle(LocalDate.parse("2026-09-15"), LocalDate.parse("2026-10-14")), budgetCycleForDate(LocalDate.parse("2026-10-14"), 15))
+        assertEquals(BudgetCycle(LocalDate.parse("2026-10-15"), LocalDate.parse("2026-11-14")), budgetCycleForDate(LocalDate.parse("2026-10-15"), 15))
+        assertEquals(BudgetCycle(LocalDate.parse("2026-02-28"), LocalDate.parse("2026-03-30")), budgetCycle(YearMonth.of(2026, 2), 31))
+        assertEquals(BudgetCycle(LocalDate.parse("2024-02-29"), LocalDate.parse("2024-03-30")), budgetCycle(YearMonth.of(2024, 2), 31))
+    }
+
+    @Test fun paydayBasedRolloverCountsOnlyExpensesInEachBudgetCycle() {
+        val plans = listOf(
+            BudgetPlan(YearMonth.of(2026, 9), 10_000, true),
+            BudgetPlan(YearMonth.of(2026, 10), 10_000, false),
+        )
+        val rows = listOf(
+            tx(TransactionType.EXPENSE, 6_000, "2026-10-05"),
+            tx(TransactionType.EXPENSE, 2_000, "2026-10-15"),
+            tx(TransactionType.EXPENSE, 9_000, "2026-09-10"),
+        )
+        assertEquals(14_000L, effectiveBudget(YearMonth.of(2026, 10), plans, rows, payday = 15)!!.total)
+    }
+
+    @Test fun paydayBudgetPaceUsesCurrentCycleRatherThanCalendarMonth() {
+        val rows = listOf(
+            tx(TransactionType.EXPENSE, 4_000, "2026-10-14"),
+            tx(TransactionType.EXPENSE, 2_000, "2026-10-15"),
+        )
+        val state = LedgerUiState(YearMonth.of(2026, 10), rows, budgetAmount = 10_000, budgetPayday = 15)
+        val before = budgetPace(state, LocalDate.parse("2026-10-14"))
+        val after = budgetPace(state, LocalDate.parse("2026-10-15"))
+        assertEquals(1, before.remainingDays)
+        assertEquals(258, after.dailyAllowance)
+        assertEquals(62_000L, after.projectedExpense)
+    }
 }

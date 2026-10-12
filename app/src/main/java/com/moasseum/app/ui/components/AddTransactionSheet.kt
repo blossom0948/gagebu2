@@ -384,6 +384,7 @@ private fun AiInputForm(
             categoryKey = candidate.categoryKey
             typeName = candidate.type.name
             dateText = candidate.occurredDate.toString()
+            candidate.paymentMethod.takeIf { it in paymentMethods }?.let { paymentMethod = it }
             if (paymentMethod !in paymentMethods) paymentMethod = paymentMethods.firstOrNull().orEmpty()
             showConfirmError = false
         }
@@ -412,7 +413,7 @@ private fun AiInputForm(
             Text("AI로 빠르게 기록", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             TextButton(enabled = !saving, onClick = { onModeChange(AddMode.MENU) }) { Text("방법 바꾸기") }
         }
-        Text("입력 문장을 AI 서버로 전송합니다. 저장 전 확인할 수 있습니다.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+        Text("문장과 날짜 해석에 필요한 오늘 날짜·시간대를 AI 서버로 보내요. 저장 전에 내용을 확인할 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         OutlinedTextField(
             value = input,
             onValueChange = { input = it; showConfirmError = false },
@@ -575,7 +576,17 @@ private fun CandidateReview(
             shape = RoundedCornerShape(15.dp),
         )
         if (candidate.needsConfirmation.isNotEmpty()) {
-            Text("카테고리나 날짜를 한 번 확인해 주세요.", color = colors.warning, style = MaterialTheme.typography.labelMedium)
+            val confirmationLabels = candidate.needsConfirmation.joinToString(" · ") { field ->
+                when (field) {
+                    "amount" -> "금액"
+                    "date" -> "날짜"
+                    "category" -> "분류"
+                    "merchant" -> "가맹점"
+                    "paymentMethod" -> "결제수단"
+                    else -> field
+                }
+            }
+            Text("확인 필요 · $confirmationLabels", color = colors.warning, style = MaterialTheme.typography.labelMedium)
         }
         if (showError) Text("금액, 가맹점, 거래일을 확인해 주세요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
         Button(

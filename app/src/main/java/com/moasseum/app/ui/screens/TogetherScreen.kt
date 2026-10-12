@@ -1,5 +1,11 @@
 package com.moasseum.app.ui.screens
 
+import android.graphics.Bitmap
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -33,11 +39,15 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.PhotoLibrary
+import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
@@ -50,6 +60,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -62,6 +74,7 @@ import com.moasseum.app.data.SharedLedgerSnapshot
 import com.moasseum.app.data.SharedLedgerGoal
 import com.moasseum.app.data.SharedFinanceItem
 import com.moasseum.app.data.SharedFinanceKind
+import com.moasseum.app.data.SharedMemoryPhoto
 import com.moasseum.app.domain.Transaction
 import com.moasseum.app.domain.TransactionType
 import com.moasseum.app.domain.SpendingAnalysisState
@@ -73,6 +86,7 @@ import com.moasseum.app.domain.formatWon
 import com.moasseum.app.domain.daysUntilNextAnniversary
 import com.moasseum.app.domain.SharedLedgerSettings
 import com.moasseum.app.domain.SharedMoneyMode
+import com.moasseum.app.domain.AiAdviceCards
 import com.moasseum.app.domain.SharedPayerTotals
 import com.moasseum.app.domain.sharedPayerTotals
 import com.moasseum.app.domain.SharedSavingsGoalAmount
@@ -84,6 +98,7 @@ import com.moasseum.app.ui.components.FinanceCard
 import com.moasseum.app.ui.components.FinanceTextField
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import java.time.YearMonth
+import java.time.LocalDate
 
 @Composable
 fun TogetherScreen(
@@ -106,6 +121,14 @@ fun TogetherScreen(
     onSaveSettings: (SharedLedgerSettings) -> Unit,
     onLeaveSharedLedger: () -> Unit,
     onExportReport: (YearMonth) -> Unit,
+    aiAdviceCards: Set<String>,
+    onAddMemoryPhotos: (List<Uri>, String, String, LocalDate) -> Unit,
+    onViewMemory: (SharedMemoryPhoto) -> Unit,
+    onDeleteMemory: (SharedMemoryPhoto) -> Unit,
+    viewingMemory: SharedMemoryPhoto?,
+    viewingMemoryBitmap: Bitmap?,
+    memoryLoading: Boolean,
+    onCloseMemoryViewer: () -> Unit,
     aiAnalysisState: SpendingAnalysisState,
     aiQuestionState: SpendingQuestionState,
     onAnalyzeShared: (YearMonth) -> Unit,
@@ -124,6 +147,22 @@ fun TogetherScreen(
     var sharedQuestion by rememberSaveable { mutableStateOf("") }
     var showMoneyModeMenu by rememberSaveable { mutableStateOf(false) }
     var showLeaveConfirmation by rememberSaveable { mutableStateOf(false) }
+    var selectedMemoryUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var showMemoryDetails by rememberSaveable { mutableStateOf(false) }
+    var memoryTitle by rememberSaveable { mutableStateOf("함께한 순간") }
+    var memoryMemo by rememberSaveable { mutableStateOf("") }
+    var memoryDateText by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
+    var deletingMemory by remember { mutableStateOf<SharedMemoryPhoto?>(null) }
+    var localViewingMemory by remember { mutableStateOf<SharedMemoryPhoto?>(null) }
+    val memoryPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(5)) { uris ->
+        if (uris.isNotEmpty()) {
+            selectedMemoryUris = uris.take(5)
+            memoryTitle = "함께한 순간"
+            memoryMemo = ""
+            memoryDateText = LocalDate.now().toString()
+            showMemoryDetails = true
+        }
+    }
     val selectedMonth = remember(selectedMonthKey) { runCatching { YearMonth.parse(selectedMonthKey) }.getOrDefault(YearMonth.now()) }
     val monthlyTransactions = remember(snapshot.transactions, selectedMonthKey) {
         snapshot.transactions.filter { YearMonth.from(it.occurredDate) == selectedMonth }
@@ -131,6 +170,9 @@ fun TogetherScreen(
     val monthlyExpense = monthlyTransactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount }
     val monthlyIncome = monthlyTransactions.filter { it.type == TransactionType.INCOME }.sumOf { it.amount }
     val monthlyGoals = snapshot.goals.filter { it.monthKey == selectedMonthKey }
+    val monthlySharedBudget = snapshot.financeItems.firstOrNull {
+        it.kind == SharedFinanceKind.LIVING_BUDGET && it.monthKey == selectedMonthKey
+    }?.amount
     val visibleFinanceItems = snapshot.financeItems.filter {
         it.kind != SharedFinanceKind.LIVING_BUDGET || it.monthKey == selectedMonthKey
     }
@@ -199,6 +241,7 @@ fun TogetherScreen(
                     }
                 }
             }
+            item { SharedNudgeCard(0, null, 0) }
             item {
                 FinanceCard {
                     Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -286,6 +329,41 @@ fun TogetherScreen(
                     onExportReport = { onExportReport(selectedMonth) },
                 )
             }
+            if (snapshot.memorySyncAvailable) {
+                item {
+                    SharedMemoryAlbumHeader(
+                        count = snapshot.memories.size,
+                        usedBytes = snapshot.memories.sumOf { it.sizeBytes },
+                        busy = busy,
+                        onPick = { memoryPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    )
+                }
+                items(snapshot.memories, key = { "memory-${it.id}" }) { photo ->
+                    SharedMemoryPhotoRow(
+                        photo = photo,
+                        busy = busy,
+                        onView = {
+                            localViewingMemory = photo
+                            onViewMemory(photo)
+                        },
+                        onDelete = { deletingMemory = photo },
+                    )
+                }
+            } else {
+                item {
+                    FinanceCard {
+                        Text(
+                            "사진 공유를 사용하려면 운영 서버 업데이트가 필요해요.",
+                            color = colors.textSecondary,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(13.dp),
+                        )
+                    }
+                }
+            }
+            if (snapshot.memberCount > 0) item {
+                SharedNudgeCard(monthlyExpense, monthlySharedBudget, monthlyTransactions.size)
+            }
             item {
                 SharedMoneyModeCard(
                     settings = snapshot.settings,
@@ -360,7 +438,7 @@ fun TogetherScreen(
             item {
                 SharedCategoryBreakdown(monthlyTransactions)
             }
-            item {
+            if (AiAdviceCards.COUPLE_SUMMARY in aiAdviceCards || AiAdviceCards.COUPLE_REPORT in aiAdviceCards) item {
                 SharedAiPanel(
                     month = selectedMonth,
                     hasTransactions = monthlyTransactions.isNotEmpty(),
@@ -370,6 +448,8 @@ fun TogetherScreen(
                     onQuestionChange = { sharedQuestion = it.take(200) },
                     onAnalyze = { onAnalyzeShared(selectedMonth) },
                     onAsk = { onAskShared(sharedQuestion.trim(), selectedMonth) },
+                    showSummary = AiAdviceCards.COUPLE_SUMMARY in aiAdviceCards,
+                    showReport = AiAdviceCards.COUPLE_REPORT in aiAdviceCards,
                 )
             }
             item {
@@ -425,6 +505,7 @@ fun TogetherScreen(
                     Text("• 공동 수입·고정비·생활비 예산·용돈·기념일")
                     Text("• 공동 저축 목표와 진행률")
                     Text("• 함께 쓰는 AI 소비 분석과 월간 PDF")
+                    Text("• 기념일 전날·당일 알림과 부담 없는 예산 응원")
                     Text("개인 거래는 자동 공유되지 않습니다.", color = colors.textSecondary)
                 }
             },
@@ -492,6 +573,56 @@ fun TogetherScreen(
             dismissButton = { TextButton(enabled = !busy, onClick = { deletingFinanceItemId = null }) { Text("취소") } },
         )
     }
+    if (showMemoryDetails) {
+        val photoDate = runCatching { LocalDate.parse(memoryDateText) }.getOrNull()
+        val valid = memoryTitle.trim().length in 1..60 && memoryMemo.length <= 300 && photoDate != null
+        AlertDialog(
+            onDismissRequest = { if (!busy) { showMemoryDetails = false; selectedMemoryUris = emptyList() } },
+            title = { Text("선택한 사진 공유") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("사진 ${selectedMemoryUris.size}장 · EXIF 정보 제거 후 커플 앨범에 저장", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                    FinanceTextField(value = memoryTitle, onValueChange = { memoryTitle = it.take(60) }, label = { Text("제목") }, singleLine = true)
+                    FinanceTextField(value = memoryDateText, onValueChange = { memoryDateText = it.take(10) }, label = { Text("날짜 · YYYY-MM-DD") }, singleLine = true)
+                    FinanceTextField(value = memoryMemo, onValueChange = { memoryMemo = it.take(300) }, label = { Text("메모") }, maxLines = 3)
+                    Text("커플당 사진 30장 · 총 15MB까지 무료로 공유할 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.labelSmall)
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = !busy && valid && selectedMemoryUris.isNotEmpty(), onClick = {
+                    val uris = selectedMemoryUris
+                    selectedMemoryUris = emptyList()
+                    showMemoryDetails = false
+                    onAddMemoryPhotos(uris, memoryTitle.trim(), memoryMemo.trim(), requireNotNull(photoDate))
+                }) { Text(if (busy) "저장 중…" else "공유") }
+            },
+            dismissButton = {
+                TextButton(enabled = !busy, onClick = { showMemoryDetails = false; selectedMemoryUris = emptyList() }) { Text("취소") }
+            },
+        )
+    }
+    deletingMemory?.let { photo ->
+        AlertDialog(
+            onDismissRequest = { if (!busy) deletingMemory = null },
+            title = { Text("공유 사진을 삭제할까요?") },
+            text = { Text("${photo.title} 사진은 두 사람의 앨범에서 함께 삭제됩니다.") },
+            confirmButton = {
+                TextButton(enabled = !busy, onClick = {
+                    deletingMemory = null
+                    onDeleteMemory(photo)
+                }) { Text("삭제", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(enabled = !busy, onClick = { deletingMemory = null }) { Text("취소") } },
+        )
+    }
+    localViewingMemory?.let { photo ->
+        SharedMemoryViewerDialog(
+            photo = photo,
+            bitmap = if (viewingMemory?.id == photo.id) viewingMemoryBitmap else null,
+            loading = memoryLoading && viewingMemory?.id == photo.id,
+            onDismiss = { localViewingMemory = null; onCloseMemoryViewer() },
+        )
+    }
     if (showLeaveConfirmation) {
         AlertDialog(
             onDismissRequest = { if (!busy) showLeaveConfirmation = false },
@@ -506,6 +637,128 @@ fun TogetherScreen(
             dismissButton = { TextButton(enabled = !busy, onClick = { showLeaveConfirmation = false }) { Text("취소") } },
         )
     }
+}
+
+@Composable
+private fun SharedNudgeCard(expense: Long, budget: Long?, transactionCount: Int) {
+    val colors = LocalFinanceColors.current
+    val nudge = remember(expense, budget, transactionCount) {
+        com.moasseum.app.domain.sharedMoneyNudge(expense, budget, transactionCount)
+    }
+    FinanceCard(highlighted = true) {
+        Row(
+            Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(9.dp),
+        ) {
+            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(19.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("함께 보는 응원 · ${nudge.title}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(nudge.message, style = MaterialTheme.typography.bodySmall, color = colors.textSecondary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SharedMemoryAlbumHeader(
+    count: Int,
+    usedBytes: Long,
+    busy: Boolean,
+    onPick: () -> Unit,
+) {
+    val colors = LocalFinanceColors.current
+    FinanceCard {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.PhotoLibrary, contentDescription = null, tint = colors.accent, modifier = Modifier.size(19.dp))
+                Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                    Text("함께한 사진", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text("선택한 사진만 공유", style = MaterialTheme.typography.labelSmall, color = colors.textSecondary)
+                }
+                Text("$count/30", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+            }
+            LinearProgressIndicator(
+                progress = { (usedBytes.toFloat() / (15L * 1_048_576L)).coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth().height(5.dp),
+                color = colors.accent,
+                trackColor = colors.surfaceOverlay,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("${formatMemorySize(usedBytes)} / 15 MB", modifier = Modifier.weight(1f), color = colors.textSecondary,
+                    style = MaterialTheme.typography.labelSmall)
+                TextButton(onClick = onPick, enabled = !busy && count < 30 && usedBytes < 15L * 1_048_576L) {
+                    Text("사진 추가")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SharedMemoryPhotoRow(
+    photo: SharedMemoryPhoto,
+    busy: Boolean,
+    onView: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val colors = LocalFinanceColors.current
+    FinanceCard {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(photo.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("${photo.photoDate} · ${formatMemorySize(photo.sizeBytes)}", style = MaterialTheme.typography.labelSmall, color = colors.textSecondary)
+                if (photo.memo.isNotBlank()) Text(photo.memo, style = MaterialTheme.typography.labelSmall, color = colors.textSecondary,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            IconButton(onClick = onView, enabled = !busy) {
+                Icon(Icons.Rounded.Visibility, contentDescription = "${photo.title} 사진 보기", tint = colors.accent)
+            }
+            IconButton(onClick = onDelete, enabled = !busy) {
+                Icon(Icons.Rounded.DeleteOutline, contentDescription = "${photo.title} 사진 삭제", tint = colors.textSecondary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SharedMemoryViewerDialog(
+    photo: SharedMemoryPhoto,
+    bitmap: Bitmap?,
+    loading: Boolean,
+    onDismiss: () -> Unit,
+) {
+    val colors = LocalFinanceColors.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(photo.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("${photo.photoDate} · ${formatMemorySize(photo.sizeBytes)}", style = MaterialTheme.typography.labelSmall, color = colors.textSecondary)
+                when {
+                    loading -> androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                    bitmap != null -> Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = photo.title,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                    )
+                    else -> Text("사진을 불러오지 못했어요. 닫고 다시 시도해 주세요.", color = colors.textSecondary)
+                }
+                if (photo.memo.isNotBlank()) Text(photo.memo, style = MaterialTheme.typography.bodyMedium)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("닫기") } },
+    )
+}
+
+private fun formatMemorySize(bytes: Long): String = if (bytes < 1_048_576) {
+    "${(bytes / 1024.0).toInt().coerceAtLeast(1)} KB"
+} else {
+    "${"%.1f".format(java.util.Locale.ROOT, bytes / 1_048_576.0)} MB"
 }
 
 @Composable
@@ -656,6 +909,8 @@ private fun SharedAiPanel(
     onQuestionChange: (String) -> Unit,
     onAnalyze: () -> Unit,
     onAsk: () -> Unit,
+    showSummary: Boolean,
+    showReport: Boolean,
 ) {
     val colors = LocalFinanceColors.current
     FinanceCard {
@@ -668,7 +923,7 @@ private fun SharedAiPanel(
                 style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
             when (analysisState) {
                 SpendingAnalysisState.Idle -> TextButton(onClick = onAnalyze, enabled = hasTransactions) {
-                    Text(if (hasTransactions) "공동 소비 분석하기" else "공유 거래가 생기면 분석할 수 있어요")
+                    Text(if (hasTransactions) if (showSummary) "공동 소비 분석하기" else "공동 AI 리포트 만들기" else "공유 거래가 생기면 분석할 수 있어요")
                 }
                 SpendingAnalysisState.Loading -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -681,9 +936,11 @@ private fun SharedAiPanel(
                 is SpendingAnalysisState.Success -> if (analysisState.month != month) {
                     TextButton(onClick = onAnalyze, enabled = hasTransactions) { Text("이 달의 공동 소비 다시 분석") }
                 } else {
-                    Text(analysisState.analysis.summary, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                    analysisState.analysis.observations.take(3).forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
-                    analysisState.analysis.suggestions.take(3).forEach { Text("• $it", style = MaterialTheme.typography.bodySmall, color = colors.accent) }
+                    if (showSummary) Text(analysisState.analysis.summary, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    if (showReport) {
+                        analysisState.analysis.observations.take(3).forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
+                        analysisState.analysis.suggestions.take(3).forEach { Text("• $it", style = MaterialTheme.typography.bodySmall, color = colors.accent) }
+                    }
                     TextButton(onClick = onAnalyze, enabled = hasTransactions) { Text("다시 분석") }
                 }
             }

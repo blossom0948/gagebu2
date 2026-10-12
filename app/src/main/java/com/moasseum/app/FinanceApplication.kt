@@ -10,6 +10,7 @@ import com.moasseum.app.domain.NotificationCandidate
 import com.moasseum.app.notification.PaymentNotificationNotifier
 import com.moasseum.app.work.RecurringTransactionWorker
 import com.moasseum.app.work.FinanceReminderWorker
+import com.moasseum.app.work.SharedAnniversaryReminderWorker
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
@@ -69,6 +70,7 @@ class FinanceApplication : Application() {
         })
         RecurringTransactionWorker.schedule(this)
         FinanceReminderWorker.schedule(this)
+        SharedAnniversaryReminderWorker.schedule(this)
     }
 
     fun publishNotificationCandidate(candidate: NotificationCandidate): Boolean =

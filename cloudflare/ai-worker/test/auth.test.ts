@@ -45,16 +45,22 @@ test('auth redirects are never followed and do not authorize', async () => {
 test('verified user reaches input validation, not an unauthenticated bypass', async () => {
   await mockFetch(async () => Response.json({ id: userId }), async () => { assert.equal((await worker.fetch(request(undefined, 'synthetic-token'), env)).status, 400); });
 });
-test('verified user can receive a validated synthetic Gemini candidate', async () => {
+test('verified user can receive an explicitly stated payment method', async () => {
   let calls = 0;
-  await mockFetch(async (url) => {
+  await mockFetch(async (url, options) => {
     calls++;
     if (String(url).startsWith(env.SUPABASE_URL)) return Response.json({ id: userId });
     assert.ok(String(url).startsWith('https://generativelanguage.googleapis.com/'));
-    return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify({ type: 'EXPENSE', amount: 1000, merchant: 'QA', occurredDate: '2026-10-05', categoryKey: 'OTHER' }) }] } }] });
+    const body = JSON.parse(String(options?.body));
+    assert.match(body.contents[0].parts[0].text, /결제수단 이름이 분명하면 입력에 적힌 표현 그대로/);
+    return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify({ type: 'EXPENSE', amount: 1000, merchant: 'QA', occurredDate: '2026-10-05', categoryKey: 'OTHER', paymentMethod: '현대카드' }) }] } }] });
   }, async () => {
-    const response = await worker.fetch(request(undefined, 'synthetic-token', { text: 'QA 1000원', today: '2026-10-05' }), env);
-    assert.equal(response.status, 200); assert.equal((await response.json()).amount, 1000); assert.equal(calls, 2);
+    const response = await worker.fetch(request(undefined, 'synthetic-token', {
+      text: 'QA 1000원 현대카드', today: '2026-10-05',
+    }), env);
+    assert.equal(response.status, 200);
+    const candidate = await response.json() as { amount: number; paymentMethod: string };
+    assert.equal(candidate.amount, 1000); assert.equal(candidate.paymentMethod, '현대카드'); assert.equal(calls, 2);
   });
 });
 test('verified user receives multiple validated candidates for explicit additions', async () => {
@@ -71,19 +77,21 @@ test('verified user receives multiple validated candidates for explicit addition
       schemaVersion: 1,
       action: 'ADD',
       candidates: [
-        { type: 'EXPENSE', amount: 8000, occurredDate: '2026-10-08', categoryKey: 'FOOD', merchant: '점심', memo: '', confidence: { amount: 0.9, date: 0.9, category: 0.8 }, needsConfirmation: [] },
-        { type: 'INCOME', amount: 2500000, occurredDate: '2026-10-08', categoryKey: 'OTHER', merchant: '월급', memo: '', confidence: { amount: 0.9, date: 0.9, category: 0.8 }, needsConfirmation: [] },
+        { type: 'EXPENSE', amount: 8000, occurredDate: '2026-10-08', categoryKey: 'FOOD', merchant: '점심', memo: '', paymentMethod: '현금', confidence: { amount: 0.9, date: 0.9, category: 0.8 }, needsConfirmation: [] },
+        { type: 'INCOME', amount: 2500000, occurredDate: '2026-10-08', categoryKey: 'OTHER', merchant: '월급', memo: '', paymentMethod: '', confidence: { amount: 0.9, date: 0.9, category: 0.8 }, needsConfirmation: [] },
       ],
       target: { type: 'ANY', amount: 0, categoryKey: '', merchantTokens: [], from: '', through: '' },
-      edit: { amount: 0, merchant: '', categoryKey: '', type: 'NONE', occurredDate: '', memo: '' },
+      edit: { amount: 0, merchant: '', categoryKey: '', type: 'NONE', occurredDate: '', memo: '', paymentMethod: '' },
     }) }] } }] });
   }, async () => {
     const response = await worker.fetch(request('/v1/parse-batch-command', 'synthetic-token', {
       text: '점심 8천원 그리고 월급 250만원', today: '2026-10-08', timezone: 'Asia/Seoul',
     }), env);
     assert.equal(response.status, 200);
-    const body = await response.json() as { candidates: Array<{ amount: number; type: string }> };
-    assert.deepEqual(body.candidates.map(({ amount, type }) => [amount, type]), [[8000, 'EXPENSE'], [2500000, 'INCOME']]);
+    const body = await response.json() as { candidates: Array<{ amount: number; type: string; paymentMethod: string }> };
+    assert.deepEqual(body.candidates.map(({ amount, type, paymentMethod }) => [amount, type, paymentMethod]), [
+      [8000, 'EXPENSE', '현금'], [2500000, 'INCOME', ''],
+    ]);
     assert.equal(calls, 2);
   });
 });
@@ -229,7 +237,7 @@ test('batch AI returns a validated update patch without deciding which transacti
     action: 'UPDATE',
     candidates: [],
     target: { type: 'ANY', amount: 0, categoryKey: 'CAFE', merchantTokens: ['스타벅스'], from: '', through: '' },
-    edit: { amount: 5000, merchant: '', categoryKey: '', type: 'NONE', occurredDate: '', memo: '' },
+    edit: { amount: 5000, merchant: '', categoryKey: '', type: 'NONE', occurredDate: '', memo: '', paymentMethod: '현대카드' },
   };
   await mockFetch(async (url, options) => {
     if (String(url).startsWith(env.SUPABASE_URL)) return Response.json({ id: userId });
@@ -243,10 +251,11 @@ test('batch AI returns a validated update patch without deciding which transacti
       text: '스타벅스 커피 금액을 5천원으로 수정해', today: '2026-10-08',
     }), env);
     assert.equal(response.status, 200);
-    const body = await response.json() as { action: string; target: { merchantTokens: string[] }; edit: { amount: number } };
+    const body = await response.json() as { action: string; target: { merchantTokens: string[] }; edit: { amount: number; paymentMethod: string } };
     assert.equal(body.action, 'UPDATE');
     assert.deepEqual(body.target.merchantTokens, ['스타벅스']);
     assert.equal(body.edit.amount, 5000);
+    assert.equal(body.edit.paymentMethod, '현대카드');
   });
 });
 test('batch AI rejects invalid values and malformed candidate counts', async () => {

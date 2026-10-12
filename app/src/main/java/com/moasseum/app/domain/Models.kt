@@ -32,6 +32,14 @@ object HomeDashboardCards {
     val defaults = setOf(TODAY_WEEK, TODAY_INSIGHT, CATEGORIES, RECENT_TRANSACTIONS, NO_SPEND_CHALLENGE)
 }
 
+object AiAdviceCards {
+    const val HOME_SUMMARY = "home_summary"
+    const val HOME_REPORT = "home_report"
+    const val COUPLE_SUMMARY = "couple_summary"
+    const val COUPLE_REPORT = "couple_report"
+    val defaults = setOf(HOME_SUMMARY, HOME_REPORT, COUPLE_SUMMARY, COUPLE_REPORT)
+}
+
 data class NoSpendChallengeSettings(
     val startDate: LocalDate? = null,
     val goalDays: Int = 7,
@@ -70,6 +78,9 @@ fun daysUntilNextAnniversary(dateKey: String, today: LocalDate = LocalDate.now()
     return null
 }
 
+fun daysUntilAnniversaryReminder(dateKey: String, today: LocalDate = LocalDate.now()): Long? =
+    daysUntilNextAnniversary(dateKey, today)?.takeIf { it in 0L..1L }
+
 data class AiTransactionCandidate(
     val type: TransactionType,
     val amount: Long,
@@ -82,6 +93,7 @@ data class AiTransactionCandidate(
     val dateConfidence: Double = 1.0,
     val categoryConfidence: Double = 0.7,
     val needsConfirmation: List<String> = emptyList(),
+    val paymentMethod: String = "",
 )
 
 sealed interface AiParseState {
@@ -236,7 +248,30 @@ data class LedgerUiState(
     val baseBudgetAmount: Long? = budgetAmount,
     val carriedBudgetAmount: Long = 0,
     val budgetRollover: Boolean = false,
+    val budgetPayday: Int = 1,
 ) {
+    val budgetCycle: BudgetCycle
+        get() = if (month == YearMonth.now()) budgetCycleForDate(LocalDate.now(), budgetPayday)
+        else budgetCycle(month, budgetPayday)
+
+    val budgetPeriodExpenseTotal: Long
+        get() = transactions.asSequence()
+            .filter { it.type == TransactionType.EXPENSE && it.occurredDate in budgetCycle.startDate..budgetCycle.endDate }
+            .sumOf(Transaction::amount)
+
+    val budgetPeriodExpenseCount: Int
+        get() = transactions.count {
+            it.type == TransactionType.EXPENSE && it.occurredDate in budgetCycle.startDate..budgetCycle.endDate
+        }
+
+    val previousBudgetPeriodExpenseTotal: Long
+        get() {
+            val previous = budgetCycle(budgetCycle.startMonth.minusMonths(1), budgetPayday)
+            return transactions.asSequence()
+                .filter { it.type == TransactionType.EXPENSE && it.occurredDate in previous.startDate..previous.endDate }
+                .sumOf(Transaction::amount)
+        }
+
     /** Monthly aggregates only; callers can share these without sending transaction details. */
     fun recentMonthlySummaries(monthCount: Int = 4): List<MonthlySpendingSummary> {
         require(monthCount in 1..24)

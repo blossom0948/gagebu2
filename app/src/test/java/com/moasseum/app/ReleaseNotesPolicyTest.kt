@@ -14,6 +14,18 @@ class ReleaseNotesPolicyTest {
     }
 
     @Test
+    fun `v0138 release note uses actual app screenshots for the new free features`() {
+        val slides = ReleaseNotesCatalog.slides("0.1.38")
+        assertEquals(4, slides.size)
+        assertTrue(slides.any { it.title.contains("사진") })
+        assertTrue(slides.any { it.title.contains("예산 기간") })
+        assertTrue(slides.any { it.title.contains("AI 조언") })
+        assertTrue(slides.any { it.title.contains("연말정산") })
+        assertTrue(slides.all { it.imageDescription.contains("실제 앱 캡처") })
+        assertTrue(slides.all { it.imageAspectRatio in 0.5f..1.2f })
+    }
+
+    @Test
     fun `v0137 release note shows the centered selected date`() {
         val slides = ReleaseNotesCatalog.slides("0.1.37")
         assertEquals(1, slides.size)

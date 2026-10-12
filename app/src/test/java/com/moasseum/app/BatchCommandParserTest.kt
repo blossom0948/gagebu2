@@ -64,6 +64,31 @@ class BatchCommandParserTest {
         assertEquals("환불", plan.edit?.memo)
     }
 
+    @Test fun editCanChangeOnlyToAnExplicitlyConfiguredPaymentMethod() {
+        val row = transaction(1, 4_500, "스타벅스", "CAFE", today)
+        val plan = BatchCommandParser.parse(
+            "수정: 스타벅스 4,500원 -> 결제수단=현대카드",
+            listOf(row),
+            today,
+            paymentMethods = listOf("카카오뱅크", "현대카드"),
+        ) as BatchCommandPlan.Change
+
+        assertEquals(listOf(1L), plan.matches.map { it.id })
+        assertEquals("현대카드", plan.edit?.paymentMethod)
+    }
+
+    @Test fun batchCandidatesRecognizeConfiguredPaymentMethodsPerTransaction() {
+        val plan = BatchCommandParser.parse(
+            "점심 8천원 현금 그리고 커피 4,500원 현대카드",
+            emptyList(),
+            today,
+            paymentMethods = listOf("현금", "현대카드"),
+        ) as BatchCommandPlan.Add
+
+        assertEquals(listOf("현금", "현대카드"), plan.candidates.map { it.paymentMethod })
+        assertEquals(listOf("점심", "커피"), plan.candidates.map { it.merchant })
+    }
+
     @Test fun broadDeleteWithoutTargetIsRejected() {
         val row = transaction(1, 4_500, "카페", "CAFE", today)
         val error = runCatching { BatchCommandParser.parse("삭제: 지출", listOf(row), today) }.exceptionOrNull()

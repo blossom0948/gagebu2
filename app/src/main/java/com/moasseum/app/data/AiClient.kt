@@ -26,20 +26,24 @@ class AiClient(
     private val baseUrl: String = BuildConfig.AI_API_BASE_URL,
     private val bearerTokenProvider: suspend () -> String? = { null },
 ) {
-    suspend fun parseTransaction(text: String, today: LocalDate = LocalDate.now()): Result<AiTransactionCandidate> =
+    suspend fun parseTransaction(
+        text: String,
+        today: LocalDate = LocalDate.now(),
+        paymentMethods: List<String> = emptyList(),
+    ): Result<AiTransactionCandidate> =
         withContext(Dispatchers.IO) {
             runCatching {
                 require(text.isNotBlank()) { "기록할 문장을 입력해 주세요." }
                 val trimmedText = text.trim()
-                if (baseUrl.isBlank()) return@runCatching LocalNaturalLanguageParser.parse(trimmedText, today)
+                if (baseUrl.isBlank()) return@runCatching LocalNaturalLanguageParser.parse(trimmedText, today, paymentMethods)
 
                 // The server is an enhancement, not a prerequisite for recording a transaction.
                 // Free-tier AI can briefly return 5xx or be unavailable, so keep the core input
                 // flow usable with the on-device parser and preserve the server error only when
                 // the local parser cannot understand the sentence either.
-                runCatching { parseWithServer(trimmedText, today) }
+                runCatching { parseWithServer(trimmedText, today, paymentMethods) }
                     .getOrElse { serverError ->
-                        runCatching { LocalNaturalLanguageParser.parse(trimmedText, today) }
+                        runCatching { LocalNaturalLanguageParser.parse(trimmedText, today, paymentMethods) }
                             .getOrElse { throw serverError }
                     }
             }
@@ -49,6 +53,7 @@ class AiClient(
         text: String,
         transactions: List<com.moasseum.app.domain.Transaction>,
         today: LocalDate = LocalDate.now(),
+        paymentMethods: List<String> = emptyList(),
     ): Result<BatchCommandPlan> =
         withContext(Dispatchers.IO) {
             runCatching {
@@ -91,7 +96,7 @@ class AiClient(
                             val candidates = root.optJSONArray("candidates") ?: error("AI가 거래 후보를 만들지 못했어요.")
                             require(candidates.length() in 1..30) { "AI가 만든 거래 후보 수를 확인해 주세요." }
                             BatchCommandPlan.Add((0 until candidates.length()).map { index ->
-                                parseCandidate(candidates.getJSONObject(index), today)
+                                parseCandidate(candidates.getJSONObject(index), today, paymentMethods)
                             })
                         }
                         "UPDATE", "DELETE" -> {
@@ -127,6 +132,11 @@ class AiClient(
                                 }
                                 val editCategory = editJson.optString("categoryKey").takeIf(String::isNotBlank)
                                 require(editCategory == null || editCategory in ALLOWED_CATEGORIES) { "AI 변경 카테고리를 확인해 주세요." }
+                                val rawPaymentMethod = editJson.optString("paymentMethod").trim()
+                                val paymentMethod = resolvePaymentMethod(rawPaymentMethod, paymentMethods)
+                                require(rawPaymentMethod.isBlank() || paymentMethod != null) {
+                                    "‘$rawPaymentMethod’은 등록된 결제수단이 아니에요. 관리에서 먼저 추가해 주세요."
+                                }
                                 BatchEditValues(
                                     amount = editJson.optLong("amount").let { if (it == 0L) null else it },
                                     merchant = editJson.optString("merchant").trim().takeIf(String::isNotBlank),
@@ -134,6 +144,7 @@ class AiClient(
                                     type = editType,
                                     occurredDate = editJson.optString("occurredDate").takeIf(String::isNotBlank)?.let(LocalDate::parse),
                                     memo = editJson.optString("memo").takeIf(String::isNotBlank),
+                                    paymentMethod = paymentMethod,
                                 )
                             } else null
                             BatchCommandParser.previewChange(action, target, edit, transactions)
@@ -172,7 +183,7 @@ class AiClient(
             }
         }
 
-    private suspend fun parseWithServer(text: String, today: LocalDate): AiTransactionCandidate {
+    private suspend fun parseWithServer(text: String, today: LocalDate, paymentMethods: List<String>): AiTransactionCandidate {
         val endpoint = if (baseUrl.endsWith("/v1/parse-transaction")) {
             baseUrl
         } else {
@@ -209,7 +220,7 @@ class AiClient(
             if (responseCode !in 200..299) {
                 throw serverError(responseCode, "AI 서버")
             }
-            parseResponse(responseText, today)
+            parseResponse(responseText, today, paymentMethods)
         } finally {
             connection.disconnect()
         }
@@ -401,13 +412,13 @@ class AiClient(
         }
     }
 
-    private fun parseResponse(responseText: String, today: LocalDate): AiTransactionCandidate {
+    private fun parseResponse(responseText: String, today: LocalDate, paymentMethods: List<String>): AiTransactionCandidate {
         val root = JSONObject(responseText)
         val json = root.optJSONObject("data") ?: root
-        return parseCandidate(json, today)
+        return parseCandidate(json, today, paymentMethods)
     }
 
-    private fun parseCandidate(json: JSONObject, today: LocalDate): AiTransactionCandidate {
+    private fun parseCandidate(json: JSONObject, today: LocalDate, paymentMethods: List<String>): AiTransactionCandidate {
         val amount = json.optLong("amount", 0L)
         val occurredDate = json.optString("occurredDate").takeIf(String::isNotBlank)?.let(LocalDate::parse) ?: today
         val merchant = json.optString("merchant").trim()
@@ -418,13 +429,16 @@ class AiClient(
         val needsConfirmation = buildList {
             val values = json.optJSONArray("needsConfirmation") ?: return@buildList
             for (index in 0 until values.length()) add(values.optString(index))
-        }.filter(String::isNotBlank)
+        }.filter(String::isNotBlank).toMutableList()
         val type = when (json.optString("type").uppercase(Locale.ROOT)) {
             TransactionType.INCOME.name -> TransactionType.INCOME
             TransactionType.EXPENSE.name -> TransactionType.EXPENSE
             else -> error("AI가 거래 유형을 확인하지 못했어요.")
         }
         val category = json.optString("categoryKey").takeIf { it in ALLOWED_CATEGORIES } ?: "OTHER"
+        val rawPaymentMethod = json.optString("paymentMethod").trim()
+        val paymentMethod = resolvePaymentMethod(rawPaymentMethod, paymentMethods)
+        if (rawPaymentMethod.isNotBlank() && paymentMethod == null) needsConfirmation += "paymentMethod"
         return AiTransactionCandidate(
             type = type,
             amount = amount,
@@ -437,7 +451,15 @@ class AiClient(
             dateConfidence = confidence?.optDouble("date", 0.7) ?: 0.7,
             categoryConfidence = confidence?.optDouble("category", 0.7) ?: 0.7,
             needsConfirmation = needsConfirmation,
+            paymentMethod = paymentMethod.orEmpty(),
         )
+    }
+
+    private fun resolvePaymentMethod(raw: String, configured: List<String>): String? {
+        if (raw.isBlank()) return null
+        fun normalize(value: String) = value.lowercase(Locale.ROOT).filterNot(Char::isWhitespace)
+        val requested = normalize(raw)
+        return configured.firstOrNull { normalize(it) == requested }
     }
 
     companion object {
@@ -497,11 +519,11 @@ internal object LocalNaturalLanguageParser {
     private val koreanAmount = Regex("""(?<!\d)(\d+(?:\.\d+)?)\s*(만|천)\s*원?""")
     private val datePattern = Regex("""(\d{1,2})월\s*(\d{1,2})일""")
 
-    fun parse(text: String, today: LocalDate): AiTransactionCandidate {
+    fun parse(text: String, today: LocalDate, paymentMethods: List<String> = emptyList()): AiTransactionCandidate {
         val amount = findAmount(text) ?: throw IllegalArgumentException("금액을 찾지 못했어요. 예: 점심 8천원")
         val date = findDate(text, today)
         val category = inferCategory(text)
-        val merchant = inferMerchant(text)
+        val merchant = inferMerchant(text, paymentMethods)
         val memo = when {
             text.contains("친구") -> "친구와 함께"
             text.contains("회사") -> "회사에서"
@@ -522,6 +544,12 @@ internal object LocalNaturalLanguageParser {
                 if (category == "OTHER") add("category")
                 if (merchant == "알 수 없음") add("merchant")
             },
+            paymentMethod = paymentMethods.asSequence()
+                .filter(String::isNotBlank)
+                .distinct()
+                .sortedByDescending(String::length)
+                .firstOrNull { method -> text.contains(method, ignoreCase = true) }
+                .orEmpty(),
         )
     }
 
@@ -550,8 +578,13 @@ internal object LocalNaturalLanguageParser {
         }
     }
 
-    private fun inferMerchant(text: String): String {
-        val cleaned = text
+    private fun inferMerchant(text: String, paymentMethods: List<String>): String {
+        val withoutPaymentMethod = paymentMethods.asSequence()
+            .filter(String::isNotBlank)
+            .distinct()
+            .sortedByDescending(String::length)
+            .fold(text) { current, method -> current.replace(method, " ", ignoreCase = true) }
+        val cleaned = withoutPaymentMethod
             .replace(numericAmount, " ")
             .replace(koreanAmount, " ")
             .replace(datePattern, " ")

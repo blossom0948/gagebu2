@@ -3,6 +3,7 @@ package com.moasseum.app.data
 import com.moasseum.app.data.local.*
 import com.moasseum.app.domain.PaymentCard
 import com.moasseum.app.domain.HomeDashboardCards
+import com.moasseum.app.domain.AiAdviceCards
 import com.moasseum.app.domain.TransactionType
 import com.moasseum.app.domain.validateAccount
 import org.json.JSONArray
@@ -24,6 +25,9 @@ data class BackupSettings(
     val homeDashboardCards: Set<String> = HomeDashboardCards.defaults,
     val noSpendChallengeGoalDays: Int = 7,
     val noSpendChallengeStartDate: LocalDate? = null,
+    val yearEndGrossSalaries: Map<Int, Long> = emptyMap(),
+    val aiAdviceCards: Set<String> = AiAdviceCards.defaults,
+    val budgetPayday: Int = 1,
 )
 
 data class FullBackup(
@@ -86,8 +90,11 @@ object FullBackupCodec {
             put("categoryOrder", JSONArray(s.categoryOrder))
             put("monthlyIncomeTargets", JSONObject(s.monthlyIncomeTargets))
             put("homeDashboardCards", JSONArray(s.homeDashboardCards.sorted()))
+            put("aiAdviceCards", JSONArray(s.aiAdviceCards.sorted()))
             put("noSpendChallengeGoalDays", s.noSpendChallengeGoalDays)
             put("noSpendChallengeStartDate", s.noSpendChallengeStartDate?.toString() ?: JSONObject.NULL)
+            put("yearEndGrossSalaries", JSONObject(s.yearEndGrossSalaries.entries.associate { it.key.toString() to it.value }))
+            put("budgetPayday", s.budgetPayday)
         }) }
     }.toString(2)
 
@@ -194,6 +201,14 @@ object FullBackupCodec {
             require(homeDashboardCards.size <= HomeDashboardCards.defaults.size && homeDashboardCards.all { it in HomeDashboardCards.defaults }) {
                 "홈 카드 설정이 올바르지 않은 백업이에요."
             }
+            val aiAdviceCards = s.optJSONArray("aiAdviceCards")?.let { cards ->
+                (0 until cards.length()).map { cards.getString(it) }.toSet()
+            } ?: AiAdviceCards.defaults
+            require(aiAdviceCards.size <= AiAdviceCards.defaults.size && aiAdviceCards.all { it in AiAdviceCards.defaults }) {
+                "AI 카드 설정이 올바르지 않은 백업이에요."
+            }
+            val budgetPayday = s.optInt("budgetPayday", 1)
+            require(budgetPayday in 1..31) { "예산 기준일 설정이 올바르지 않은 백업이에요." }
             val noSpendChallengeGoalDays = s.optInt("noSpendChallengeGoalDays", 7)
             require(noSpendChallengeGoalDays in setOf(7, 14, 30)) { "무지출 챌린지 설정이 올바르지 않은 백업이에요." }
             val noSpendChallengeStartDate = if (s.has("noSpendChallengeStartDate") && !s.isNull("noSpendChallengeStartDate")) {
@@ -201,13 +216,25 @@ object FullBackupCodec {
                     throw IllegalArgumentException("무지출 챌린지 시작일이 올바르지 않은 백업이에요.")
                 }
             } else null
+            val yearEndGrossSalaries = s.optJSONObject("yearEndGrossSalaries")?.let { salaries ->
+                buildMap {
+                    val keys = salaries.keys()
+                    while (keys.hasNext()) {
+                        val yearText = keys.next()
+                        val year = yearText.toIntOrNull() ?: continue
+                        val salary = salaries.optLong(yearText, -1L)
+                        if (year in 1900..9999 && salary in 1..100_000_000_000L) put(year, salary)
+                    }
+                }
+            }.orEmpty()
+            require(yearEndGrossSalaries.size <= 10) { "연말정산 설정이 너무 많아요." }
             val cardText = s.getString("paymentCards")
             val cards = PaymentCardSettings.decode(cardText)
             require(PaymentCardSettings.encode(cards) == cardText) { "카드 설정이 손상된 백업이에요." }
             BackupSettings(
                 s.getBoolean("darkTheme"), s.getBoolean("reduceMotion"), methods, cards, labels,
                 categoryBudgets, upgradedCategoryOrder, monthlyIncomeTargets, homeDashboardCards,
-                noSpendChallengeGoalDays, noSpendChallengeStartDate,
+                noSpendChallengeGoalDays, noSpendChallengeStartDate, yearEndGrossSalaries, aiAdviceCards, budgetPayday,
             )
         }
         if (version == 2) require(settings != null) { "앱 설정이 없는 백업이에요." }
