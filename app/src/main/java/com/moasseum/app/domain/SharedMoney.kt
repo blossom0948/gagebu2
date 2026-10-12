@@ -14,6 +14,7 @@ enum class SharedMoneyMode(val label: String, val description: String) {
 data class SharedLedgerSettings(
     val moneyMode: SharedMoneyMode = SharedMoneyMode.EQUAL_SPLIT,
     val relationshipStartDate: LocalDate? = null,
+    val featuredMemoryPhotoId: String? = null,
 )
 
 /** Korean D+ counters count the start date itself as day one. */

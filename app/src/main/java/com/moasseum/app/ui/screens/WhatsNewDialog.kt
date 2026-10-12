@@ -58,6 +58,22 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.48" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_48_photo_picker,
+                imageAspectRatio = 840f / 858f,
+                title = "커플 대표 사진을 직접 골라요",
+                description = "함께 앨범에 이미 공유한 사진 중 한 장을 두 사람의 상단 카드에 지정할 수 있어요. 사진을 새로 올리거나 공유하지 않으며, 최근 공유 사진으로 다시 바꿀 수도 있어요.",
+                imageDescription = "Galaxy Z Fold4 격리 QA 앱에서 합성 사진 두 장으로 촬영한 대표 사진 선택 창. 표시된 제목과 날짜는 테스트용이며 개인 사진은 없습니다.",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_48_holiday_calendar,
+                imageAspectRatio = 830f / 527f,
+                title = "달력에서 주말·공휴일을 구분",
+                description = "토요일은 파란색, 일요일과 공휴일은 코랄색으로 표시해요. 선택한 공휴일 이름도 달력 아래에서 바로 확인할 수 있어요.",
+                imageDescription = "Galaxy Z Fold4 QA에서 합성 거래 기록 없이 촬영한 2026년 10월 달력. 10월 9일 한글날 이름과 주말 색 구분이 보입니다.",
+            ),
+        )
         "0.1.47" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_47_relationship,

@@ -222,8 +222,17 @@ class SharedLedgerRepository(
         val ledgerId = api.findLedger(identity.token, identity.userId)
             ?: error("먼저 파트너와 공유 장부를 연결해 주세요.")
         require(photo.ledgerId == ledgerId && photo.objectPath.startsWith("$ledgerId/"))
+        val settings = api.fetchSettings(identity.token, ledgerId)
         api.deleteMemoryObject(identity.token, photo.objectPath)
         api.deleteMemory(identity.token, ledgerId, photo.id)
+        if (settings.featuredMemoryPhotoId == photo.id) {
+            api.saveSettings(
+                identity.token,
+                ledgerId,
+                identity.userId,
+                settings.copy(featuredMemoryPhotoId = null),
+            )
+        }
         return sync(identity, ledgerId)
     }
 
@@ -501,7 +510,7 @@ class SharedLedgerApi(
     override suspend fun fetchSettings(token: String, ledgerId: String): SharedLedgerSettings {
         val rows = JSONArray(request(
             "GET",
-            "shared_ledger_settings?select=money_mode,relationship_start_date&ledger_id=eq.${enc(ledgerId)}&limit=1",
+            "shared_ledger_settings?select=money_mode,relationship_start_date,featured_memory_photo_id&ledger_id=eq.${enc(ledgerId)}&limit=1",
             token,
         ))
         val row = rows.optJSONObject(0)
@@ -511,7 +520,14 @@ class SharedLedgerApi(
         val relationshipStartDate = row?.optString("relationship_start_date")
             ?.takeIf { it.isNotBlank() && it != "null" }
             ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
-        return SharedLedgerSettings(moneyMode = mode, relationshipStartDate = relationshipStartDate)
+        val featuredMemoryPhotoId = row?.optString("featured_memory_photo_id")
+            ?.takeIf { it.isNotBlank() && it != "null" }
+            ?.let { runCatching { UUID.fromString(it).toString() }.getOrNull() }
+        return SharedLedgerSettings(
+            moneyMode = mode,
+            relationshipStartDate = relationshipStartDate,
+            featuredMemoryPhotoId = featuredMemoryPhotoId,
+        )
     }
 
     override suspend fun saveSettings(token: String, ledgerId: String, userId: String, settings: SharedLedgerSettings) {
@@ -519,6 +535,7 @@ class SharedLedgerApi(
             .put("ledger_id", ledgerId)
             .put("money_mode", settings.moneyMode.name)
             .put("relationship_start_date", settings.relationshipStartDate?.toString() ?: JSONObject.NULL)
+            .put("featured_memory_photo_id", settings.featuredMemoryPhotoId ?: JSONObject.NULL)
             .put("updated_by", userId)
             .put("updated_at", Instant.now().toString())
         val saved = JSONArray(request(

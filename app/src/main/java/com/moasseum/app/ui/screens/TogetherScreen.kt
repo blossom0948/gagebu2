@@ -163,6 +163,7 @@ fun TogetherScreen(
     var showMoneyModeMenu by rememberSaveable { mutableStateOf(false) }
     var showLeaveConfirmation by rememberSaveable { mutableStateOf(false) }
     var showRelationshipDatePicker by rememberSaveable { mutableStateOf(false) }
+    var showFeaturedPhotoPicker by rememberSaveable { mutableStateOf(false) }
     var selectedMemoryUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var showMemoryDetails by rememberSaveable { mutableStateOf(false) }
     var memoryTitle by rememberSaveable { mutableStateOf("함께한 순간") }
@@ -341,7 +342,9 @@ fun TogetherScreen(
                     photo = featuredMemoryPhoto,
                     bitmap = featuredMemoryBitmap,
                     photoLoading = featuredMemoryLoading,
+                    hasSharedPhotos = snapshot.memories.isNotEmpty(),
                     onOpenPhoto = { featuredMemoryPhoto?.let(onViewMemory) },
+                    onEditPhoto = { showFeaturedPhotoPicker = true },
                     onEditStartDate = { showRelationshipDatePicker = true },
                 )
             }
@@ -499,7 +502,7 @@ fun TogetherScreen(
             if (snapshot.transactions.isEmpty()) item {
                 FinanceCard { EmptyState("공유된 내역이 없어요", "거래를 선택하면 이곳과 파트너 장부에 표시됩니다.", modifier = Modifier.padding(12.dp)) }
             }
-            items(snapshot.transactions, key = { "shared-${it.cloudId}" }) { transaction ->
+            items(snapshot.transactions, key = { "shared-${it.cloudId ?: it.id}" }) { transaction ->
                 FinanceCard {
                     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -607,6 +610,59 @@ fun TogetherScreen(
         ) {
             DatePicker(state = datePickerState, showModeToggle = false)
         }
+    }
+    if (showFeaturedPhotoPicker) {
+        AlertDialog(
+            onDismissRequest = { if (!busy) showFeaturedPhotoPicker = false },
+            modifier = Modifier.testTag("relationship_photo_picker_dialog"),
+            title = { Text("대표 사진") },
+            text = {
+                Column(
+                    modifier = Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        "함께 앨범에 이미 공유한 사진에서 골라요.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textSecondary,
+                    )
+                    TextButton(
+                        enabled = !busy,
+                        onClick = {
+                            onSaveSettings(snapshot.settings.copy(featuredMemoryPhotoId = null))
+                            showFeaturedPhotoPicker = false
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("relationship_photo_use_latest"),
+                    ) {
+                        Text("최근 공유 사진 사용", modifier = Modifier.weight(1f), textAlign = TextAlign.Start)
+                        if (snapshot.settings.featuredMemoryPhotoId == null) Text("선택됨", color = colors.accent)
+                    }
+                    snapshot.memories.forEach { photo ->
+                        TextButton(
+                            enabled = !busy,
+                            onClick = {
+                                onSaveSettings(snapshot.settings.copy(featuredMemoryPhotoId = photo.id))
+                                showFeaturedPhotoPicker = false
+                            },
+                            modifier = Modifier.fillMaxWidth().testTag("relationship_photo_${photo.id}"),
+                        ) {
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(photo.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(formatDate(photo.photoDate), style = MaterialTheme.typography.labelSmall,
+                                    color = colors.textSecondary)
+                            }
+                            if (snapshot.settings.featuredMemoryPhotoId == photo.id) Text("선택됨", color = colors.accent)
+                        }
+                    }
+                    if (snapshot.memories.isEmpty()) {
+                        Text("공유 앨범에 사진을 추가하면 여기서 고를 수 있어요.", color = colors.textSecondary)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showFeaturedPhotoPicker = false }, enabled = !busy) { Text("닫기") }
+            },
+        )
     }
     if (editingGoalId != null) {
         val editingGoal = snapshot.goals.firstOrNull { it.id == editingGoalId }
@@ -992,7 +1048,9 @@ private fun SharedRelationshipHeroCard(
     photo: SharedMemoryPhoto?,
     bitmap: Bitmap?,
     photoLoading: Boolean,
+    hasSharedPhotos: Boolean,
     onOpenPhoto: () -> Unit,
+    onEditPhoto: () -> Unit,
     onEditStartDate: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
@@ -1023,11 +1081,18 @@ private fun SharedRelationshipHeroCard(
                     modifier = Modifier.align(Alignment.CenterEnd).padding(end = 18.dp).size(104.dp),
                 )
             }
-            TextButton(
-                onClick = onEditStartDate,
-                modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).testTag("relationship_date_edit"),
-                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = Color.White),
-            ) { Text(if (startDate == null) "시작일 설정" else "날짜 변경") }
+            Row(modifier = Modifier.align(Alignment.TopEnd).padding(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (hasSharedPhotos) TextButton(
+                    onClick = onEditPhoto,
+                    modifier = Modifier.testTag("relationship_photo_edit"),
+                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = Color.White),
+                ) { Text("사진 변경") }
+                TextButton(
+                    onClick = onEditStartDate,
+                    modifier = Modifier.testTag("relationship_date_edit"),
+                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = Color.White),
+                ) { Text(if (startDate == null) "시작일 설정" else "날짜 변경") }
+            }
             Column(
                 modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),

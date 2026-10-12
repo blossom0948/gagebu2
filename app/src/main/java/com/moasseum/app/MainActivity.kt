@@ -666,7 +666,9 @@ private fun MoasseumApp(
     var loadingSharedMemoryId by remember { mutableStateOf<String?>(null) }
     var featuredSharedMemoryBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var loadingFeaturedSharedMemoryId by remember { mutableStateOf<String?>(null) }
-    val featuredSharedMemory = sharedSnapshot.memories.firstOrNull()
+    val featuredSharedMemory = sharedSnapshot.settings.featuredMemoryPhotoId
+        ?.let { selectedId -> sharedSnapshot.memories.firstOrNull { it.id == selectedId } }
+        ?: sharedSnapshot.memories.firstOrNull()
     LaunchedEffect(currentRoute, authState.user?.id, sharedSnapshot.ledgerId, featuredSharedMemory?.id) {
         val photo = featuredSharedMemory
         if (currentRoute != ROUTE_TOGETHER || sharedSnapshot.ledgerId == null || photo == null) {

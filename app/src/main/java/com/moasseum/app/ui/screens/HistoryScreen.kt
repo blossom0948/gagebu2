@@ -63,6 +63,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -73,6 +76,7 @@ import com.moasseum.app.domain.Transaction
 import com.moasseum.app.domain.TransactionType
 import com.moasseum.app.domain.HistoryQuery
 import com.moasseum.app.domain.HistorySort
+import com.moasseum.app.domain.KoreanHolidays
 import com.moasseum.app.domain.filterHistoryTransactions
 import com.moasseum.app.domain.formatDate
 import com.moasseum.app.domain.formatMonth
@@ -174,6 +178,7 @@ fun HistoryScreen(
             onSelectDate = { date -> onSelectDate(date); dateFilter = date.toString() },
             onPrevious = { dateFilter = null; onSelectMonth(uiState.month.minusMonths(1)) },
             onNext = { dateFilter = null; onSelectMonth(uiState.month.plusMonths(1)) },
+            modifier = Modifier.testTag("history_calendar_card"),
         )
     }
     val transactionContent: LazyListScope.() -> Unit = {
@@ -460,6 +465,7 @@ private fun CalendarCard(
     onSelectDate: (LocalDate) -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = LocalFinanceColors.current
     var expanded by rememberSaveable(expandedByDefault) { mutableStateOf(expandedByDefault) }
@@ -473,7 +479,7 @@ private fun CalendarCard(
         (0 until count).map { startDate.plusDays(it.toLong()) }
     }
     val datesWithTransactions = transactions.groupingBy { it.occurredDate }.eachCount()
-    FinanceCard {
+    FinanceCard(modifier = modifier) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp).animateContentSize(tween(180)), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onPrevious, modifier = Modifier.size(36.dp)) {
@@ -518,6 +524,20 @@ private fun CalendarCard(
                     }
                 }
             }
+            KoreanHolidays.label(selectedDate)?.let { holiday ->
+                Surface(
+                    color = colors.expense.copy(alpha = 0.11f),
+                    contentColor = colors.expense,
+                    shape = RoundedCornerShape(9.dp),
+                ) {
+                    Text(
+                        "공휴일 · $holiday",
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
             TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.Start)) {
                 Text(if (expanded) "주간 보기" else "한 달 보기", style = MaterialTheme.typography.labelMedium)
             }
@@ -535,11 +555,22 @@ private fun CalendarDay(
 ) {
     val colors = LocalFinanceColors.current
     val isSunday = date?.dayOfWeek == DayOfWeek.SUNDAY
+    val isSaturday = date?.dayOfWeek == DayOfWeek.SATURDAY
+    val holidayName = date?.let(KoreanHolidays::label)
     Box(
         modifier = modifier
             .heightIn(min = 40.dp)
             .padding(2.dp)
             .clip(CircleShape)
+            .then(
+                if (date != null) Modifier.semantics {
+                    contentDescription = buildString {
+                        append("${date.monthValue}월 ${date.dayOfMonth}일")
+                        holidayName?.let { append(", $it") }
+                    }
+                } else Modifier
+            )
+            .then(if (date != null) Modifier.testTag("calendar_day_$date") else Modifier)
             .then(if (date != null) Modifier.clickable(onClick = onClick) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
@@ -552,7 +583,8 @@ private fun CalendarDay(
                     date.dayOfMonth.toString(),
                     color = when {
                         selected -> MaterialTheme.colorScheme.onPrimary
-                        isSunday -> colors.expense
+                        holidayName != null || isSunday -> colors.expense
+                        isSaturday -> colors.income
                         else -> colors.textPrimary
                     },
                     style = MaterialTheme.typography.labelMedium,

@@ -136,6 +136,12 @@ class SharedMemoryAlbumScreenshotTest {
             objectPath = "qa-shared-ledger/qa-cover-photo.jpg",
             sizeBytes = 16_384,
         )
+        val olderPhoto = coverPhoto.copy(
+            id = "qa-photo-older",
+            title = "예전 여행",
+            photoDate = today.minusDays(2),
+            objectPath = "qa-shared-ledger/qa-photo-older.jpg",
+        )
         val coverBitmap = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888).apply {
             eraseColor(android.graphics.Color.rgb(55, 104, 99))
             val canvas = android.graphics.Canvas(this)
@@ -152,8 +158,11 @@ class SharedMemoryAlbumScreenshotTest {
             ledgerId = "qa-shared-ledger",
             memberCount = 2,
             transactions = transactions,
-            memories = listOf(coverPhoto),
-            settings = SharedLedgerSettings(relationshipStartDate = relationshipStart),
+            memories = listOf(coverPhoto, olderPhoto),
+            settings = SharedLedgerSettings(
+                relationshipStartDate = relationshipStart,
+                featuredMemoryPhotoId = coverPhoto.id,
+            ),
             goals = listOf(SharedLedgerGoal("qa-goal", "qa-owner", "폴드 여행 자금", 1_700_000, 1_180_000, month)),
             financeItems = listOf(
                 SharedFinanceItem("qa-income", "qa-owner", SharedFinanceKind.MONTHLY_INCOME, "공동 월급", 5_200_000, 25),
@@ -228,6 +237,18 @@ class SharedMemoryAlbumScreenshotTest {
         Base64.encodeToString(preview, Base64.NO_WRAP).chunked(2_000).forEachIndexed { index, chunk ->
             Log.i("MOASSEUM_CAPTURE", "MSS_TOGETHER_CONNECTED|$index|$chunk")
         }
+        composeRule.onNodeWithTag("relationship_photo_edit").performClick()
+        composeRule.onNodeWithText("대표 사진").assertExists()
+        val photoPicker = composeRule.onNodeWithTag("relationship_photo_picker_dialog").captureToImage().asAndroidBitmap()
+        val photoPickerFile = File(context.getExternalFilesDir("screenshots"), "moasseum-photo-picker-qa.png")
+        photoPickerFile.parentFile?.mkdirs()
+        photoPickerFile.outputStream().use { photoPicker.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        check(photoPickerFile.length() > 10_000) { "The shared-photo picker screenshot was not written." }
+        Base64.encodeToString(photoPickerFile.readBytes(), Base64.NO_WRAP).chunked(2_000).forEachIndexed { index, chunk ->
+            Log.i("MOASSEUM_CAPTURE", "MSS_PHOTO_PICKER|$index|$chunk")
+        }
+        composeRule.onNodeWithTag("relationship_photo_qa-photo-older").performClick()
+        assertEquals(olderPhoto.id, savedSettings?.featuredMemoryPhotoId)
         composeRule.onNodeWithTag("relationship_date_edit").performClick()
         composeRule.onNodeWithTag("relationship_date_save").performClick()
         assertEquals(relationshipStart, savedSettings?.relationshipStartDate)

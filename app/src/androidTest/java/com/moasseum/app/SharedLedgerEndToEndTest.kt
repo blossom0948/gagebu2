@@ -67,6 +67,9 @@ class SharedLedgerEndToEndTest {
             val selectedPhotoBytes = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xD9.toByte())
             val photoSnapshot = repoA.addMemoryPhoto("선택한 QA 사진", "임의 테스트 메모", LocalDate.parse("2026-10-12"), selectedPhotoBytes)
             assertEquals(1, photoSnapshot.memories.size)
+            val featuredPhotoId = photoSnapshot.memories.single().id
+            repoA.saveSettings(SharedLedgerSettings(SharedMoneyMode.SHARED_FUND, relationshipStart, featuredPhotoId))
+            assertEquals(featuredPhotoId, repoB.refresh().settings.featuredMemoryPhotoId)
             val partnerPhoto = repoB.refresh().memories.single()
             assertEquals("선택한 QA 사진", partnerPhoto.title)
             assertEquals("임의 테스트 메모", partnerPhoto.memo)
@@ -107,8 +110,11 @@ class SharedLedgerEndToEndTest {
             assertNull(repoUnrelated.refresh().ledgerId)
             assertTrue(repoUnrelated.refresh().transactions.isEmpty())
             assertTrue(repoUnrelated.refresh().memories.isEmpty())
-            assertTrue(repoA.deleteMemoryPhoto(partnerPhoto).memories.isEmpty())
+            val afterPhotoDelete = repoA.deleteMemoryPhoto(partnerPhoto)
+            assertTrue(afterPhotoDelete.memories.isEmpty())
+            assertNull(afterPhotoDelete.settings.featuredMemoryPhotoId)
             assertTrue(repoB.refresh().memories.isEmpty())
+            assertNull(repoB.refresh().settings.featuredMemoryPhotoId)
         } finally {
             dbA.close()
             dbB.close()

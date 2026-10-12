@@ -22,6 +22,32 @@ import org.junit.runner.RunWith
 class WhatsNewDialogInteractionTest {
     @get:Rule val composeRule = createComposeRule()
 
+    @Test fun v0148ReleasePopupShowsBothActualFoldCapturesAndAdvances() {
+        var dismissed = false
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Box(Modifier.fillMaxSize().background(LocalFinanceColors.current.surfaceBase)) {
+                    WhatsNewDialog(versionName = "0.1.48", onDismiss = { dismissed = true })
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("v0.1.48 신기능").assertExists()
+        composeRule.onNodeWithText("커플 대표 사진을 직접 골라요").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4 격리 QA 앱에서 합성 사진 두 장으로 촬영한 대표 사진 선택 창. 표시된 제목과 날짜는 테스트용이며 개인 사진은 없습니다.",
+        ).assertExists()
+        composeRule.onNodeWithText("1 / 2").assertExists()
+        composeRule.onNodeWithText("다음").performScrollTo().performClick()
+        composeRule.onNodeWithText("달력에서 주말·공휴일을 구분").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4 QA에서 합성 거래 기록 없이 촬영한 2026년 10월 달력. 10월 9일 한글날 이름과 주말 색 구분이 보입니다.",
+        ).assertExists()
+        composeRule.onNodeWithText("2 / 2").assertExists()
+        composeRule.onNodeWithText("확인").performScrollTo().performClick()
+        assertTrue(dismissed)
+    }
+
     @Test fun v0146ReleasePopupShowsAllThreeFoldCapturesAndAdvances() {
         var dismissed = false
         composeRule.setContent {

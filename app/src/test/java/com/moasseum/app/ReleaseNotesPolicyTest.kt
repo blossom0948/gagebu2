@@ -14,6 +14,20 @@ class ReleaseNotesPolicyTest {
     }
 
     @Test
+    fun `v0148 documents shared photo selection and holiday calendar captures`() {
+        val slides = ReleaseNotesCatalog.slides("0.1.48")
+        assertEquals(2, slides.size)
+        assertTrue(slides[0].title.contains("대표 사진"))
+        assertTrue(slides[0].description.contains("새로 올리거나 공유하지 않으며"))
+        assertTrue(slides[0].imageDescription.contains("합성 사진 두 장"))
+        assertTrue(slides[0].imageAspectRatio in 0.9f..1.1f)
+        assertTrue(slides[1].title.contains("공휴일"))
+        assertTrue(slides[1].description.contains("토요일은 파란색"))
+        assertTrue(slides[1].imageDescription.contains("2026년 10월 달력"))
+        assertTrue(slides[1].imageAspectRatio in 1.5f..1.7f)
+    }
+
+    @Test
     fun `v0147 documents the shared relationship counter and latest shared photo`() {
         val slide = ReleaseNotesCatalog.slides("0.1.47").single()
         assertTrue(slide.title.contains("함께한 날"))
