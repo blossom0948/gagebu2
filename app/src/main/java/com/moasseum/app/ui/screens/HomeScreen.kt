@@ -42,6 +42,9 @@ import androidx.compose.material.icons.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.KeyboardVoice
 import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material.icons.rounded.PhotoLibrary
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.AlertDialog
@@ -70,6 +73,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
@@ -121,6 +126,7 @@ fun HomeScreen(
     onSelectMonth: (YearMonth) -> Unit,
     onAdd: (AddMode) -> Unit,
     onOpenManage: () -> Unit,
+    onOpenManageFeature: (String) -> Unit = {},
     onOpenHistory: () -> Unit,
     onOpenTransaction: (Long) -> Unit,
     onOpenHelp: () -> Unit,
@@ -136,6 +142,8 @@ fun HomeScreen(
     homeDashboardCards: Set<String> = HomeDashboardCards.defaults,
     aiAdviceCards: Set<String> = AiAdviceCards.defaults,
     noSpendChallenge: NoSpendChallengeSettings = NoSpendChallengeSettings(),
+    activeFixedCostCount: Int = 0,
+    activeFixedCostMonthlyAmount: Long = 0L,
     scrollToTopRequest: Int = 0,
 ) {
     var selectedTabName by rememberSaveable { mutableStateOf(HomeTab.SUMMARY.name) }
@@ -223,7 +231,16 @@ fun HomeScreen(
                 }
             }
 
-            HomeTab.INSIGHTS -> item(span = { GridItemSpan(maxLineSpan) }) { InsightsContent(uiState, noSpendChallenge, onOpenManage) }
+            HomeTab.INSIGHTS -> item(span = { GridItemSpan(maxLineSpan) }) {
+                InsightsContent(
+                    uiState = uiState,
+                    noSpendChallenge = noSpendChallenge,
+                    onOpenManage = onOpenManage,
+                    onOpenManageFeature = onOpenManageFeature,
+                    activeFixedCostCount = activeFixedCostCount,
+                    activeFixedCostMonthlyAmount = activeFixedCostMonthlyAmount,
+                )
+            }
             HomeTab.REPORT -> item(span = { GridItemSpan(maxLineSpan) }) {
                 ReportContent(
                     uiState = uiState,
@@ -750,6 +767,9 @@ private fun InsightsContent(
     uiState: LedgerUiState,
     noSpendChallenge: NoSpendChallengeSettings,
     onOpenManage: () -> Unit,
+    onOpenManageFeature: (String) -> Unit,
+    activeFixedCostCount: Int,
+    activeFixedCostMonthlyAmount: Long,
 ) {
     val colors = LocalFinanceColors.current
     val previousExpense = uiState.previousExpenseTotal
@@ -775,6 +795,31 @@ private fun InsightsContent(
                 Text(message, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
         }
+        Text("바로 쓰는 도구", color = colors.textSecondary, style = MaterialTheme.typography.labelLarge)
+        val challengeStreak = noSpendChallenge.startDate?.let { start -> noSpendStreakDays(uiState.transactions, start) } ?: 0
+        InsightsShortcutCard(
+            tag = "insight_no_spend_shortcut",
+            icon = Icons.Rounded.AutoAwesome,
+            title = "무지출 챌린지",
+            subtitle = if (noSpendChallenge.enabled) {
+                "${challengeStreak.coerceAtMost(noSpendChallenge.goalDays)} / ${noSpendChallenge.goalDays}일 기록 · 목표 관리"
+            } else "기간을 정하고 무지출 기록 시작",
+            onClick = { onOpenManageFeature("no-spend") },
+        )
+        InsightsShortcutCard(
+            tag = "insight_fixed_costs_shortcut",
+            icon = Icons.Rounded.Repeat,
+            title = "구독·고정비 레이더",
+            subtitle = if (activeFixedCostCount == 0) "반복 결제와 월 예정액 확인" else "${activeFixedCostCount}개 활성 · 월 ${formatDisplayWon(activeFixedCostMonthlyAmount)}",
+            onClick = { onOpenManageFeature("fixed-costs") },
+        )
+        InsightsShortcutCard(
+            tag = "insight_year_end_shortcut",
+            icon = Icons.Rounded.CalendarMonth,
+            title = "연말정산 도우미",
+            subtitle = "연간 카드 사용 기록과 25% 기준 확인",
+            onClick = { onOpenManageFeature("year-end") },
+        )
         FinanceCard {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Text("이번 달 체크 포인트", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -789,22 +834,6 @@ private fun InsightsContent(
                 InsightRow("저축률", savingsRate)
             }
         }
-        if (noSpendChallenge.enabled) {
-            val start = noSpendChallenge.startDate ?: LocalDate.now()
-            val streak = noSpendStreakDays(uiState.transactions, start)
-            FinanceCard(highlighted = streak >= noSpendChallenge.goalDays) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("무지출 챌린지", color = colors.accent, style = MaterialTheme.typography.labelLarge)
-                    Text("${streak.coerceAtMost(noSpendChallenge.goalDays)} / ${noSpendChallenge.goalDays}일", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    androidx.compose.material3.LinearProgressIndicator(
-                        progress = { (streak.toFloat() / noSpendChallenge.goalDays.coerceAtLeast(1)).coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth().height(6.dp),
-                        color = if (streak >= noSpendChallenge.goalDays) colors.success else colors.accent,
-                        trackColor = colors.surfaceOverlay,
-                    )
-                }
-            }
-        }
         FinanceCard {
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -813,6 +842,35 @@ private fun InsightsContent(
                 }
                 TextButton(onClick = onOpenManage) { Text("관리") }
             }
+        }
+    }
+}
+
+@Composable
+private fun InsightsShortcutCard(
+    tag: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    val colors = LocalFinanceColors.current
+    FinanceCard(
+        modifier = Modifier
+            .clickable(role = Role.Button, onClick = onClick)
+            .testTag(tag),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(icon, contentDescription = null, tint = colors.accent, modifier = Modifier.size(22.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text(subtitle, color = colors.textSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            Icon(Icons.Rounded.ChevronRight, contentDescription = "열기", tint = colors.textSecondary, modifier = Modifier.size(20.dp))
         }
     }
 }

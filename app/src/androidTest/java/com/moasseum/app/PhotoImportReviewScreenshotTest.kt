@@ -1,9 +1,13 @@
 package com.moasseum.app
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Color
-import android.util.Base64
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.util.Log
+import android.util.Base64
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -13,6 +17,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -73,13 +78,31 @@ class PhotoImportReviewScreenshotTest {
     @Test fun cancelledRowCanBeViewedAndRestoredBeforeSaving() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         check(context.packageName.endsWith(".qa")) { "Interaction test is restricted to the isolated QA app." }
-        val evidenceFile = java.io.File.createTempFile("qa-cancelled-evidence-", ".jpg", context.cacheDir)
-        Bitmap.createBitmap(80, 40, Bitmap.Config.ARGB_8888).apply {
-            eraseColor(Color.DKGRAY)
+        val evidenceFile = java.io.File.createTempFile("qa-cancelled-evidence-", ".jpg", context.filesDir)
+        Bitmap.createBitmap(800, 360, Bitmap.Config.ARGB_8888).apply {
+            val canvas = Canvas(this)
+            canvas.drawColor(Color.rgb(39, 58, 61))
+            val merchantPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                textSize = 48f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+            canvas.drawText("카페 모아씀", 36f, 105f, merchantPaint)
+            val amountPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.rgb(91, 177, 255)
+                textSize = 58f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+            canvas.drawText("6,300원", 36f, 205f, amountPaint)
+            val detailPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.LTGRAY; textSize = 30f }
+            canvas.drawText("2026.10.12 · 체크카드", 36f, 285f, detailPaint)
             evidenceFile.outputStream().use { compress(Bitmap.CompressFormat.JPEG, 90, it) }
             recycle()
         }
         assertTrue(evidenceFile.length() > 0)
+        val decodedEvidence = BitmapFactory.decodeFile(evidenceFile.absolutePath)
+        assertTrue("Synthetic evidence image must decode before composing the dialog.", decodedEvidence != null)
+        decodedEvidence?.recycle()
         val candidate = sampleCandidate().copy(
             sourceImageUri = "content://qa/cancelled-row",
             sourceEvidenceImagePath = evidenceFile.absolutePath,
@@ -115,8 +138,27 @@ class PhotoImportReviewScreenshotTest {
         composeRule.onNodeWithText("거래 보기").performClick()
         composeRule.onNodeWithText("취소로 제외된 내역").assertExists()
         composeRule.onNodeWithText("사진 보기").performClick()
+        composeRule.onNodeWithText("취소로 제외된 내역").assertDoesNotExist()
         composeRule.onNodeWithText("원본 거래 부분").assertExists()
-        composeRule.onNodeWithContentDescription("거래 인식에 사용된 캡처 부분").assertExists()
+        assertTrue("The evidence crop must remain available while the review is open.", evidenceFile.exists())
+        composeRule.waitForIdle()
+        composeRule.waitUntil(10_000) {
+            runCatching {
+                composeRule.onNodeWithContentDescription("거래 인식에 사용된 캡처 부분", useUnmergedTree = true).assertExists()
+            }.isSuccess
+        }
+        composeRule.onNodeWithContentDescription("거래 인식에 사용된 캡처 부분", useUnmergedTree = true).assertExists()
+        val evidenceDialog = composeRule.onNode(isDialog()).captureToImage().asAndroidBitmap()
+        val evidenceDialogBytes = ByteArrayOutputStream().use { output ->
+            evidenceDialog.compress(Bitmap.CompressFormat.JPEG, 88, output)
+            output.toByteArray()
+        }
+        evidenceDialog.recycle()
+        Base64.encodeToString(evidenceDialogBytes, Base64.NO_WRAP).chunked(2_000).forEachIndexed { index, chunk ->
+            Log.i("MOASSEUM_CAPTURE", "MSS_CANCELLED_EVIDENCE_VIEW|$index|$chunk")
+        }
+        composeRule.onNodeWithText("목록").performClick()
+        composeRule.onNodeWithText("취소로 제외된 내역").assertExists()
         composeRule.onNodeWithText("후보로 복원").performClick()
         assertTrue(restoredId == candidate.id)
         evidenceFile.delete()

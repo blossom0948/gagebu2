@@ -207,25 +207,16 @@ fun PhotoImportReview(
             if (showCancelledDialog) {
                 PhotoCancelledCandidatesDialog(
                     candidates = state.cancelledCandidates,
-                    onDismiss = { showCancelledDialog = false },
-                    onViewPhoto = {
-                        cancelledEvidenceCandidate = it
+                    evidenceCandidate = cancelledEvidenceCandidate,
+                    onDismiss = {
                         showCancelledDialog = false
+                        cancelledEvidenceCandidate = null
                     },
+                    onViewPhoto = { cancelledEvidenceCandidate = it },
+                    onBackFromPhoto = { cancelledEvidenceCandidate = null },
                     onRestore = {
                         onRestoreCancelled(it)
-                        showCancelledDialog = false
-                    },
-                )
-            }
-            cancelledEvidenceCandidate?.let { candidate ->
-                PhotoEvidenceDialog(
-                    candidate = candidate,
-                    confirmLabel = "후보로 복원",
-                    onDismiss = { cancelledEvidenceCandidate = null },
-                    onEdit = {
                         cancelledEvidenceCandidate = null
-                        onRestoreCancelled(candidate)
                         showCancelledDialog = false
                     },
                 )
@@ -237,41 +228,56 @@ fun PhotoImportReview(
 @Composable
 private fun PhotoCancelledCandidatesDialog(
     candidates: List<PhotoTransactionCandidate>,
+    evidenceCandidate: PhotoTransactionCandidate?,
     onDismiss: () -> Unit,
     onViewPhoto: (PhotoTransactionCandidate) -> Unit,
+    onBackFromPhoto: () -> Unit,
     onRestore: (PhotoTransactionCandidate) -> Unit,
 ) {
     val colors = LocalFinanceColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("취소로 제외된 내역") },
+        title = { Text(if (evidenceCandidate == null) "취소로 제외된 내역" else "원본 거래 부분") },
         text = {
-            Column(
-                Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text("사진을 확인하고, 잘못 제외된 거래는 후보로 되돌릴 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodySmall)
-                candidates.forEach { candidate ->
-                    Surface(color = colors.surfaceRaised, shape = RoundedCornerShape(14.dp)) {
-                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Text(candidate.transaction.merchant, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                "${formatDisplayWon(candidate.transaction.amount)} · ${formatDate(candidate.transaction.occurredDate)} · ${candidate.paymentMethod}",
-                                color = colors.textSecondary,
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                if (candidate.sourceImageUri != null || candidate.sourceEvidenceImagePath != null) {
-                                    TextButton(onClick = { onViewPhoto(candidate) }) { Text("사진 보기") }
+            if (evidenceCandidate != null) {
+                PhotoEvidenceContent(evidenceCandidate)
+            } else {
+                Column(
+                    Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("사진을 확인하고, 잘못 제외된 거래는 후보로 되돌릴 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                    candidates.forEach { candidate ->
+                        Surface(color = colors.surfaceRaised, shape = RoundedCornerShape(14.dp)) {
+                            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text(candidate.transaction.merchant, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "${formatDisplayWon(candidate.transaction.amount)} · ${formatDate(candidate.transaction.occurredDate)} · ${candidate.paymentMethod}",
+                                    color = colors.textSecondary,
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                    if (candidate.sourceImageUri != null || candidate.sourceEvidenceImagePath != null) {
+                                        TextButton(onClick = { onViewPhoto(candidate) }) { Text("사진 보기") }
+                                    }
+                                    TextButton(onClick = { onRestore(candidate) }) { Text("후보로 복원") }
                                 }
-                                TextButton(onClick = { onRestore(candidate) }) { Text("후보로 복원") }
                             }
                         }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("닫기") } },
+        confirmButton = {
+            if (evidenceCandidate != null) {
+                TextButton(onClick = { onRestore(evidenceCandidate) }) { Text("후보로 복원") }
+            } else {
+                TextButton(onClick = onDismiss) { Text("닫기") }
+            }
+        },
+        dismissButton = if (evidenceCandidate != null) {
+            { TextButton(onClick = onBackFromPhoto) { Text("목록") } }
+        } else null,
     )
 }
 
@@ -324,14 +330,27 @@ private fun PhotoEvidenceDialog(
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
 ) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("원본 거래 부분") },
+        text = { PhotoEvidenceContent(candidate) },
+        confirmButton = { TextButton(onClick = onEdit) { Text(confirmLabel) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("닫기") } },
+    )
+}
+
+@Composable
+private fun PhotoEvidenceContent(candidate: PhotoTransactionCandidate) {
     val context = LocalContext.current
     var evidenceBitmap by remember(candidate.sourceEvidenceImagePath) { mutableStateOf<Bitmap?>(null) }
     var sourceBitmap by remember(candidate.sourceImageUri) { mutableStateOf<Bitmap?>(null) }
     var showFullSource by remember(candidate.id) { mutableStateOf(false) }
     LaunchedEffect(candidate.sourceEvidenceImagePath, candidate.sourceImageUri) {
-        evidenceBitmap = withContext(Dispatchers.IO) {
-            candidate.sourceEvidenceImagePath?.let(BitmapFactory::decodeFile)
+        val path = candidate.sourceEvidenceImagePath
+        val loaded = withContext(Dispatchers.IO) {
+            path?.let(BitmapFactory::decodeFile)
         }
+        evidenceBitmap = loaded
     }
     LaunchedEffect(showFullSource, candidate.sourceImageUri) {
         if (showFullSource && sourceBitmap == null) {
@@ -344,34 +363,26 @@ private fun PhotoEvidenceDialog(
             }
         }
     }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("원본 거래 부분") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                val bitmap = if (showFullSource) sourceBitmap else evidenceBitmap
-                if (bitmap == null) {
-                    Text(
-                        if (showFullSource) "원본 사진을 불러오지 못했어요."
-                        else "거래 부분을 불러오지 못했어요. 원본 전체 화면을 확인해 주세요.",
-                        color = LocalFinanceColors.current.textSecondary,
-                    )
-                    if (!showFullSource && candidate.sourceImageUri != null) {
-                        TextButton(onClick = { showFullSource = true }) { Text("원본 전체 보기") }
-                    }
-                } else {
-                    Image(
-                        bitmap = bitmap.asImageBitmap(),
-                        contentDescription = if (showFullSource) "선택한 금융앱 캡처 원본" else "거래 인식에 사용된 캡처 부분",
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 340.dp),
-                        contentScale = ContentScale.Fit,
-                    )
-                }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        val bitmap = if (showFullSource) sourceBitmap else evidenceBitmap
+        if (bitmap == null) {
+            Text(
+                if (showFullSource) "원본 사진을 불러오지 못했어요."
+                else "거래 부분을 불러오지 못했어요. 원본 전체 화면을 확인해 주세요.",
+                color = LocalFinanceColors.current.textSecondary,
+            )
+            if (!showFullSource && candidate.sourceImageUri != null) {
+                TextButton(onClick = { showFullSource = true }) { Text("원본 전체 보기") }
             }
-        },
-        confirmButton = { TextButton(onClick = onEdit) { Text(confirmLabel) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("닫기") } },
-    )
+        } else {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = if (showFullSource) "선택한 금융앱 캡처 원본" else "거래 인식에 사용된 캡처 부분",
+                modifier = Modifier.fillMaxWidth().heightIn(max = 340.dp),
+                contentScale = ContentScale.Fit,
+            )
+        }
+    }
 }
 
 @Composable

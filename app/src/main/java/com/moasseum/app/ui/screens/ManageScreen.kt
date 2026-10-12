@@ -1,11 +1,21 @@
 package com.moasseum.app.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -179,6 +189,8 @@ fun ManageScreen(
     onRememberManageSearchId: suspend (String) -> Unit = {},
     onClearRecentManageSearches: suspend () -> Unit = {},
     scrollToTopRequest: Int = 0,
+    initialActionId: String? = null,
+    onInitialActionConsumed: () -> Unit = {},
 ) {
     var showBudgetDialog by rememberSaveable { mutableStateOf(false) }
     var showCategoryDialog by rememberSaveable { mutableStateOf(false) }
@@ -203,6 +215,7 @@ fun ManageScreen(
     var showYearEndDialog by rememberSaveable { mutableStateOf(false) }
     var showBudgetPaydayDialog by rememberSaveable { mutableStateOf(false) }
     var showDisplayCurrencyDialog by rememberSaveable { mutableStateOf(false) }
+    var appDataSettingsExpanded by rememberSaveable { mutableStateOf(false) }
     var selectedReportYear by rememberSaveable { mutableStateOf(java.time.LocalDate.now().year) }
     val colors = LocalFinanceColors.current
     val listState = rememberLazyListState()
@@ -249,6 +262,11 @@ fun ManageScreen(
         "privacy" to { showPrivacyDialog = true },
         "update" to { onCheckForUpdate() },
     )
+    LaunchedEffect(initialActionId) {
+        val actionId = initialActionId ?: return@LaunchedEffect
+        searchActions[actionId]?.invoke()
+        onInitialActionConsumed()
+    }
     val searchEntries = ManageSearchCatalog.entries.map { descriptor ->
         val currentDescription = when (descriptor.id) {
             "rollover" -> if (uiState.budgetRollover) "현재 켜짐" else "현재 꺼짐"
@@ -391,33 +409,40 @@ fun ManageScreen(
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ManageSectionTitle("앱과 데이터")
-                FinanceCard {
-                    ManageRow(Icons.Rounded.Wallet, "전체 백업 내보내기", "", onClick = onExportBackup)
-                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                    ManageRow(Icons.Rounded.Wallet, "백업 복원", "", onClick = onRestoreBackup)
-                    ManageRow(Icons.Rounded.Wallet, "복원 전 백업 내보내기", "", onClick = onExportSafetyBackup)
-                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                    ManageRow(Icons.Rounded.CalendarMonth, "연말정산 도우미", "25% 기준 · 연간 기록 · CSV", onClick = { selectedReportYear = java.time.LocalDate.now().year; showYearEndDialog = true })
-                    ManageRow(Icons.Rounded.CalendarMonth, "월별 PDF 리포트", formatMonth(uiState.month), onClick = onExportPdf)
-                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                    ManageRow(Icons.Rounded.Security, "로그인·계정", accountStatus, onClick = onOpenAuth)
-                    ManageRow(Icons.AutoMirrored.Rounded.HelpOutline, "기능 안내", "", onClick = onOpenGuide)
-                }
-                FinanceCard {
-                    ManageRow(Icons.Rounded.Home, "홈 카드 구성", "${homeDashboardCards.size}개 표시", onClick = { showHomeCardsDialog = true })
-                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                    ManageRow(Icons.Rounded.AutoAwesome, "AI 조언 카드", "${aiAdviceCards.size}/4 표시", onClick = { showAiAdviceDialog = true })
-                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                    ManageRow(Icons.Rounded.Wallet, "표시 통화", displayCurrencySummary(displayCurrency), onClick = { showDisplayCurrencyDialog = true })
-                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                    SettingSwitchRow(Icons.Rounded.DarkMode, "다크 모드", "", darkTheme, onDarkThemeChanged)
-                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                    SettingSwitchRow(Icons.Rounded.Palette, "모션 줄이기", "", reduceMotion, onReduceMotionChanged)
-                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                    SettingSwitchRow(Icons.Rounded.Security, "앱 잠금", "생체 인증 또는 기기 잠금", appLockEnabled, onSetAppLockEnabled)
-                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                    ManageRow(Icons.Rounded.Security, "개인정보와 데이터", "", onClick = { showPrivacyDialog = true })
+                ManageExpandableSection(
+                    expanded = appDataSettingsExpanded,
+                    onToggle = { appDataSettingsExpanded = !appDataSettingsExpanded },
+                    reduceMotion = reduceMotion,
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FinanceCard {
+                            ManageRow(Icons.Rounded.Wallet, "전체 백업 내보내기", "", onClick = onExportBackup)
+                            HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                            ManageRow(Icons.Rounded.Wallet, "백업 복원", "", onClick = onRestoreBackup)
+                            ManageRow(Icons.Rounded.Wallet, "복원 전 백업 내보내기", "", onClick = onExportSafetyBackup)
+                            HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                            ManageRow(Icons.Rounded.CalendarMonth, "연말정산 도우미", "25% 기준 · 연간 기록 · CSV", onClick = { selectedReportYear = java.time.LocalDate.now().year; showYearEndDialog = true })
+                            ManageRow(Icons.Rounded.CalendarMonth, "월별 PDF 리포트", formatMonth(uiState.month), onClick = onExportPdf)
+                            HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                            ManageRow(Icons.Rounded.Security, "로그인·계정", accountStatus, onClick = onOpenAuth)
+                            ManageRow(Icons.AutoMirrored.Rounded.HelpOutline, "기능 안내", "", onClick = onOpenGuide)
+                        }
+                        FinanceCard {
+                            ManageRow(Icons.Rounded.Home, "홈 카드 구성", "${homeDashboardCards.size}개 표시", onClick = { showHomeCardsDialog = true })
+                            HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                            ManageRow(Icons.Rounded.AutoAwesome, "AI 조언 카드", "${aiAdviceCards.size}/4 표시", onClick = { showAiAdviceDialog = true })
+                            HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                            ManageRow(Icons.Rounded.Wallet, "표시 통화", displayCurrencySummary(displayCurrency), onClick = { showDisplayCurrencyDialog = true })
+                            HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                            SettingSwitchRow(Icons.Rounded.DarkMode, "다크 모드", "", darkTheme, onDarkThemeChanged)
+                            HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                            SettingSwitchRow(Icons.Rounded.Palette, "모션 줄이기", "", reduceMotion, onReduceMotionChanged)
+                            HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                            SettingSwitchRow(Icons.Rounded.Security, "앱 잠금", "생체 인증 또는 기기 잠금", appLockEnabled, onSetAppLockEnabled)
+                            HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                            ManageRow(Icons.Rounded.Security, "개인정보와 데이터", "", onClick = { showPrivacyDialog = true })
+                        }
+                    }
                 }
                 AppUpdateCard(updateState, onCheckForUpdate, onInstallUpdate, onContinueInstall)
                 Text("모아씀 ${com.moasseum.app.BuildConfig.VERSION_NAME}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 4.dp, vertical = 5.dp))
@@ -1804,6 +1829,48 @@ private fun relativeNotificationTime(timestamp: Long): String {
 }
 
 @Composable
+internal fun ManageExpandableSection(
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    reduceMotion: Boolean,
+    content: @Composable () -> Unit,
+) {
+    val colors = LocalFinanceColors.current
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Surface(
+            color = colors.surfaceRaised,
+            shape = RoundedCornerShape(15.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("manage_app_data_toggle")
+                .clickable(role = Role.Button, onClick = onToggle),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("앱과 데이터", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text("백업 · 계정 · 화면 설정", color = colors.textSecondary, style = MaterialTheme.typography.labelSmall)
+                }
+                Icon(
+                    if (expanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
+                    contentDescription = if (expanded) "앱과 데이터 접기" else "앱과 데이터 펼치기",
+                    tint = colors.textSecondary,
+                )
+            }
+        }
+        AnimatedVisibility(
+            visible = expanded,
+            enter = if (reduceMotion) EnterTransition.None else expandVertically(expandFrom = Alignment.Top, animationSpec = tween(180)) + fadeIn(tween(120)),
+            exit = if (reduceMotion) ExitTransition.None else shrinkVertically(shrinkTowards = Alignment.Top, animationSpec = tween(160)) + fadeOut(tween(100)),
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
 private fun ManageSectionTitle(title: String) {
     Text(title, color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 4.dp, start = 4.dp))
 }
@@ -1948,7 +2015,8 @@ fun DisplayCurrencyDialog(
 }
 
 @Composable
-private fun BudgetDialog(
+@OptIn(ExperimentalLayoutApi::class)
+internal fun BudgetDialog(
     month: java.time.YearMonth,
     initialValue: String,
     onDismiss: () -> Unit,
@@ -1972,6 +2040,20 @@ private fun BudgetDialog(
                     isError = showError,
                     enabled = !saving.busy,
                 )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    listOf(100_000L to "10만", 300_000L to "30만", 500_000L to "50만", 1_000_000L to "100만", 3_000_000L to "300만")
+                        .forEach { (amount, label) ->
+                            FilterChip(
+                                selected = com.moasseum.app.domain.parseAmount(input) == amount,
+                                onClick = { input = amount.toString(); showError = false },
+                                enabled = !saving.busy,
+                                label = { Text(label) },
+                            )
+                        }
+                }
                 if (showError) Text("1원 이상 입력해 주세요.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
                 saving.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium) }
             }

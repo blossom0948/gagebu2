@@ -22,6 +22,43 @@ import org.junit.runner.RunWith
 class WhatsNewDialogInteractionTest {
     @get:Rule val composeRule = createComposeRule()
 
+    @Test fun v0145ReleasePopupShowsTheFoldBudgetPresetCapture() {
+        var dismissed = false
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Box(Modifier.fillMaxSize().background(LocalFinanceColors.current.surfaceBase)) {
+                    WhatsNewDialog(versionName = "0.1.45", onDismiss = { dismissed = true })
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("v0.1.45 신기능").assertExists()
+        composeRule.onNodeWithText("예산 금액을 빠르게 선택").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4 QA 앱에서 합성 장부로 촬영한 목표 지출 수정 창. 30만 원 프리셋이 선택되어 있고 실제 거래 데이터는 없습니다.",
+        ).assertExists()
+        composeRule.onNodeWithText("1 / 4").assertExists()
+        composeRule.onNodeWithText("다음").performScrollTo().performClick()
+        composeRule.onNodeWithText("관리 메뉴를 간결하게 정돈").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4 QA 앱에서 촬영한 접힌 앱과 데이터 메뉴. 백업·계정·화면 설정을 한곳에서 펼칠 수 있습니다.",
+        ).assertExists()
+        composeRule.onNodeWithText("2 / 4").assertExists()
+        composeRule.onNodeWithText("다음").performScrollTo().performClick()
+        composeRule.onNodeWithText("취소 거래 사진을 같은 창에서 확인").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4 QA 앱에서 합성 거래 캡처를 같은 취소 내역 창 안에서 확인하는 화면. 가상 카페·금액만 사용했습니다.",
+        ).assertExists()
+        composeRule.onNodeWithText("다음").performScrollTo().performClick()
+        composeRule.onNodeWithText("인사이트에서 절약 도구 바로 열기").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4 격리 QA 앱에서 합성 데이터로 촬영한 인사이트 화면. 무지출 챌린지, 고정비 레이더, 연말정산 바로가기가 보입니다.",
+        ).assertExists()
+        composeRule.onNodeWithText("4 / 4").assertExists()
+        composeRule.onNodeWithText("확인").performScrollTo().performClick()
+        assertTrue(dismissed)
+    }
+
     @Test fun v0144ReleasePopupShowsTheFoldHomeDashboardCapture() {
         var dismissed = false
         composeRule.setContent {

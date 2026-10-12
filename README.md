@@ -24,9 +24,9 @@ app/build/outputs/apk/debug/app-debug.apk
 
 v0.1.17은 계좌·지갑 잔액과 이체 기록, 예산 이월/하루 사용 가능 금액/지난달 비교, JSON 전체 복원과 복원 전 안전 백업, 월간 PDF 및 카메라 영수증 입력을 추가합니다. 이체는 지출·수입 통계에서 제외하고 실제 은행 송금은 하지 않습니다. 계좌를 연결하지 않은 기존 거래는 그대로 유지됩니다.
 
-현재 배포 버전은 **v0.1.44**입니다. 홈 첫 화면에서 오늘 지출이 오늘·이번 주 요약과 중복 표시되지 않도록 기본 구성을 간결하게 했고, 홈 카드 구성에서 오늘 소비 요약을 다시 켤 수 있습니다. 무지출 챌린지는 시작 전·오늘 지출·연속 기록·목표 달성 상태를 구분해 표시합니다. 금융앱 캡처 분석 변경은 [v0.1.43 릴리스 노트](docs/releases/v0.1.43.md), 이번 변경은 [v0.1.44 릴리스 노트](docs/releases/v0.1.44.md)에 기록했습니다.
+현재 배포 버전은 **v0.1.45**입니다. 예산 금액 바로가기를 추가하고 관리 메뉴를 정돈했으며, 취소 거래의 사진 근거 확인과 인사이트 도구 바로가기를 개선했습니다. 업데이트 확인과 자연어 검색은 계속 바로 사용할 수 있습니다. [v0.1.45 릴리스 노트](docs/releases/v0.1.45.md)와 [Weeple 비교 진행 보고서](WEEPLE_PARITY_PROGRESS_2026-10-08.md)를 참고하세요.
 
-[v0.1.44 APK 다운로드](https://github.com/blossom0948/gagebu2/releases/download/v0.1.44/app-release.apk) · [GitHub 릴리스](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.44)
+[v0.1.45 APK 다운로드](https://github.com/blossom0948/gagebu2/releases/download/v0.1.45/app-release.apk) · [GitHub 릴리스](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.45)
 
 공동 장부의 운영 DB migration은 적용됐지만, 별도 두 계정으로 초대·수락·RLS 격리를 끝까지 검증하지는 않았습니다. 일괄 처리는 기기 내 제한형 문장 패턴을 사용하며 수정·삭제는 사용자가 행을 골라야 합니다. 위젯은 런처에 직접 추가해야 하며, 이번 빌드는 실제 기기에서 배치·터치를 검증하지 못했습니다. 비교 범위와 남은 차이는 [Weeple 기능 대조 진행 보고서](WEEPLE_PARITY_PROGRESS_2026-10-08.md)를 참고하세요.
 

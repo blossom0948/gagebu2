@@ -14,6 +14,29 @@ class ReleaseNotesPolicyTest {
     }
 
     @Test
+    fun `v0145 explains fast budget amount selection`() {
+        val slides = ReleaseNotesCatalog.slides("0.1.45")
+        assertEquals(4, slides.size)
+        assertTrue(slides.first().title.contains("빠르게 선택"))
+        assertTrue(slides.first().description.contains("300만 원"))
+        assertTrue(slides.first().description.contains("직접 입력"))
+        assertTrue(slides.first().imageDescription.contains("30만 원 프리셋"))
+        assertTrue(slides.first().imageAspectRatio in 0.90f..0.93f)
+        assertTrue(slides[1].title.contains("간결하게 정돈"))
+        assertTrue(slides[1].description.contains("업데이트 확인은 계속 바로"))
+        assertTrue(slides[1].imageDescription.contains("백업·계정·화면 설정"))
+        assertTrue(slides[1].imageAspectRatio in 3.5f..3.8f)
+        assertTrue(slides[2].title.contains("같은 창에서 확인"))
+        assertTrue(slides[2].description.contains("후보로 복원"))
+        assertTrue(slides[2].imageDescription.contains("가상 카페·금액"))
+        assertTrue(slides[2].imageAspectRatio in 1.0f..1.6f)
+        assertTrue(slides[3].title.contains("인사이트에서"))
+        assertTrue(slides[3].description.contains("각각 눌러 바로"))
+        assertTrue(slides[3].imageDescription.contains("합성 데이터"))
+        assertTrue(slides[3].imageAspectRatio in 0.6f..0.65f)
+    }
+
+    @Test
     fun `v0144 documents the compact home and retains the monthly budget visual`() {
         val slide = ReleaseNotesCatalog.slides("0.1.44").single()
         assertTrue(slide.title.contains("간결하게"))

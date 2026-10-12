@@ -540,6 +540,7 @@ private fun MoasseumApp(
     var historyScrollToTopRequest by rememberSaveable { mutableIntStateOf(0) }
     var togetherScrollToTopRequest by rememberSaveable { mutableIntStateOf(0) }
     var manageScrollToTopRequest by rememberSaveable { mutableIntStateOf(0) }
+    var pendingManageInsightActionId by rememberSaveable { mutableStateOf<String?>(null) }
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val selectedDate by viewModel.date.collectAsStateWithLifecycle()
     val pendingCandidates by viewModel.pendingNotificationCandidates.collectAsStateWithLifecycle()
@@ -1325,6 +1326,16 @@ private fun MoasseumApp(
                             addOpen = true
                         },
                         onOpenManage = { navigateTo(navController, ROUTE_MANAGE) },
+                        onOpenManageFeature = { actionId ->
+                            pendingManageInsightActionId = actionId
+                            navigateTo(navController, ROUTE_MANAGE)
+                        },
+                        activeFixedCostCount = recurringRules.count {
+                            it.isActive && it.type == com.moasseum.app.domain.TransactionType.EXPENSE
+                        },
+                        activeFixedCostMonthlyAmount = recurringRules.filter {
+                            it.isActive && it.type == com.moasseum.app.domain.TransactionType.EXPENSE
+                        }.sumOf { it.amount },
                         onOpenHistory = { navigateTo(navController, ROUTE_HISTORY) },
                         onOpenTransaction = { id ->
                             uiState.transactions.firstOrNull { it.id == id }?.let { transaction ->
@@ -1581,6 +1592,8 @@ private fun MoasseumApp(
                         recentManageSearchIds = recentManageSearchIds,
                         onRememberManageSearchId = application.preferencesRepository::rememberManageSearchId,
                         onClearRecentManageSearches = application.preferencesRepository::clearRecentManageSearches,
+                        initialActionId = pendingManageInsightActionId,
+                        onInitialActionConsumed = { pendingManageInsightActionId = null },
                         onSetBudgetRollover = viewModel::setBudgetRollover,
                         onExportBackup = { exportJsonLauncher.launch("moasseum-full-${java.time.LocalDate.now()}.json") },
                         onRestoreBackup = { importJsonLauncher.launch(arrayOf("application/json", "text/*")) },

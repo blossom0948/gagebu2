@@ -58,6 +58,36 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.45" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_45_budget_presets,
+                imageAspectRatio = 840f / 918f,
+                title = "예산 금액을 빠르게 선택",
+                description = "월 목표 지출을 수정할 때 10만·30만·50만·100만·300만 원을 바로 고를 수 있어요. 직접 입력도 계속 사용할 수 있어요.",
+                imageDescription = "Galaxy Z Fold4 QA 앱에서 합성 장부로 촬영한 목표 지출 수정 창. 30만 원 프리셋이 선택되어 있고 실제 거래 데이터는 없습니다.",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_45_manage_group,
+                imageAspectRatio = 904f / 250f,
+                title = "관리 메뉴를 간결하게 정돈",
+                description = "예산·결제·알림은 그대로 두고, 백업·계정·화면 설정은 한곳에 접어 뒀어요. 검색으로 찾거나 필요할 때 열 수 있고, 업데이트 확인은 계속 바로 할 수 있어요.",
+                imageDescription = "Galaxy Z Fold4 QA 앱에서 촬영한 접힌 앱과 데이터 메뉴. 백업·계정·화면 설정을 한곳에서 펼칠 수 있습니다.",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_45_photo_evidence,
+                imageAspectRatio = 840f / 734f,
+                title = "취소 거래 사진을 같은 창에서 확인",
+                description = "취소로 제외된 내역에서 사진을 누르면 거래 부분을 보고 목록으로 돌아오거나, 그 자리에서 후보로 복원할 수 있어요.",
+                imageDescription = "Galaxy Z Fold4 QA 앱에서 합성 거래 캡처를 같은 취소 내역 창 안에서 확인하는 화면. 가상 카페·금액만 사용했습니다.",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_45_insights_tools,
+                imageAspectRatio = 904f / 1458f,
+                title = "인사이트에서 절약 도구 바로 열기",
+                description = "무지출 챌린지, 구독·고정비 레이더, 연말정산 도우미를 각각 눌러 바로 확인할 수 있어요. 각 도구는 필요한 설정과 기록만 열고, 거래는 바꾸지 않아요.",
+                imageDescription = "Galaxy Z Fold4 격리 QA 앱에서 합성 데이터로 촬영한 인사이트 화면. 무지출 챌린지, 고정비 레이더, 연말정산 바로가기가 보입니다.",
+            ),
+        )
         "0.1.44" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_44_compact_home,
