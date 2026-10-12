@@ -9,6 +9,7 @@
 - **남은 비교 항목**: Weeple의 관계 D+를 추가했고 모아씀은 최근 공유 사진을 자동 대표로 씁니다. 별도 사진을 지정하는 대표 사진 편집은 아직 없으며, 실제 연결된 두 파트너 계정으로 운영 DB 동기화 E2E를 실행하지 않았습니다. 따라서 관계/사진 화면 전체의 완전 동등이나 두 계정 인증·RLS 완전 검증으로 과장하지 않습니다.
 - **서버 영향**: Supabase의 nullable 컬럼만 추가했습니다. Cloudflare Worker, 개인 장부·거래, 계정 권한과 사진 데이터는 건드리지 않았습니다.
 - **릴리스 APK**: 앱 ID `com.moasseum.app`, versionCode `47`, versionName `0.1.47`, APK SHA-256 `386b93dd425f7250b26d6f7ea9cb1c7ba1138cb65d5af6553fa400440ace0377`, 기존 공개판과 동일한 서명 인증서 SHA-256 `669674a2114fb59d85c56bba774b89fec9ce7f7ee79825769826130362a091c9`입니다.
+- **배포 확인**: [GitHub Release v0.1.47](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.47) 공개 후 APK를 다시 내려받아 바이트 및 SHA-256이 로컬 릴리스 산출물과 일치함을 확인했습니다.
 
 ## 2026-10-13, v0.1.46 대조·개선
 
