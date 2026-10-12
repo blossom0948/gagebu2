@@ -1,6 +1,8 @@
 package com.moasseum.app.ui.screens
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -44,6 +46,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.moasseum.app.R
 import com.moasseum.app.ui.theme.LocalFinanceColors
+import com.moasseum.app.ui.theme.LocalFinanceMotion
 
 data class ReleaseNoteSlide(
     val imageResId: Int,
@@ -55,6 +58,22 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.40" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_40_search,
+                imageAspectRatio = 904f / 1111f,
+                title = "관리 메뉴, 말하듯 찾아요",
+                description = "‘생활비 얼마나 남았어?’처럼 검색하면 기기 안의 키워드 결과와 기능 설명을 보여줘요. 결과를 눌러도 바로 이동하지 않고, 실제 동작을 확인한 뒤 버튼을 눌러야 해요. 무료 Gemini 의미 검색은 로그인 후 직접 눌렀을 때만 검색어와 메뉴 키워드를 보내요. 무료 입력은 Google 제품 개선에 쓰일 수 있으니 거래·계좌 정보는 검색어에 넣지 마세요.",
+                imageDescription = "Galaxy Z Fold4 QA 앱에서 캡처한 실제 검색 UI. 검색어와 메뉴·AI 설명은 모두 테스트용 예시이며 실제 거래 내역은 없습니다.",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_40_profile,
+                imageAspectRatio = 840f / 1034f,
+                title = "홈 프로필을 내 이름과 사진으로",
+                description = "홈의 프로필 사진을 누르면 표시 이름과 사진을 바꿀 수 있어요. 이름과 사진은 이 기기에만 저장되며 계정이나 파트너와 동기화되지 않습니다.",
+                imageDescription = "Galaxy Z Fold4 QA 앱에서 캡처한 실제 프로필 편집 창. 민지라는 가상 이름만 사용했습니다.",
+            ),
+        )
         "0.1.39" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_39_currency,
@@ -314,6 +333,7 @@ fun WhatsNewDialog(
 ) {
     if (slides.isEmpty()) return
     val colors = LocalFinanceColors.current
+    val motion = LocalFinanceMotion.current
     var selectedPage by rememberSaveable(versionName) { mutableIntStateOf(0) }
     val safePage = selectedPage.coerceIn(slides.indices)
     val slide = slides[safePage]
@@ -336,9 +356,13 @@ fun WhatsNewDialog(
                 AnimatedContent(
                     targetState = safePage,
                     transitionSpec = {
-                        val direction = if (targetState > initialState) 1 else -1
-                        (slideInHorizontally { it / 4 * direction } + fadeIn()) togetherWith
-                            (slideOutHorizontally { -it / 4 * direction } + fadeOut())
+                        if (motion.reduceMotion) {
+                            EnterTransition.None togetherWith ExitTransition.None
+                        } else {
+                            val direction = if (targetState > initialState) 1 else -1
+                            (slideInHorizontally { it / 4 * direction } + fadeIn()) togetherWith
+                                (slideOutHorizontally { -it / 4 * direction } + fadeOut())
+                        }
                     },
                     label = "release-note-slide",
                 ) { page ->

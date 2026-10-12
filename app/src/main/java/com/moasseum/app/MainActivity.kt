@@ -249,6 +249,7 @@ class MainActivity : FragmentActivity() {
             val noSpendChallenge by application.preferencesRepository.noSpendChallenge.collectAsStateWithLifecycle(initialValue = NoSpendChallengeSettings())
             val yearEndGrossSalaries by application.preferencesRepository.yearEndGrossSalaries.collectAsStateWithLifecycle(initialValue = emptyMap())
             val profileDisplayName by application.preferencesRepository.profileDisplayName.collectAsStateWithLifecycle(initialValue = "")
+            val profilePhotoUri by application.preferencesRepository.profilePhotoUri.collectAsStateWithLifecycle(initialValue = null)
             val readActivityNoticeIds by application.preferencesRepository.readActivityNoticeIds.collectAsStateWithLifecycle(initialValue = emptySet())
             val postNotificationPermissionPromptShown by application.preferencesRepository.notificationPostPermissionPromptShown.collectAsStateWithLifecycle(initialValue = false)
             val firstRunGuideCompleted by application.preferencesRepository.firstRunGuideCompleted.collectAsStateWithLifecycle(initialValue = true)
@@ -316,9 +317,13 @@ class MainActivity : FragmentActivity() {
                         yearEndGrossSalaries = yearEndGrossSalaries,
                         onSaveYearEndGrossSalary = application.preferencesRepository::saveYearEndGrossSalary,
                         profileDisplayName = profileDisplayName,
+                        profilePhotoUri = profilePhotoUri,
                         readActivityNoticeIds = readActivityNoticeIds,
                         onSaveDisplayName = { name ->
                             viewModel.performOperation("프로필 이름을 저장하지 못했어요.") { application.preferencesRepository.saveProfileDisplayName(name) }
+                        },
+                        onSaveProfilePhotoUri = { uri ->
+                            viewModel.performOperation("프로필 사진을 저장하지 못했어요.") { application.preferencesRepository.saveProfilePhotoUri(uri) }
                         },
                         onMarkActivityNoticesRead = { ids ->
                             viewModel.performOperation("알림 상태를 저장하지 못했어요.") { application.preferencesRepository.markActivityNoticesRead(ids) }
@@ -495,8 +500,10 @@ private fun MoasseumApp(
     yearEndGrossSalaries: Map<Int, Long>,
     onSaveYearEndGrossSalary: suspend (Int, Long?) -> Unit,
     profileDisplayName: String,
+    profilePhotoUri: String?,
     readActivityNoticeIds: Set<String>,
     onSaveDisplayName: (String) -> Unit,
+    onSaveProfilePhotoUri: (String?) -> Unit,
     onMarkActivityNoticesRead: (Set<String>) -> Unit,
     onSaveNoSpendChallenge: suspend (Boolean, Int) -> Unit,
     onSetAiNotificationClassificationEnabled: (Boolean) -> Unit,
@@ -1309,7 +1316,9 @@ private fun MoasseumApp(
                         displayName = profileDisplayName.ifBlank {
                             authState.user?.email?.substringBefore("@")?.takeIf(String::isNotBlank) ?: "모아씀"
                         },
+                        profilePhotoUri = profilePhotoUri,
                         onSaveDisplayName = onSaveDisplayName,
+                        onSaveProfilePhotoUri = onSaveProfilePhotoUri,
                         pendingCount = pendingCandidates.size + unreadActivityNoticeCount,
                         homeDashboardCards = homeDashboardCards,
                         aiAdviceCards = aiAdviceCards,
@@ -1610,6 +1619,7 @@ private fun MoasseumApp(
                         notificationAccessEnabled = notificationAccessEnabled,
                         appNotificationsEnabled = appNotificationsEnabled,
                         aiNotificationClassificationEnabled = aiNotificationClassificationEnabled,
+                        onAiSearchManageSettings = { query, options -> aiClient.searchManageSettings(query, options) },
                         onSetAiNotificationClassificationEnabled = onSetAiNotificationClassificationEnabled,
                         onOpenCandidates = { navigateTo(navController, ROUTE_NOTIFICATIONS) },
                         pendingCandidates = pendingCandidates,

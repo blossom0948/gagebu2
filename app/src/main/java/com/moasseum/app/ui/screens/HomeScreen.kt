@@ -1,5 +1,10 @@
 package com.moasseum.app.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.clickable
@@ -63,6 +68,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -83,6 +89,8 @@ import com.moasseum.app.ui.components.FinanceCard
 import com.moasseum.app.ui.components.formatDisplayWon
 import com.moasseum.app.ui.components.FittedAmountText
 import com.moasseum.app.ui.components.TransactionRow
+import com.moasseum.app.ui.components.LocalProfileAvatar
+import com.moasseum.app.ui.components.ProfileEditorDialog
 import com.moasseum.app.ui.components.categoryColor
 import com.moasseum.app.ui.components.categoryLabel
 import com.moasseum.app.ui.theme.LocalFinanceColors
@@ -120,7 +128,9 @@ fun HomeScreen(
     onPickReceipt: () -> Unit,
     onTakeReceipt: () -> Unit,
     displayName: String,
+    profilePhotoUri: String? = null,
     onSaveDisplayName: (String) -> Unit = {},
+    onSaveProfilePhotoUri: (String?) -> Unit = {},
     pendingCount: Int = 0,
     homeDashboardCards: Set<String> = HomeDashboardCards.defaults,
     aiAdviceCards: Set<String> = AiAdviceCards.defaults,
@@ -129,6 +139,20 @@ fun HomeScreen(
 ) {
     var selectedTabName by rememberSaveable { mutableStateOf(HomeTab.SUMMARY.name) }
     var showProfileEditor by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
+    val profilePhotoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            profilePhotoUri?.let { previous ->
+                if (previous != uri.toString()) runCatching {
+                    context.contentResolver.releasePersistableUriPermission(Uri.parse(previous), Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+            }
+            onSaveProfilePhotoUri(uri.toString())
+        }
+    }
     val availableTabs = remember(aiAdviceCards) {
         HomeTab.entries.filter { it != HomeTab.AI ||
             AiAdviceCards.HOME_SUMMARY in aiAdviceCards || AiAdviceCards.HOME_REPORT in aiAdviceCards
@@ -162,6 +186,7 @@ fun HomeScreen(
                 onOpenHelp = onOpenHelp,
                 onOpenNotifications = onOpenNotifications,
                 displayName = displayName,
+                profilePhotoUri = profilePhotoUri,
                 onOpenProfile = { showProfileEditor = true },
                 pendingCount = pendingCount,
             )
@@ -223,12 +248,22 @@ fun HomeScreen(
     }
 
     if (showProfileEditor) {
-        DisplayNameDialog(
+        ProfileEditorDialog(
             initialName = displayName,
+            photoUri = profilePhotoUri,
             onDismiss = { showProfileEditor = false },
             onSave = { name ->
                 onSaveDisplayName(name)
                 showProfileEditor = false
+            },
+            onChoosePhoto = {
+                profilePhotoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            },
+            onRemovePhoto = {
+                profilePhotoUri?.let { current -> runCatching {
+                    context.contentResolver.releasePersistableUriPermission(Uri.parse(current), Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                } }
+                onSaveProfilePhotoUri(null)
             },
         )
     }
@@ -279,6 +314,7 @@ private fun HomeHeader(
     onOpenHelp: () -> Unit,
     onOpenNotifications: () -> Unit,
     displayName: String,
+    profilePhotoUri: String?,
     onOpenProfile: () -> Unit,
     pendingCount: Int,
 ) {
@@ -292,20 +328,12 @@ private fun HomeHeader(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .size(38.dp)
-                .background(colors.accent, CircleShape)
-                .clickable(onClick = onOpenProfile),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = displayName.trim().firstOrNull()?.toString() ?: "모",
-                color = MaterialTheme.colorScheme.onPrimary,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Black,
-            )
-        }
+        LocalProfileAvatar(
+            displayName = displayName,
+            photoUri = profilePhotoUri,
+            size = 38.dp,
+            modifier = Modifier.clickable(onClick = onOpenProfile),
+        )
         Spacer(Modifier.width(9.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -329,39 +357,6 @@ private fun HomeHeader(
         Spacer(Modifier.width(4.dp))
         HeaderIconButton(Icons.Rounded.Settings, "관리 설정", onOpenManage)
     }
-}
-
-@Composable
-private fun DisplayNameDialog(
-    initialName: String,
-    onDismiss: () -> Unit,
-    onSave: (String) -> Unit,
-) {
-    var name by rememberSaveable(initialName) { mutableStateOf(initialName) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("프로필 이름") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it.take(24) },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("표시 이름") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                )
-                Text("이 이름은 이 기기에만 저장돼요.", color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.labelMedium)
-            }
-        },
-        confirmButton = { TextButton(onClick = { onSave(name.trim()) }) { Text("저장") } },
-        dismissButton = {
-            Row {
-                TextButton(onClick = { onSave("") }) { Text("기본 이름") }
-                TextButton(onClick = onDismiss) { Text("취소") }
-            }
-        },
-    )
 }
 
 @Composable

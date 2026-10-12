@@ -22,10 +22,87 @@ data class NotificationAiClassification(
     val transactionType: TransactionType?,
 )
 
+data class ManageSettingSearchOption(
+    val id: String,
+    val title: String,
+    val keywords: List<String>,
+)
+
+data class ManageSettingSearchResult(
+    val rankedIds: List<String>,
+    val intent: String,
+)
+
 class AiClient(
     private val baseUrl: String = BuildConfig.AI_API_BASE_URL,
     private val bearerTokenProvider: suspend () -> String? = { null },
 ) {
+    suspend fun searchManageSettings(
+        query: String,
+        options: List<ManageSettingSearchOption>,
+    ): Result<ManageSettingSearchResult> = withContext(Dispatchers.IO) {
+        runCatching {
+            val trimmedQuery = query.trim()
+            require(trimmedQuery.length in 2..200) { "검색어는 2~200자로 입력해 주세요." }
+            require(options.isNotEmpty() && options.size <= 60) { "검색할 메뉴 목록을 확인해 주세요." }
+            require(options.all { it.id.matches(Regex("[a-z0-9][a-z0-9_-]{0,39}")) && it.title.length in 1..80 && it.keywords.size <= 24 }) {
+                "검색 메뉴 목록을 확인해 주세요."
+            }
+            require(options.map { it.id }.distinct().size == options.size) { "검색 메뉴 ID가 중복되었어요." }
+            require(baseUrl.isNotBlank()) { "AI 검색 서버 주소가 설정되지 않았어요." }
+            val token = bearerTokenProvider()?.takeIf(String::isNotBlank)
+                ?: error("AI 설정 검색은 로그인 후 사용할 수 있어요.")
+            val connection = (URL("${baseUrl.trimEnd('/')}/v1/search-manage-settings").openConnection() as? HttpURLConnection)
+                ?: throw IOException("AI 서버 주소를 확인해 주세요.")
+            if (connection.url.protocol != "https") {
+                connection.disconnect()
+                throw IOException("AI 서버는 HTTPS 주소만 사용할 수 있어요.")
+            }
+            try {
+                connection.requestMethod = "POST"
+                connection.instanceFollowRedirects = false
+                connection.connectTimeout = 8_000
+                connection.readTimeout = 12_000
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                connection.setRequestProperty("Authorization", "Bearer $token")
+                val settings = JSONArray().apply {
+                    options.forEach { option ->
+                        put(JSONObject().apply {
+                            put("id", option.id)
+                            put("title", option.title)
+                            put("keywords", JSONArray(option.keywords.take(24).map { it.take(60) }))
+                        })
+                    }
+                }
+                val request = JSONObject().apply {
+                    put("query", trimmedQuery)
+                    put("settings", settings)
+                }
+                connection.outputStream.use { it.write(request.toString().toByteArray(Charsets.UTF_8)) }
+                val responseCode = connection.responseCode
+                val stream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
+                val responseText = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                if (responseCode !in 200..299) throw serverError(responseCode, "AI 설정 검색")
+                val root = JSONObject(responseText)
+                require(root.optInt("schemaVersion") == 1) { "AI 검색 결과 버전을 확인하지 못했어요." }
+                val allowedIds = options.map { it.id }.toSet()
+                val rankedJson = root.optJSONArray("rankedIds") ?: error("AI 검색 결과를 확인하지 못했어요.")
+                require(rankedJson.length() <= 5) { "AI 검색 결과가 너무 많아요." }
+                val rankedIds = (0 until rankedJson.length()).map { rankedJson.getString(it) }
+                require(rankedIds.distinct().size == rankedIds.size && rankedIds.all { it in allowedIds }) {
+                    "AI 검색 결과에 알 수 없는 메뉴가 포함되어 있어요."
+                }
+                ManageSettingSearchResult(
+                    rankedIds = rankedIds,
+                    intent = root.optString("intent").trim().take(100),
+                )
+            } finally {
+                connection.disconnect()
+            }
+        }
+    }
+
     suspend fun parseTransaction(
         text: String,
         today: LocalDate = LocalDate.now(),

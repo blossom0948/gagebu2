@@ -14,6 +14,19 @@ class ReleaseNotesPolicyTest {
     }
 
     @Test
+    fun `v0140 explains natural search privacy and local-only profile with real screenshots`() {
+        val slides = ReleaseNotesCatalog.slides("0.1.40")
+        assertEquals(2, slides.size)
+        assertTrue(slides.first().title.contains("말하듯"))
+        assertTrue(slides.first().description.contains("직접 눌렀을 때만"))
+        assertTrue(slides.first().description.contains("거래·계좌 정보"))
+        assertTrue(slides.first().imageDescription.contains("실제 검색 UI"))
+        assertTrue(slides.last().title.contains("프로필"))
+        assertTrue(slides.last().description.contains("이 기기에만"))
+        assertTrue(slides.all { it.imageAspectRatio in 0.35f..0.9f })
+    }
+
+    @Test
     fun `v0139 release note documents display currency behavior and real screenshot`() {
         val slide = ReleaseNotesCatalog.slides("0.1.39").single()
         assertTrue(slide.title.contains("통화"))

@@ -31,6 +31,21 @@ class FinanceIntegrationTest {
         assertTrue("The app should appear in Android's multi-image share targets.", matchingActivity)
     }
 
+    @Test fun profilePhotoPreferenceAcceptsOnlyDeviceContentUrisAndCanBeCleared() = runBlocking {
+        val preferences = UserPreferencesRepository(context)
+        val previous = preferences.profilePhotoUri.first()
+        try {
+            preferences.saveProfilePhotoUri("content://com.example.provider/profile.jpg")
+            assertEquals("content://com.example.provider/profile.jpg", preferences.profilePhotoUri.first())
+            assertTrue("Remote images must never be stored as profile photos.",
+                runCatching { preferences.saveProfilePhotoUri("https://example.invalid/profile.jpg") }.isFailure)
+            preferences.saveProfilePhotoUri(null)
+            assertNull(preferences.profilePhotoUri.first())
+        } finally {
+            preferences.saveProfilePhotoUri(previous)
+        }
+    }
+
     @Test fun batchAiEntriesAndEditsPersistTheirIndividualPaymentMethods() = runBlocking {
         val database = Room.inMemoryDatabaseBuilder(context, FinanceDatabase::class.java).build()
         try {

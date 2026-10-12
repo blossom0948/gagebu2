@@ -109,6 +109,9 @@ class UserPreferencesRepository(
     val profileDisplayName: Flow<String> =
         context.settingsDataStore.data.map { preferences -> preferences[PROFILE_DISPLAY_NAME].orEmpty() }
 
+    val profilePhotoUri: Flow<String?> =
+        context.settingsDataStore.data.map { preferences -> preferences[PROFILE_PHOTO_URI] }
+
     val readActivityNoticeIds: Flow<Set<String>> =
         context.settingsDataStore.data.map { preferences ->
             preferences[READ_ACTIVITY_NOTICE_IDS].orEmpty().lineSequence()
@@ -402,6 +405,17 @@ class UserPreferencesRepository(
         }
     }
 
+    suspend fun saveProfilePhotoUri(uri: String?) {
+        val normalized = uri?.trim()?.takeIf(String::isNotEmpty)
+        require(normalized == null || (normalized.length <= 2048 && normalized.startsWith("content://"))) {
+            "기기에서 선택한 사진만 프로필로 사용할 수 있어요."
+        }
+        context.settingsDataStore.edit { preferences ->
+            if (normalized == null) preferences.remove(PROFILE_PHOTO_URI)
+            else preferences[PROFILE_PHOTO_URI] = normalized
+        }
+    }
+
     suspend fun markActivityNoticesRead(ids: Set<String>) {
         val normalized = ids.filter { it.length in 1..120 && it.all { ch -> ch.isLetterOrDigit() || ch in ":-_ ." } }
         if (normalized.isEmpty()) return
@@ -553,6 +567,7 @@ class UserPreferencesRepository(
         val NOTIFICATION_POST_PERMISSION_PROMPT_SHOWN = booleanPreferencesKey("notification_post_permission_prompt_shown")
         val FIRST_RUN_GUIDE_COMPLETED = booleanPreferencesKey("first_run_guide_completed")
         val PROFILE_DISPLAY_NAME = stringPreferencesKey("profile_display_name")
+        val PROFILE_PHOTO_URI = stringPreferencesKey("profile_photo_uri")
         val READ_ACTIVITY_NOTICE_IDS = stringPreferencesKey("read_activity_notice_ids")
         val LAST_SEEN_RELEASE_NOTES_VERSION = stringPreferencesKey("last_seen_release_notes_version")
         val AI_NOTIFICATION_CLASSIFICATION_ENABLED = booleanPreferencesKey("ai_notification_classification_enabled")

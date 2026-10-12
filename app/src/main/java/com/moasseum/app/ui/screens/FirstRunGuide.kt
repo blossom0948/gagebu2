@@ -2,6 +2,8 @@ package com.moasseum.app.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -61,6 +63,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.moasseum.app.ui.theme.FinanceColors
 import com.moasseum.app.ui.theme.LocalFinanceColors
+import com.moasseum.app.ui.theme.LocalFinanceMotion
 
 private data class GuidePage(
     val title: String,
@@ -84,6 +87,7 @@ fun FirstRunGuide(
 ) {
     var page by rememberSaveable { mutableIntStateOf(0) }
     val colors = LocalFinanceColors.current
+    val motion = LocalFinanceMotion.current
     val finish = remember(onFinish) { onFinish }
 
     BackHandler {
@@ -128,8 +132,12 @@ fun FirstRunGuide(
                     targetState = page,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     transitionSpec = {
-                        (slideInHorizontally(tween(180)) { it / 8 } + fadeIn(tween(180))) togetherWith
-                            (slideOutHorizontally(tween(140)) { -it / 10 } + fadeOut(tween(140)))
+                        if (motion.reduceMotion) {
+                            EnterTransition.None togetherWith ExitTransition.None
+                        } else {
+                            (slideInHorizontally(tween(180)) { it / 8 } + fadeIn(tween(180))) togetherWith
+                                (slideOutHorizontally(tween(140)) { -it / 10 } + fadeOut(tween(140)))
+                        }
                     },
                     label = "first-run-guide-page",
                 ) { targetPage ->

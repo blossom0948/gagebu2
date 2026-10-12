@@ -97,6 +97,8 @@ import com.moasseum.app.ui.components.categoryLabel
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import com.moasseum.app.update.AppRelease
 import com.moasseum.app.update.UpdateCheckState
+import com.moasseum.app.data.ManageSettingSearchOption
+import com.moasseum.app.data.ManageSettingSearchResult
 import java.util.Locale
 import java.util.UUID
 
@@ -157,6 +159,7 @@ fun ManageScreen(
     appNotificationsEnabled: Boolean,
     aiNotificationClassificationEnabled: Boolean,
     aiLoginRequired: Boolean = false,
+    onAiSearchManageSettings: suspend (String, List<ManageSettingSearchOption>) -> Result<ManageSettingSearchResult>,
     onSetAiNotificationClassificationEnabled: (Boolean) -> Unit,
     updateState: UpdateCheckState,
     onCheckForUpdate: () -> Unit,
@@ -203,12 +206,62 @@ fun ManageScreen(
     LaunchedEffect(scrollToTopRequest) {
         if (scrollToTopRequest > 0) listState.animateScrollToItem(0)
     }
+    val searchEntries = listOf(
+        ManageSearchEntry("budget", "월 예산 설정", "목표와 이번 예산 기간의 사용액", listOf("예산", "생활비", "남은 생활비", "생활비 잔액", "지출 한도", "이번 달 얼마", "얼마 남았어", "소비 목표", "예산 얼마나 썼어", "이번 달 한도")) { showBudgetDialog = true },
+        ManageSearchEntry("income", "월 수입 목표", "월급·수입 목표 금액", listOf("수입", "월급", "월급 목표", "급여", "소득", "매달 버는 돈", "수입 목표")) { showIncomeTargetDialog = true },
+        ManageSearchEntry("payday", "예산 시작일", "월 예산을 시작하는 날짜", listOf("예산 시작", "예산 계산 시작일", "급여일", "월급날", "월급날 기준", "월초", "매달 며칠부터", "예산 기간")) { showBudgetPaydayDialog = true },
+        ManageSearchEntry("rollover", "남은 예산 다음 달 이월", if (uiState.budgetRollover) "현재 켜짐" else "현재 꺼짐", listOf("이월", "미사용 예산", "남은 돈", "예산 남으면", "다음 달로", "잔액 넘기기"), if (uiState.budgetRollover) "이월 끄기" else "이월 켜기") { onSetBudgetRollover(!uiState.budgetRollover) },
+        ManageSearchEntry("no-spend", "무지출 챌린지", "정한 기간 동안 지출 없는 날을 기록", listOf("절약", "돈 안 쓰기", "지출 줄이기", "소비 줄이기", "무지출", "챌린지")) { showNoSpendDialog = true },
+        ManageSearchEntry("categories", "카테고리 관리", "항목 이름과 사용 여부", listOf("분류", "식비", "카테고리 이름", "항목 이름 바꾸기", "지출 항목", "소비 종류")) { showCategoryDialog = true },
+        ManageSearchEntry("category-budgets", "카테고리별 예산", "식비·교통비 등 항목마다 한도 설정", listOf("항목별 한도", "식비 한도", "카테고리 한도", "분류별 예산", "카테고리 예산")) { showCategoryBudgetsDialog = true },
+        ManageSearchEntry("category-order", "카테고리 순서", "자주 쓰는 항목을 앞으로", listOf("분류 순서", "항목 정렬", "카테고리 정렬", "목록 순서")) { showCategoryOrderDialog = true },
+        ManageSearchEntry("accounts", "계좌·지갑과 이체", "잔액·계좌 간 이동 관리", listOf("계좌", "계좌 잔액", "지갑", "통장", "송금", "이체", "잔액")) { onOpenAccounts() },
+        ManageSearchEntry("payment-methods", "결제수단", "현금·카드·이체 이름 관리", listOf("결제 방식", "지불 수단", "현금", "카드 종류", "결제 방법", "결제수단 이름")) { showPaymentMethodsDialog = true },
+        ManageSearchEntry("installments", "할부 관리", "할부 내역과 남은 회차", listOf("할부", "할부 잔액", "무이자", "몇 개월 남았어", "나눠 내기", "분할 결제")) { showInstallmentDialog = true },
+        ManageSearchEntry("card-usage", "결제일 기준 보기", "카드 결제일에 맞춘 사용 금액", listOf("카드값", "이번 달 카드값", "청구 금액", "결제 예정", "이번 카드값", "결제일별 사용", "카드 이용 기간")) { showCardUsageDialog = true },
+        ManageSearchEntry("cards", "카드·결제일", "카드와 결제일 등록", listOf("신용카드", "체크카드", "카드 등록", "결제 날짜", "청구일", "카드 결제일")) { showPaymentCardsDialog = true },
+        ManageSearchEntry("recurring", "반복 거래 관리", "매달 자동으로 기록할 거래", listOf("정기 거래", "정기 지출", "반복 지출", "매달 나가는 돈", "정기적으로 나가는 비용", "자동으로 빠져나가는 비용", "월세", "자동 기록")) { showRecurringDialog = true },
+        ManageSearchEntry("fixed-costs", "구독·고정비 레이더", "정기 결제와 월 예정액 확인", listOf("구독", "구독료", "고정비", "월 고정비", "정기 결제", "자동 결제", "매달 빠져나가는 돈", "월 지출")) { showFixedRadarDialog = true },
+        ManageSearchEntry("reminders", "예산·고정비·기념일 알림", if (financeRemindersEnabled) "현재 켜짐" else "현재 꺼짐", listOf("알림", "예산 알림", "결제 예정 알림", "기념일", "리마인더", "고정비 알림"), if (financeRemindersEnabled) "알림 끄기" else "알림 켜기") { onSetFinanceRemindersEnabled(!financeRemindersEnabled) },
+        ManageSearchEntry("notification-access", "결제 알림 감지", "금융 앱 알림을 거래 후보로 인식", listOf("알림 읽기", "알림 접근", "알림 허용", "카드 알림", "금융 알림", "거래 알림", "결제 감지", "입금 감지", "출금 감지", "자동 기록", "문자 알림", "거래 인식"), "권한 설정 열기") { onOpenNotificationSettings() },
+        ManageSearchEntry("app-notifications", "인식 알림 표시", "감지된 거래를 앱 알림으로 안내", listOf("푸시 알림", "앱 알림", "추가할까요", "알림 허용", "알림 권한"), "알림 권한 설정") { onOpenAppNotificationSettings() },
+        ManageSearchEntry("ai-notifications", "AI 알림 오탐 줄이기", if (aiNotificationClassificationEnabled) "현재 켜짐" else "현재 꺼짐 · 로그인 후 켤 수 있어요", listOf("AI 알림", "오탐", "잘못 감지", "카톡 숫자", "쓸모없는 알림", "금융인지 판단"), if (aiNotificationClassificationEnabled) "AI 판별 끄기" else "AI 설정 열기") {
+            if (aiNotificationClassificationEnabled) onSetAiNotificationClassificationEnabled(false) else showAiNotificationConsent = true
+        },
+        ManageSearchEntry("candidate-inbox", "알림 후보함", "감지된 거래 검토·추가·삭제", listOf("감지 내역", "인식된 거래", "추가할까요", "알림 기록", "결제 후보", "입금 후보"), "후보함 열기") { onOpenCandidates() },
+        ManageSearchEntry("backup", "전체 백업 내보내기", "기기 거래와 설정을 파일로 보관", listOf("백업", "기록 저장", "자료 내보내기", "파일로 저장", "데이터 보관"), "백업 내보내기") { onExportBackup() },
+        ManageSearchEntry("restore", "백업 복원", "저장한 백업 파일 불러오기", listOf("복원", "백업 가져오기", "파일 불러오기", "기록 가져오기", "데이터 복구"), "백업 파일 선택") { onRestoreBackup() },
+        ManageSearchEntry("safety-backup", "복원 전 백업 내보내기", "복원하기 전에 현재 기록 보관", listOf("복원 전 백업", "안전 백업", "기존 기록 저장"), "안전 백업 내보내기") { onExportSafetyBackup() },
+        ManageSearchEntry("year-end", "연말정산 도우미", "연간 카드 사용 기록과 CSV", listOf("연말 정산", "소득공제", "카드 공제", "25퍼센트", "연간 소비", "연말정산 csv")) {
+            selectedReportYear = java.time.LocalDate.now().year
+            showYearEndDialog = true
+        },
+        ManageSearchEntry("pdf", "월별 PDF 리포트", "선택한 달의 지출 보고서", listOf("보고서", "가계부 pdf", "월간 통계 pdf", "리포트 저장"), "PDF 저장") { onExportPdf() },
+        ManageSearchEntry("year-csv", "연간 거래 CSV", "한 해의 거래를 스프레드시트로 내보내기", listOf("연간 csv", "엑셀", "거래 내보내기", "전체 기록 csv"), "CSV 내보내기") { onExportYearTransactions(java.time.LocalDate.now().year) },
+        ManageSearchEntry("account", "로그인·계정", accountStatus, listOf("로그인", "가입", "구글", "카카오", "로그아웃", "계정 연결", "연동 해제", "계정 삭제", "회원 탈퇴")) { onOpenAuth() },
+        ManageSearchEntry("guide", "기능 안내", "앱 기능과 권한 설정 도움말", listOf("도움말", "사용법", "알림 설정 방법", "처음 설정", "가이드")) { onOpenGuide() },
+        ManageSearchEntry("home-cards", "홈 카드 구성", "대시보드에 보일 카드 선택", listOf("홈 화면", "대시보드", "첫 화면", "요약 카드", "홈 구성")) { showHomeCardsDialog = true },
+        ManageSearchEntry("ai-cards", "AI 조언 카드", "홈에 표시할 AI 분석 카드 선택", listOf("AI 분석", "소비 분석", "AI 요약", "인사이트 카드")) { showAiAdviceDialog = true },
+        ManageSearchEntry("currency", "표시 통화", "화면 금액을 다른 통화로 보기", listOf("환율", "달러", "엔화", "외화", "원화 말고", "통화 변경", "유로")) { showDisplayCurrencyDialog = true },
+        ManageSearchEntry("theme", "다크 모드", if (darkTheme) "현재 켜짐" else "현재 꺼짐", listOf("화면 어둡게", "야간 화면", "밝은 테마", "테마", "색상 모드"), if (darkTheme) "밝은 테마로 변경" else "다크 모드 켜기") { onDarkThemeChanged(!darkTheme) },
+        ManageSearchEntry("motion", "모션 줄이기", if (reduceMotion) "현재 켜짐" else "현재 꺼짐", listOf("애니메이션 끄기", "움직임", "전환 효과", "모션 감소"), if (reduceMotion) "모션 다시 켜기" else "모션 줄이기") { onReduceMotionChanged(!reduceMotion) },
+        ManageSearchEntry("app-lock", "앱 잠금", if (appLockEnabled) "현재 켜짐" else "생체 인증 또는 기기 잠금 설정", listOf("잠금", "지문", "생체 인증", "비밀번호", "앱 보안"), if (appLockEnabled) "앱 잠금 끄기" else "앱 잠금 켜기") { onSetAppLockEnabled(!appLockEnabled) },
+        ManageSearchEntry("privacy", "개인정보와 데이터", "내 정보·거래 기록 관리", listOf("개인 정보", "데이터 삭제", "기록 삭제", "탈퇴", "내 정보 지우기")) { showPrivacyDialog = true },
+        ManageSearchEntry("update", "앱 업데이트 확인", "새 버전을 확인하고 앱에서 설치", listOf("업데이트", "새 버전", "최신 버전", "앱 갱신"), "업데이트 확인") { onCheckForUpdate() },
+    )
     LazyColumn(
         state = listState,
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item { Text("관리", style = MaterialTheme.typography.headlineSmall) }
+        item {
+            ManageNaturalSearch(
+                entries = searchEntries,
+                aiAvailable = !aiLoginRequired,
+                onAiSearch = onAiSearchManageSettings,
+            )
+        }
         item {
             val budget = uiState.budgetAmount?.takeIf { it > 0L }
             val spent = uiState.budgetPeriodExpenseTotal

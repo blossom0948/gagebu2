@@ -13,10 +13,67 @@ async function mockFetch(handler: typeof fetch, run: () => Promise<void>) {
 
 test('all AI routes reject missing tokens without contacting upstream', async () => {
   await mockFetch(async () => { throw new Error('No upstream call permitted'); }, async () => {
-    for (const path of ['/v1/parse-transaction', '/v1/parse-batch-command', '/v1/analyze-spending', '/v1/ask-spending', '/v1/classify-notification']) {
+    for (const path of ['/v1/parse-transaction', '/v1/parse-batch-command', '/v1/analyze-spending', '/v1/ask-spending', '/v1/classify-notification', '/v1/search-manage-settings']) {
       const response = await worker.fetch(request(path), env);
       assert.equal(response.status, 401);
     }
+  });
+});
+
+test('manage settings search sends only query and curated menu keywords, then validates returned IDs', async () => {
+  const searchUserId = '1c33a881-68ab-43ef-b81d-c2b03faf8cde';
+  const settings = [
+    { id: 'budget', title: '월 예산 설정', keywords: ['생활비', '얼마 남았어', '지출 한도'] },
+    { id: 'backup', title: '전체 백업 내보내기', keywords: ['백업', '파일 저장'] },
+  ];
+  await mockFetch(async (url, options) => {
+    if (String(url).startsWith(env.SUPABASE_URL)) return Response.json({ id: searchUserId });
+    const body = JSON.parse(String(options?.body));
+    const prompt = body.contents[0].parts[0].text as string;
+    assert.match(prompt, /이번달 생활비가 얼마나 남았어/);
+    assert.match(prompt, /얼마 남았어/);
+    assert.doesNotMatch(prompt, /merchant|거래 내역/);
+    assert.deepEqual(body.generationConfig.responseSchema.properties.rankedIds.items.enum, ['budget', 'backup']);
+    return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify({
+      schemaVersion: 1, rankedIds: ['budget'], intent: '이번 달 예산에서 남은 금액 확인',
+    }) }] } }] });
+  }, async () => {
+    const response = await worker.fetch(request('/v1/search-manage-settings', 'synthetic-token', {
+      query: '이번달 생활비가 얼마나 남았어?', settings,
+    }), env);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      schemaVersion: 1, rankedIds: ['budget'], intent: '이번 달 예산에서 남은 금액 확인',
+    });
+  });
+});
+
+test('manage settings search rejects invented menu IDs from Gemini', async () => {
+  const searchUserId = '9ba37c6f-9e55-4de7-a018-0a9b445df335';
+  await mockFetch(async (url) => {
+    if (String(url).startsWith(env.SUPABASE_URL)) return Response.json({ id: searchUserId });
+    return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify({
+      schemaVersion: 1, rankedIds: ['secret-action'], intent: '예산 설정',
+    }) }] } }] });
+  }, async () => {
+    const response = await worker.fetch(request('/v1/search-manage-settings', 'synthetic-token', {
+      query: '생활비', settings: [{ id: 'budget', title: '월 예산', keywords: ['생활비'] }],
+    }), env);
+    assert.equal(response.status, 502);
+    assert.equal((await response.json() as { error: { code: string } }).error.code, 'AI_SCHEMA_ERROR');
+  });
+});
+
+test('manage settings search bounds query and menu catalogue before Gemini', async () => {
+  const searchUserId = 'b13a22dc-04f2-4e8c-9b63-82e075a57211';
+  await mockFetch(async (url) => {
+    if (String(url).startsWith(env.SUPABASE_URL)) return Response.json({ id: searchUserId });
+    throw new Error('Invalid search must not reach Gemini');
+  }, async () => {
+    const response = await worker.fetch(request('/v1/search-manage-settings', 'synthetic-token', {
+      query: '생활비', settings: [{ id: 'budget', title: '월 예산', keywords: [''] }],
+    }), env);
+    assert.equal(response.status, 400);
   });
 });
 test('invalid token is checked by Supabase and never reaches Gemini', async () => {
