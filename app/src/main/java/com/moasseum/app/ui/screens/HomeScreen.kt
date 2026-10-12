@@ -84,6 +84,7 @@ import com.moasseum.app.domain.SpendingQuestionState
 import com.moasseum.app.domain.formatLongDate
 import com.moasseum.app.domain.formatMonth
 import com.moasseum.app.domain.noSpendStreakDays
+import com.moasseum.app.domain.noSpendChallengeHeadline
 import com.moasseum.app.ui.components.AddMode
 import com.moasseum.app.ui.components.FinanceCard
 import com.moasseum.app.ui.components.formatDisplayWon
@@ -279,7 +280,7 @@ private fun NoSpendChallengeCard(
     val startDate = settings.startDate ?: return
     val streak = noSpendStreakDays(uiState.transactions, startDate, today)
     val progress = (streak.toFloat() / settings.goalDays.coerceAtLeast(1)).coerceIn(0f, 1f)
-    val reached = streak >= settings.goalDays
+    val reached = streak >= settings.goalDays.coerceAtLeast(1)
     FinanceCard(highlighted = reached) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 10.dp),
@@ -292,7 +293,7 @@ private fun NoSpendChallengeCard(
                 Text("${settings.goalDays}일 목표", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             }
             Text(
-                text = if (reached) "목표 달성! ${streak}일 연속 무지출" else if (streak > 0) "${streak}일째 무지출 기록 중" else "오늘 지출이 기록됐어요 · 다시 이어가 봐요",
+                text = noSpendChallengeHeadline(uiState.transactions, settings, today),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = if (reached) colors.success else colors.textPrimary,

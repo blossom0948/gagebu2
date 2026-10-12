@@ -78,7 +78,7 @@ class UserPreferencesRepository(
                 .filter { it in settings.categoryLabels }.distinct().joinToString("\n")
             preferences[MONTHLY_INCOME_TARGETS] = settings.monthlyIncomeTargets.entries
                 .sortedBy { it.key }.takeLast(MAX_INCOME_TARGET_MONTHS).joinToString("\n") { "${it.key}=${it.value}" }
-            preferences[HOME_DASHBOARD_CARDS] = settings.homeDashboardCards.filter { it in HomeDashboardCards.defaults }.sorted().joinToString("\n")
+            preferences[HOME_DASHBOARD_CARDS] = settings.homeDashboardCards.filter { it in HomeDashboardCards.available }.sorted().joinToString("\n")
             preferences[AI_ADVICE_CARDS] = settings.aiAdviceCards.filter { it in AiAdviceCards.defaults }.sorted().joinToString("\n")
             preferences[BUDGET_PAYDAY] = settings.budgetPayday.takeIf { it in 1..31 } ?: 1
             preferences[DISPLAY_CURRENCY] = settings.displayCurrencyCode.takeIf(DisplayCurrencies::isSupported) ?: DisplayCurrencies.KRW
@@ -222,7 +222,7 @@ class UserPreferencesRepository(
 
     val homeDashboardCards: Flow<Set<String>> = context.settingsDataStore.data.map { preferences ->
         preferences[HOME_DASHBOARD_CARDS]?.lineSequence()
-            ?.filter { it in HomeDashboardCards.defaults }
+            ?.filter { it in HomeDashboardCards.available }
             ?.toSet()
             ?: HomeDashboardCards.defaults
     }
@@ -346,7 +346,7 @@ class UserPreferencesRepository(
     }
 
     suspend fun saveHomeDashboardCards(cards: Set<String>) {
-        val normalized = cards.filter { it in HomeDashboardCards.defaults }.toSet()
+        val normalized = cards.filter { it in HomeDashboardCards.available }.toSet()
         require(normalized.size == cards.size) { "홈 카드 설정이 올바르지 않아요." }
         context.settingsDataStore.edit { preferences ->
             preferences[HOME_DASHBOARD_CARDS] = normalized.sorted().joinToString("\n")

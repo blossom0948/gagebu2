@@ -22,6 +22,26 @@ import org.junit.runner.RunWith
 class WhatsNewDialogInteractionTest {
     @get:Rule val composeRule = createComposeRule()
 
+    @Test fun v0144ReleasePopupShowsTheFoldHomeDashboardCapture() {
+        var dismissed = false
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Box(Modifier.fillMaxSize().background(LocalFinanceColors.current.surfaceBase)) {
+                    WhatsNewDialog(versionName = "0.1.44", onDismiss = { dismissed = true })
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("v0.1.44 신기능").assertExists()
+        composeRule.onNodeWithText("홈 요약을 더 간결하게").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4 QA 앱에서 촬영한 홈 화면. 월 목표 막대와 오늘·이번 주 지출은 유지하고 중복 오늘 요약은 숨긴 합성 데이터 화면입니다.",
+        ).assertExists()
+        composeRule.onNodeWithText("1 / 1").assertExists()
+        composeRule.onNodeWithText("확인").performScrollTo().performClick()
+        assertTrue(dismissed)
+    }
+
     @Test fun v0143ReleasePopupShowsCancellationReviewCapture() {
         var dismissed = false
         composeRule.setContent {

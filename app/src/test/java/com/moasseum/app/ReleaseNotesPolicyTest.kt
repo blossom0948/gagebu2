@@ -14,6 +14,16 @@ class ReleaseNotesPolicyTest {
     }
 
     @Test
+    fun `v0144 documents the compact home and retains the monthly budget visual`() {
+        val slide = ReleaseNotesCatalog.slides("0.1.44").single()
+        assertTrue(slide.title.contains("간결하게"))
+        assertTrue(slide.description.contains("다시 켤 수 있고"))
+        assertTrue(slide.description.contains("무지출 챌린지"))
+        assertTrue(slide.imageDescription.contains("월 목표 막대"))
+        assertTrue(slide.imageAspectRatio in 0.6f..0.65f)
+    }
+
+    @Test
     fun `v0143 explains cross screenshot cancellation handling and review recovery`() {
         val slide = ReleaseNotesCatalog.slides("0.1.43").single()
         assertTrue(slide.title.contains("취소 내역"))

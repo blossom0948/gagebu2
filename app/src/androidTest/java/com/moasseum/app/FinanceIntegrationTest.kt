@@ -46,6 +46,19 @@ class FinanceIntegrationTest {
         }
     }
 
+    @Test fun homeDashboardCardSelectionKeepsTheOptionalInsightAvailable() = runBlocking {
+        val preferences = UserPreferencesRepository(context)
+        val previous = preferences.homeDashboardCards.first()
+        val selection = setOf(HomeDashboardCards.TODAY_WEEK, HomeDashboardCards.TODAY_INSIGHT)
+        try {
+            preferences.saveHomeDashboardCards(selection)
+            assertEquals(selection, preferences.homeDashboardCards.first())
+            assertTrue(runCatching { preferences.saveHomeDashboardCards(setOf("unknown_card")) }.isFailure)
+        } finally {
+            preferences.saveHomeDashboardCards(previous)
+        }
+    }
+
     @Test fun batchAiEntriesAndEditsPersistTheirIndividualPaymentMethods() = runBlocking {
         val database = Room.inMemoryDatabaseBuilder(context, FinanceDatabase::class.java).build()
         try {

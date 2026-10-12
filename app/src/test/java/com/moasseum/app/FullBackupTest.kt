@@ -29,6 +29,15 @@ class FullBackupTest {
     @Test fun completeRoundTripPreservesAccountsRulesTombstonesAndSettings() {
         assertEquals(backup(), FullBackupCodec.decode(FullBackupCodec.encode(backup())))
     }
+    @Test fun customTodayInsightCardRemainsInExistingBackups() {
+        val custom = backup().copy(settings = backup().settings!!.copy(
+            homeDashboardCards = setOf(
+                com.moasseum.app.domain.HomeDashboardCards.TODAY_WEEK,
+                com.moasseum.app.domain.HomeDashboardCards.TODAY_INSIGHT,
+            ),
+        ))
+        assertEquals(custom, FullBackupCodec.decode(FullBackupCodec.encode(custom)))
+    }
     @Test fun foreignCurrencyMetadataSurvivesFullBackupRoundTrip() {
         val foreign = TransactionEntity(
             id = 9, type = "EXPENSE", amount = 13420, currency = "USD", originalAmount = "10",

@@ -29,7 +29,10 @@ object HomeDashboardCards {
     const val RECENT_TRANSACTIONS = "recent_transactions"
     const val NO_SPEND_CHALLENGE = "no_spend_challenge"
 
-    val defaults = setOf(TODAY_WEEK, TODAY_INSIGHT, CATEGORIES, RECENT_TRANSACTIONS, NO_SPEND_CHALLENGE)
+    val available = setOf(TODAY_WEEK, TODAY_INSIGHT, CATEGORIES, RECENT_TRANSACTIONS, NO_SPEND_CHALLENGE)
+    // Today/Week already shows the daily total. Keep this optional insight card
+    // available without duplicating the default dashboard's first screen.
+    val defaults = setOf(TODAY_WEEK, CATEGORIES, RECENT_TRANSACTIONS, NO_SPEND_CHALLENGE)
 }
 
 object AiAdviceCards {
@@ -65,6 +68,23 @@ fun noSpendStreakDays(
         day = day.minusDays(1)
     }
     return streak
+}
+
+fun noSpendChallengeHeadline(
+    transactions: List<Transaction>,
+    settings: NoSpendChallengeSettings,
+    today: LocalDate = LocalDate.now(),
+): String {
+    val startDate = settings.startDate ?: return "무지출 챌린지를 시작해요"
+    val streak = noSpendStreakDays(transactions, startDate, today)
+    val goalDays = settings.goalDays.coerceAtLeast(1)
+    return when {
+        streak >= goalDays -> "목표 달성! ${streak}일 연속 무지출"
+        streak > 0 -> "${streak}일째 무지출 기록 중"
+        startDate.isAfter(today) -> "챌린지는 ${startDate.monthValue}월 ${startDate.dayOfMonth}일부터 시작해요"
+        transactions.any { it.type == TransactionType.EXPENSE && it.occurredDate == today } -> "오늘 지출이 있어요 · 내일 다시 이어가요"
+        else -> "오늘부터 무지출 기록을 시작해요"
+    }
 }
 
 /** Days to the next valid occurrence of a recurring MM-DD date, including leap-day dates. */

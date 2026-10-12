@@ -58,6 +58,15 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.44" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_44_compact_home,
+                imageAspectRatio = 904f / 1458f,
+                title = "홈 요약을 더 간결하게",
+                description = "오늘·이번 주 카드와 겹치던 오늘 소비 요약은 기본 홈에서 줄였어요. 홈 카드 구성에서 다시 켤 수 있고, 무지출 챌린지는 시작일과 오늘 지출에 맞는 문구를 보여줘요.",
+                imageDescription = "Galaxy Z Fold4 QA 앱에서 촬영한 홈 화면. 월 목표 막대와 오늘·이번 주 지출은 유지하고 중복 오늘 요약은 숨긴 합성 데이터 화면입니다.",
+            ),
+        )
         "0.1.43" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_43_photo_review,

@@ -201,7 +201,7 @@ object FullBackupCodec {
             val homeDashboardCards = s.optJSONArray("homeDashboardCards")?.let { cards ->
                 (0 until cards.length()).map { cards.getString(it) }.toSet()
             } ?: HomeDashboardCards.defaults
-            require(homeDashboardCards.size <= HomeDashboardCards.defaults.size && homeDashboardCards.all { it in HomeDashboardCards.defaults }) {
+            require(homeDashboardCards.size <= HomeDashboardCards.available.size && homeDashboardCards.all { it in HomeDashboardCards.available }) {
                 "홈 카드 설정이 올바르지 않은 백업이에요."
             }
             val aiAdviceCards = s.optJSONArray("aiAdviceCards")?.let { cards ->
