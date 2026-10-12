@@ -22,6 +22,26 @@ import org.junit.runner.RunWith
 class WhatsNewDialogInteractionTest {
     @get:Rule val composeRule = createComposeRule()
 
+    @Test fun v0143ReleasePopupShowsCancellationReviewCapture() {
+        var dismissed = false
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Box(Modifier.fillMaxSize().background(LocalFinanceColors.current.surfaceBase)) {
+                    WhatsNewDialog(versionName = "0.1.43", onDismiss = { dismissed = true })
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("v0.1.43 신기능").assertExists()
+        composeRule.onNodeWithText("사진 거래, 취소 내역은 빼고 확인해요").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4 격리 QA 앱에서 촬영한 사진 거래 검토 화면. 중복 2건과 취소 1건을 제외하고 가상 카페 거래 1건을 보여줍니다.",
+        ).assertExists()
+        composeRule.onNodeWithText("1 / 1").assertExists()
+        composeRule.onNodeWithText("확인").performScrollTo().performClick()
+        assertTrue(dismissed)
+    }
+
     @Test fun v0140ReleasePopupShowsBothRealScreensAndCanAdvance() {
         var dismissed = false
         composeRule.setContent {

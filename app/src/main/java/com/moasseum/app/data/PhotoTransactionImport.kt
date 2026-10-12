@@ -23,6 +23,8 @@ data class PhotoEvidenceBounds(val left: Float, val top: Float, val right: Float
 data class PhotoImportPreview(
     val candidates: List<PhotoTransactionCandidate>,
     val duplicateCount: Int,
+    val cancelledCount: Int = 0,
+    val cancelledCandidates: List<PhotoTransactionCandidate> = emptyList(),
 )
 
 data class PhotoImportSaveResult(val insertedIds: List<Long>, val duplicateCount: Int) {
@@ -38,6 +40,9 @@ sealed interface PhotoImportState {
         val imageCount: Int,
         val failedImageCount: Int,
         val unselectedCandidateIds: Set<String> = emptySet(),
+        val cancellationEvidence: List<PhotoTransactionCandidate> = emptyList(),
+        val cancelledCount: Int = 0,
+        val cancelledCandidates: List<PhotoTransactionCandidate> = emptyList(),
     ) : PhotoImportState
     data class Error(val message: String) : PhotoImportState
 }
@@ -64,6 +69,27 @@ object PhotoTransactionImport {
         ocrText: String,
         today: LocalDate = LocalDate.now(),
         defaultPaymentMethod: String = "금융앱 캡처",
+    ): List<PhotoTransactionCandidate> = extractRows(ocrText, today, defaultPaymentMethod, includeCancelled = false)
+
+    /** Returns rows explicitly marked cancelled so overlapping screenshots can suppress the original charge. */
+    fun extractCancellationEvidence(
+        ocrText: String,
+        today: LocalDate = LocalDate.now(),
+        defaultPaymentMethod: String = "금융앱 캡처",
+    ): List<PhotoTransactionCandidate> = extractRows(
+        ocrText,
+        today,
+        defaultPaymentMethod,
+        includeCancelled = true,
+        cancellationOnly = true,
+    )
+
+    private fun extractRows(
+        ocrText: String,
+        today: LocalDate,
+        defaultPaymentMethod: String,
+        includeCancelled: Boolean,
+        cancellationOnly: Boolean = false,
     ): List<PhotoTransactionCandidate> {
         val lines = ocrText.lineSequence().map(String::trim).filter(String::isNotBlank).toList()
         if (lines.isEmpty()) return emptyList()
@@ -71,7 +97,8 @@ object PhotoTransactionImport {
         val amountLines = lines.indices.filter { index ->
             val line = lines[index]
             val amount = extractAmount(line)
-            !excludedLine.containsMatchIn(line) && amount != null && hasFinancialEvidence(lines, index, amount, today)
+            (!excludedLine.containsMatchIn(line) || (includeCancelled && isCancellationMerchantLine(line))) &&
+                amount != null && hasFinancialEvidence(lines, index, amount, today)
         }
         if (amountLines.isEmpty()) return emptyList()
 
@@ -99,7 +126,7 @@ object PhotoTransactionImport {
             if (index !in amountLines) continue
 
             val line = lines[index]
-            if (excludedLine.containsMatchIn(line)) continue
+            if (excludedLine.containsMatchIn(line) && !(includeCancelled && isCancellationMerchantLine(line))) continue
             val amountMatch = extractAmount(line) ?: continue
             val previousAmount = amountLines.lastOrNull { it < index } ?: -1
             val nextAmount = amountLines.firstOrNull { it > index } ?: lines.size
@@ -112,7 +139,9 @@ object PhotoTransactionImport {
                 .map(lines::get).joinToString(" ")
             // Cancellation labels are frequently OCR'd on the subtitle line,
             // separate from the signed amount. Never import that row as spend.
-            if (hasCancellationInRow(lines, index, nextAmount)) continue
+            val cancelled = hasCancellationInRow(lines, index, nextAmount)
+            if (cancelled && !includeCancelled) continue
+            if (cancellationOnly && !cancelled) continue
             if (isOwnAccountTransfer(transactionContext)) continue
             val transferDirection = inferTransferDirection(transactionContext)
             val type = inferType(amountMatch.value, transactionContext, transferDirection)
@@ -160,6 +189,7 @@ object PhotoTransactionImport {
     }
 
     private fun hasCancellationInRow(lines: List<String>, amountIndex: Int, nextAmountIndex: Int): Boolean {
+        if (Regex("취소").containsMatchIn(lines.getOrNull(amountIndex).orEmpty())) return true
         val end = minOf(amountIndex + 4, nextAmountIndex - 1, lines.lastIndex)
         if (end < amountIndex + 1) return false
         for (index in amountIndex + 1..end) {
@@ -186,6 +216,9 @@ object PhotoTransactionImport {
     ): List<PhotoTransactionCandidate> {
         val explicitReceipt = Regex("영수증|사업자\\s*등록번호|공급받는자|공급자").containsMatchIn(ocrText)
         if (explicitReceipt) {
+            if (Regex("결제\\s*취소|승인\\s*취소|거래\\s*취소|취소\\s*(?:완료|승인)|전액\\s*취소|환불\\s*완료")
+                    .containsMatchIn(ocrText)
+            ) return emptyList()
             val receipt = ReceiptOcr.candidateFromText(ocrText, today) ?: return emptyList()
             return listOf(PhotoTransactionCandidate(receipt, "카드"))
         }
@@ -204,6 +237,7 @@ object PhotoTransactionImport {
     fun preview(
         candidates: List<PhotoTransactionCandidate>,
         existing: List<Transaction>,
+        cancellationEvidence: List<PhotoTransactionCandidate> = emptyList(),
     ): PhotoImportPreview {
         val accepted = mutableListOf<PhotoTransactionCandidate>()
         var duplicates = 0
@@ -237,7 +271,29 @@ object PhotoTransactionImport {
                 }
             }
         }
-        return PhotoImportPreview(accepted, duplicates)
+        val uniqueCancellations = cancellationEvidence.distinctBy { candidate ->
+            listOf(
+                candidate.transaction.amount,
+                candidate.transaction.occurredDate,
+                normalizeMerchant(candidate.transaction.merchant),
+            )
+        }
+        val remaining = accepted.toMutableList()
+        val cancelledCandidates = mutableListOf<PhotoTransactionCandidate>()
+        uniqueCancellations.forEach { cancellation ->
+            val cancelledIndex = remaining.indexOfFirst { sameCancellationIdentity(it.transaction, cancellation.transaction) }
+            if (cancelledIndex >= 0) {
+                val matchedTransaction = remaining.removeAt(cancelledIndex)
+                cancelledCandidates += matchedTransaction.copy(
+                    sourceImageId = cancellation.sourceImageId,
+                    sourceImageUri = cancellation.sourceImageUri ?: matchedTransaction.sourceImageUri,
+                    sourceEvidenceImagePath = cancellation.sourceEvidenceImagePath,
+                    sourceLineStart = cancellation.sourceLineStart,
+                    sourceLineEnd = cancellation.sourceLineEnd,
+                )
+            }
+        }
+        return PhotoImportPreview(remaining, duplicates, cancelledCandidates.size, cancelledCandidates)
     }
 
     fun isDuplicate(candidate: AiTransactionCandidate, existing: Transaction): Boolean =
@@ -255,6 +311,10 @@ object PhotoTransactionImport {
 
     fun sameTransaction(left: AiTransactionCandidate, right: AiTransactionCandidate): Boolean =
         left.type == right.type && left.amount == right.amount && left.occurredDate == right.occurredDate &&
+            merchantMatches(left.merchant, right.merchant)
+
+    fun sameCancellationIdentity(left: AiTransactionCandidate, right: AiTransactionCandidate): Boolean =
+        left.amount == right.amount && left.occurredDate == right.occurredDate &&
             merchantMatches(left.merchant, right.merchant)
 
     private fun sameEvidenceTransaction(left: AiTransactionCandidate, right: AiTransactionCandidate): Boolean =
@@ -294,7 +354,9 @@ object PhotoTransactionImport {
         val contextLines = lines.subList(start, end + 1)
         val hasMerchant = contextLines.withIndex().any { (offset, text) ->
             val absoluteIndex = start + offset
-            absoluteIndex != index && !excludedLine.containsMatchIn(text) && usableMerchant(text) != null
+            absoluteIndex != index &&
+                (!excludedLine.containsMatchIn(text) || isCancellationMerchantLine(text)) &&
+                usableMerchant(text) != null
         } || usableMerchant(lines[index].replace(money, " ")) != null
         if (!hasMerchant) return false
 
@@ -407,6 +469,9 @@ object PhotoTransactionImport {
     private fun hasPaymentRowEvidence(text: String): Boolean =
         Regex("토스\\s*뱅크|계좌|통장|체크카드|신용카드|카드|→|➜|->|받았|보냈|입금|출금|송금").containsMatchIn(text)
 
+    private fun isCancellationMerchantLine(text: String): Boolean =
+        Regex("취소").containsMatchIn(text) && usableMerchant(text) != null
+
     private fun usableMerchant(raw: String): String? {
         val hasAccountContext = hasOwnAccount(raw)
         if (raw.contains("캐시백") && !hasAccountContext) return null
@@ -415,6 +480,7 @@ object PhotoTransactionImport {
             RegexOption.IGNORE_CASE,
         )
         val line = raw.trim()
+            .replace(Regex("승인\\s*취소|결제\\s*취소|취소"), " ")
             .replace(paymentPrefix, "")
             .replace(fullDate, " ")
             .replace(monthDayText, " ")

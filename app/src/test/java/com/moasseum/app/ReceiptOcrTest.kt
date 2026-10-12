@@ -35,6 +35,21 @@ class ReceiptOcrTest {
     }
 
     @Test
+    fun `receipt import does not add a completed cancelled payment`() {
+        val cancelled = PhotoTransactionImport.extractWithReceiptFallback(
+            "영수증\n카페 모아씀\n2026.09.17\n결제 취소 완료\n합계 4,500원",
+            today = LocalDate.of(2026, 9, 17),
+        )
+        val informational = PhotoTransactionImport.extractWithReceiptFallback(
+            "영수증\n카페 모아씀\n2026.09.17\n취소는 매장에서 문의해 주세요\n합계 4,500원",
+            today = LocalDate.of(2026, 9, 17),
+        )
+
+        assertEquals(emptyList<Any>(), cancelled)
+        assertEquals(1, informational.size)
+    }
+
+    @Test
     fun `finance screenshot extracts every dated expense and deposit`() {
         val candidates = PhotoTransactionImport.extract(
             """
@@ -154,6 +169,56 @@ class ReceiptOcrTest {
 
         assertEquals(1, candidates.size)
         assertEquals(4_500L, candidates.single().transaction.amount)
+    }
+
+    @Test
+    fun `cancellation in another screenshot suppresses only the matching captured charge`() {
+        val today = LocalDate.of(2026, 10, 13)
+        val original = PhotoTransactionImport.extract(
+            "10월 2일 금요일\n-5,000원\n카카오T | 토스뱅크 체크카드",
+            today = today,
+        ).single()
+        val cancellation = PhotoTransactionImport.extractCancellationEvidence(
+            "10월 2일 금요일\n-5,000원\n취소 | 카카오T | 토스뱅크 체크카드",
+            today = today,
+        ).single().copy(
+            sourceImageId = "cancellation-capture",
+            sourceImageUri = "content://cancellation-capture",
+            sourceEvidenceImagePath = "/private/cancellation-row.jpg",
+        )
+        val inlineCancellation = PhotoTransactionImport.extractCancellationEvidence(
+            "10월 2일 금요일\n-5,000원 취소 | 카카오T | 토스뱅크 체크카드",
+            today = today,
+        ).single()
+        val refundCancellation = PhotoTransactionImport.extractCancellationEvidence(
+            "10월 2일 금요일\n+5,000원\n취소 | 카카오T | 토스뱅크 체크카드",
+            today = today,
+        ).single()
+
+        assertEquals("카카오T", cancellation.transaction.merchant)
+        assertEquals("카카오T", inlineCancellation.transaction.merchant)
+        val preview = PhotoTransactionImport.preview(listOf(original), emptyList(), listOf(cancellation))
+
+        assertEquals(emptyList<Any>(), preview.candidates)
+        assertEquals(1, preview.cancelledCount)
+        assertEquals(original.id, preview.cancelledCandidates.single().id)
+        assertEquals("content://cancellation-capture", preview.cancelledCandidates.single().sourceImageUri)
+        assertEquals("/private/cancellation-row.jpg", preview.cancelledCandidates.single().sourceEvidenceImagePath)
+        val refundPreview = PhotoTransactionImport.preview(
+            listOf(original),
+            emptyList(),
+            listOf(refundCancellation, refundCancellation.copy(sourceImageId = "overlapping-capture")),
+        )
+        assertEquals(emptyList<Any>(), refundPreview.candidates)
+        assertEquals(1, refundPreview.cancelledCount)
+
+        val unrelated = PhotoTransactionImport.extract(
+            "10월 2일 금요일\n-5,000원\n메가커피 | 토스뱅크 체크카드",
+            today = today,
+        ).single()
+        val unrelatedPreview = PhotoTransactionImport.preview(listOf(unrelated), emptyList(), listOf(cancellation))
+        assertEquals("메가커피", unrelatedPreview.candidates.single().transaction.merchant)
+        assertEquals(0, unrelatedPreview.cancelledCount)
     }
 
     @Test
@@ -535,13 +600,23 @@ class ReceiptOcrTest {
             today = today,
         ).map { it.copy(sourceImageId = "10283") }
 
-        val preview = PhotoTransactionImport.preview(captureOne + captureTwo + captureThree, emptyList())
-        assertEquals(12, preview.candidates.size)
+        val cancellationEvidence = PhotoTransactionImport.extractCancellationEvidence(
+            """
+            10
+            2일 금요일
+            -5,000!
+            취소|카카오T | 토스뱅크 체크카드
+            """.trimIndent(),
+            today = today,
+        )
+        val preview = PhotoTransactionImport.preview(captureOne + captureTwo + captureThree, emptyList(), cancellationEvidence)
+        assertEquals(11, preview.candidates.size)
         val actual = preview.candidates.map {
             "${it.transaction.occurredDate}|${it.transaction.type}|${it.transaction.amount}|${it.transaction.merchant}"
         }.toSet()
 
         assertEquals(7, preview.duplicateCount)
+        assertEquals(1, preview.cancelledCount)
         assertEquals(
             setOf(
                 "2026-10-02|INCOME|50000|정회진",
@@ -554,7 +629,6 @@ class ReceiptOcrTest {
                 "2026-10-04|EXPENSE|14550|네이버페이",
                 "2026-10-02|EXPENSE|3700|메가커피",
                 "2026-10-02|EXPENSE|6000|소문마라탕",
-                "2026-10-02|EXPENSE|5000|카카오T",
                 "2026-10-02|INCOME|1300|송민영",
             ),
             actual,

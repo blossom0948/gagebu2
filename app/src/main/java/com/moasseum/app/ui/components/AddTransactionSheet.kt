@@ -155,6 +155,7 @@ fun AddTransactionSheet(
     onApplyBatch: (com.moasseum.app.data.BatchCommandAction, List<Long>, com.moasseum.app.data.BatchEditValues?) -> Boolean = { _, _, _ -> false },
     photoImportState: PhotoImportState = PhotoImportState.Idle,
     onPickMorePhotos: (List<com.moasseum.app.data.PhotoTransactionCandidate>, Set<String>) -> Unit = { _, _ -> onPickReceipt() },
+    onRestoreCancelledPhotoCandidate: (com.moasseum.app.data.PhotoTransactionCandidate) -> Unit = {},
     onAddPhotoCandidates: (List<PhotoTransactionCandidate>) -> Unit = {},
     canShareOnSave: Boolean = false,
     shareOnSave: Boolean = false,
@@ -216,6 +217,7 @@ fun AddTransactionSheet(
                 state = photoImportState,
                 saving = saving,
                 onPickMore = { candidates, unselectedIds -> onPickMorePhotos(candidates, unselectedIds) },
+                onRestoreCancelled = onRestoreCancelledPhotoCandidate,
                 onSave = onAddPhotoCandidates,
                 onCancel = onDismiss,
             )

@@ -780,14 +780,17 @@ private fun MoasseumApp(
         photoImportState = PhotoImportState.Loading(0, uris.size)
         coroutineScope.launch {
             val extracted = mutableListOf<com.moasseum.app.data.PhotoTransactionCandidate>()
+            val cancellationEvidence = mutableListOf<com.moasseum.app.data.PhotoTransactionCandidate>()
             var failedImages = 0
             uris.forEachIndexed { index, uri ->
                 val result = try {
                     val document = withContext(Dispatchers.IO) { ReceiptOcr.recognizeDocument(context, uri) }
                     val rows = PhotoTransactionImport.extractWithReceiptFallback(document.text)
                     val imageId = java.util.UUID.randomUUID().toString()
-                    val evidenceBounds = rows.asSequence()
-                        .filter { it.transaction.needsConfirmation.isNotEmpty() }
+                    val cancelledRows = PhotoTransactionImport.extractCancellationEvidence(document.text)
+                        .map { it.copy(sourceImageId = imageId, sourceImageUri = uri.toString()) }
+                    val candidatesForEvidence = rows.filter { it.transaction.needsConfirmation.isNotEmpty() } + cancelledRows
+                    val evidenceBounds = candidatesForEvidence.asSequence()
                         .mapNotNull { candidate ->
                             document.boundsForLines(candidate.sourceLineStart, candidate.sourceLineEnd)
                                 ?.let { candidate.id to it }
@@ -796,36 +799,53 @@ private fun MoasseumApp(
                     val evidencePaths = withContext(Dispatchers.IO) {
                         ReceiptOcr.createEvidenceCrops(context, uri, evidenceBounds)
                     }
-                    Result.success(rows.map { candidate ->
+                    val rowsWithEvidence = rows.map { candidate ->
                         candidate.copy(
                             sourceImageId = imageId,
                             sourceImageUri = uri.toString(),
                             sourceEvidenceImagePath = evidencePaths[candidate.id],
                         )
-                    })
+                    }
+                    val cancelledRowsWithEvidence = cancelledRows.map { candidate ->
+                        candidate.copy(sourceEvidenceImagePath = evidencePaths[candidate.id])
+                    }
+                    Result.success(rowsWithEvidence to cancelledRowsWithEvidence)
                 } catch (cancelled: kotlinx.coroutines.CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
                     Result.failure(error)
                 }
                 result.fold(
-                    onSuccess = { rows ->
+                    onSuccess = { (rows, cancelledRows) ->
                         extracted += rows
+                        cancellationEvidence += cancelledRows
                     },
                     onFailure = { failedImages++ },
                 )
                 photoImportState = PhotoImportState.Loading(index + 1, uris.size)
             }
-            val combined = previousReview?.candidates.orEmpty() + extracted
-            val preview = PhotoTransactionImport.preview(combined, uiState.transactions + sharedSnapshot.transactions)
-            val retainedEvidencePaths = preview.candidates.mapNotNull { it.sourceEvidenceImagePath }.toSet()
-            val droppedEvidencePaths = combined.mapNotNull { it.sourceEvidenceImagePath }
+            val combined = previousReview?.candidates.orEmpty() + previousReview?.cancelledCandidates.orEmpty() + extracted
+            val combinedCancellationEvidence = previousReview?.cancellationEvidence.orEmpty() + cancellationEvidence
+            val preview = PhotoTransactionImport.preview(
+                combined,
+                uiState.transactions + sharedSnapshot.transactions,
+                combinedCancellationEvidence,
+            )
+            val retainedEvidencePaths = (
+                preview.candidates + preview.cancelledCandidates + combinedCancellationEvidence
+            ).mapNotNull { it.sourceEvidenceImagePath }.toSet()
+            val droppedEvidencePaths = (
+                combined + combinedCancellationEvidence
+            ).mapNotNull { it.sourceEvidenceImagePath }
                 .filterNot(retainedEvidencePaths::contains)
             ReceiptOcr.deleteEvidenceCrops(droppedEvidencePaths)
             val duplicateCount = (previousReview?.duplicateCount ?: 0) + preview.duplicateCount
             val totalImages = (previousReview?.imageCount ?: 0) + uris.size
             val totalFailures = (previousReview?.failedImageCount ?: 0) + failedImages
-            photoImportState = if (preview.candidates.isEmpty() && duplicateCount == 0) {
+            photoImportState = if (
+                preview.candidates.isEmpty() && duplicateCount == 0 && preview.cancelledCount == 0 &&
+                combinedCancellationEvidence.isEmpty()
+            ) {
                 PhotoImportState.Error("거래 내역을 찾지 못했어요. 날짜와 금액이 선명하게 보이는 화면을 선택해 주세요.")
             } else {
                 PhotoImportState.Review(
@@ -834,6 +854,9 @@ private fun MoasseumApp(
                     totalImages,
                     totalFailures,
                     previousReview?.unselectedCandidateIds.orEmpty(),
+                    cancellationEvidence = combinedCancellationEvidence,
+                    cancelledCount = preview.cancelledCount,
+                    cancelledCandidates = preview.cancelledCandidates,
                 )
             }
             temporaryFile?.delete()
@@ -1107,7 +1130,9 @@ private fun MoasseumApp(
 
     fun closeAdd() {
         if (savingTransaction) return
-        (photoImportState as? PhotoImportState.Review)?.candidates
+        (photoImportState as? PhotoImportState.Review)?.let { review ->
+            review.candidates + review.cancelledCandidates + review.cancellationEvidence
+        }
             .orEmpty()
             .mapNotNull { it.sourceEvidenceImagePath }
             .let(ReceiptOcr::deleteEvidenceCrops)
@@ -1712,6 +1737,21 @@ private fun MoasseumApp(
                         )
                     }
                     pickReceiptPhoto()
+                },
+                onRestoreCancelledPhotoCandidate = { candidate ->
+                    (photoImportState as? PhotoImportState.Review)?.let { review ->
+                        val remainingCancelled = review.cancelledCandidates.filterNot { it.id == candidate.id }
+                        val remainingCancellationEvidence = review.cancellationEvidence.filterNot {
+                            PhotoTransactionImport.sameCancellationIdentity(it.transaction, candidate.transaction)
+                        }
+                        photoImportState = review.copy(
+                            candidates = if (review.candidates.any { it.id == candidate.id }) review.candidates
+                                else review.candidates + candidate,
+                            cancellationEvidence = remainingCancellationEvidence,
+                            cancelledCandidates = remainingCancelled,
+                            cancelledCount = remainingCancelled.size,
+                        )
+                    }
                 },
                 onAddPhotoCandidates = { candidates ->
                     if (!savingTransaction && candidates.isNotEmpty()) {

@@ -62,6 +62,7 @@ fun PhotoImportReview(
     state: PhotoImportState,
     saving: Boolean,
     onPickMore: (List<PhotoTransactionCandidate>, Set<String>) -> Unit,
+    onRestoreCancelled: (PhotoTransactionCandidate) -> Unit = {},
     onSave: (List<PhotoTransactionCandidate>) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -95,6 +96,8 @@ fun PhotoImportReview(
             }
             var editingIndex by remember(state) { mutableStateOf<Int?>(null) }
             var evidenceIndex by remember(state) { mutableStateOf<Int?>(null) }
+            var showCancelledDialog by remember(state) { mutableStateOf(false) }
+            var cancelledEvidenceCandidate by remember(state) { mutableStateOf<PhotoTransactionCandidate?>(null) }
             val allDraftsSelected = drafts.isNotEmpty() && drafts.all { it.selected }
             Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -104,14 +107,18 @@ fun PhotoImportReview(
                     }
                     Icon(Icons.Rounded.PhotoLibrary, contentDescription = null, tint = colors.accent, modifier = Modifier.size(22.dp))
                 }
-                if (state.duplicateCount > 0 || state.failedImageCount > 0) {
+                if (state.duplicateCount > 0 || state.cancelledCount > 0 || state.failedImageCount > 0) {
                     Surface(color = colors.accentSoft, shape = RoundedCornerShape(13.dp)) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = colors.accent, modifier = Modifier.size(17.dp))
                             Text(buildList {
                                 if (state.duplicateCount > 0) add("중복 ${state.duplicateCount}건 제외")
+                                if (state.cancelledCount > 0) add("취소 내역 ${state.cancelledCount}건 제외")
                                 if (state.failedImageCount > 0) add("${state.failedImageCount}장 인식 실패")
                             }.joinToString(" · "), modifier = Modifier.padding(start = 7.dp), color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                            if (state.cancelledCandidates.isNotEmpty()) {
+                                TextButton(enabled = !saving, onClick = { showCancelledDialog = true }) { Text("거래 보기") }
+                            }
                         }
                     }
                 }
@@ -145,7 +152,16 @@ fun PhotoImportReview(
                         Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Text("새로 추가할 내역이 없어요", fontWeight = FontWeight.SemiBold)
-                            Text("사진에서 새 거래를 찾지 못했어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                when {
+                                    state.cancellationEvidence.isNotEmpty() -> "취소 내역을 보관했어요. 원 거래가 있는 사진을 더 선택해 주세요."
+                                    state.cancelledCount > 0 -> "취소된 거래는 추가하지 않았어요."
+                                    state.duplicateCount > 0 -> "이미 기록된 거래만 있어요."
+                                    else -> "사진에서 새 거래를 찾지 못했어요."
+                                },
+                                color = colors.textSecondary,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
                         }
                     }
                 }
@@ -188,8 +204,75 @@ fun PhotoImportReview(
                     )
                 }
             }
+            if (showCancelledDialog) {
+                PhotoCancelledCandidatesDialog(
+                    candidates = state.cancelledCandidates,
+                    onDismiss = { showCancelledDialog = false },
+                    onViewPhoto = {
+                        cancelledEvidenceCandidate = it
+                        showCancelledDialog = false
+                    },
+                    onRestore = {
+                        onRestoreCancelled(it)
+                        showCancelledDialog = false
+                    },
+                )
+            }
+            cancelledEvidenceCandidate?.let { candidate ->
+                PhotoEvidenceDialog(
+                    candidate = candidate,
+                    confirmLabel = "후보로 복원",
+                    onDismiss = { cancelledEvidenceCandidate = null },
+                    onEdit = {
+                        cancelledEvidenceCandidate = null
+                        onRestoreCancelled(candidate)
+                        showCancelledDialog = false
+                    },
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun PhotoCancelledCandidatesDialog(
+    candidates: List<PhotoTransactionCandidate>,
+    onDismiss: () -> Unit,
+    onViewPhoto: (PhotoTransactionCandidate) -> Unit,
+    onRestore: (PhotoTransactionCandidate) -> Unit,
+) {
+    val colors = LocalFinanceColors.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("취소로 제외된 내역") },
+        text = {
+            Column(
+                Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("사진을 확인하고, 잘못 제외된 거래는 후보로 되돌릴 수 있어요.", color = colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                candidates.forEach { candidate ->
+                    Surface(color = colors.surfaceRaised, shape = RoundedCornerShape(14.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text(candidate.transaction.merchant, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "${formatDisplayWon(candidate.transaction.amount)} · ${formatDate(candidate.transaction.occurredDate)} · ${candidate.paymentMethod}",
+                                color = colors.textSecondary,
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                if (candidate.sourceImageUri != null || candidate.sourceEvidenceImagePath != null) {
+                                    TextButton(onClick = { onViewPhoto(candidate) }) { Text("사진 보기") }
+                                }
+                                TextButton(onClick = { onRestore(candidate) }) { Text("후보로 복원") }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("닫기") } },
+    )
 }
 
 @Composable
@@ -237,6 +320,7 @@ private fun PhotoCandidateCard(
 @Composable
 private fun PhotoEvidenceDialog(
     candidate: PhotoTransactionCandidate,
+    confirmLabel: String = "수정하기",
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
 ) {
@@ -268,8 +352,8 @@ private fun PhotoEvidenceDialog(
                 val bitmap = if (showFullSource) sourceBitmap else evidenceBitmap
                 if (bitmap == null) {
                     Text(
-                        if (showFullSource) "전체 캡처를 불러오지 못했어요. 수정에서 내용을 직접 고칠 수 있어요."
-                        else "이 거래의 부분 캡처를 만들지 못했어요. 수정에서 내용을 확인할 수 있어요.",
+                        if (showFullSource) "원본 사진을 불러오지 못했어요."
+                        else "거래 부분을 불러오지 못했어요. 원본 전체 화면을 확인해 주세요.",
                         color = LocalFinanceColors.current.textSecondary,
                     )
                     if (!showFullSource && candidate.sourceImageUri != null) {
@@ -285,7 +369,7 @@ private fun PhotoEvidenceDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onEdit) { Text("수정하기") } },
+        confirmButton = { TextButton(onClick = onEdit) { Text(confirmLabel) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("닫기") } },
     )
 }

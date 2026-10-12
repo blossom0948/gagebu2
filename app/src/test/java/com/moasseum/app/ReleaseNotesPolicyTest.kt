@@ -14,6 +14,16 @@ class ReleaseNotesPolicyTest {
     }
 
     @Test
+    fun `v0143 explains cross screenshot cancellation handling and review recovery`() {
+        val slide = ReleaseNotesCatalog.slides("0.1.43").single()
+        assertTrue(slide.title.contains("취소 내역"))
+        assertTrue(slide.description.contains("다른 사진에서도"))
+        assertTrue(slide.description.contains("후보로 되돌릴 수"))
+        assertTrue(slide.imageDescription.contains("가상 카페 거래"))
+        assertTrue(slide.imageAspectRatio in 0.5f..0.8f)
+    }
+
+    @Test
     fun `v0142 explains suggested manage searches and uses the Fold QA capture`() {
         val slide = ReleaseNotesCatalog.slides("0.1.42").single()
         assertTrue(slide.title.contains("관리 메뉴"))

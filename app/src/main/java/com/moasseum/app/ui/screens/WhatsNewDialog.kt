@@ -58,6 +58,15 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.43" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_43_photo_review,
+                imageAspectRatio = 904f / 1343f,
+                title = "사진 거래, 취소 내역은 빼고 확인해요",
+                description = "다른 사진에서도 날짜·금액·가맹점이 같은 취소 내역을 찾아 해당 거래만 제외해요. 완료된 취소 영수증도 지출 후보로 넣지 않아요. 잘못 제외된 항목은 원본 사진을 보고 후보로 되돌릴 수 있어요.",
+                imageDescription = "Galaxy Z Fold4 격리 QA 앱에서 촬영한 사진 거래 검토 화면. 중복 2건과 취소 1건을 제외하고 가상 카페 거래 1건을 보여줍니다.",
+            ),
+        )
         "0.1.42" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_42_search_suggestions,
