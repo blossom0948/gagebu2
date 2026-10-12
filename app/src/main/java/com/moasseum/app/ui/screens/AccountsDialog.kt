@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import com.moasseum.app.data.FinanceRepository
 import com.moasseum.app.domain.*
 import com.moasseum.app.ui.components.FinanceTextField
+import com.moasseum.app.ui.components.formatDisplayWon
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
@@ -58,12 +59,12 @@ fun AccountsDialog(accounts: List<Account>, transactions: List<Transaction>, rep
     AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, title = { Text("계좌·지갑과 이체") }, text = {
         Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("수동 기록이며 실제 은행 송금은 하지 않습니다.", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
-            Text("총 잔액 ${formatWon(accounts.sumOf { accountBalance(it, transactions) })}", style = MaterialTheme.typography.titleMedium)
+            Text("총 잔액 ${formatDisplayWon(accounts.sumOf { accountBalance(it, transactions) })}", style = MaterialTheme.typography.titleMedium)
             if (!accountForm && !transferForm && !externalDepositForm) accounts.forEach { account ->
                 OutlinedCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(10.dp)) {
                         Text("${account.name}${if (account.archived) " · 보관됨" else ""}", style = MaterialTheme.typography.titleSmall)
-                        Text(formatWon(accountBalance(account, transactions)))
+                        Text(formatDisplayWon(accountBalance(account, transactions)))
                         Row {
                             TextButton(enabled = !busy, onClick = { editingAccount = account.id; name = account.name; opening = account.openingBalance.toString(); accountForm = true }) { Text("수정") }
                             TextButton(enabled = !busy, onClick = { perform({ repository.archiveAccount(account.id, !account.archived) }) }) { Text(if (account.archived) "다시 사용" else "보관") }
@@ -137,7 +138,7 @@ fun AccountsDialog(accounts: List<Account>, transactions: List<Transaction>, rep
             val transfers = transactions.filter { it.type == TransactionType.TRANSFER }
             if (!accountForm && !transferForm && !externalDepositForm) {
             transfers.take(transferCount).forEach { transaction ->
-                Text("${formatDate(transaction.occurredDate)} · ${transaction.merchant} · ${formatWon(transaction.amount)}", style = MaterialTheme.typography.bodySmall)
+                Text("${formatDate(transaction.occurredDate)} · ${transaction.merchant} · ${formatDisplayWon(transaction.amount)}", style = MaterialTheme.typography.bodySmall)
                 Row {
                     TextButton(onClick = { editingTransfer = transaction.id; fromId = transaction.accountId.orEmpty(); toId = transaction.destinationAccountId.orEmpty(); amount = transaction.amount.toString(); date = transaction.occurredDate.toString(); memo = transaction.memo; transferForm = true }) { Text("수정") }
                     TextButton(enabled = !busy, onClick = { deletingTransfer = transaction.id }) { Text("기록 삭제") }
@@ -152,7 +153,7 @@ fun AccountsDialog(accounts: List<Account>, transactions: List<Transaction>, rep
             val rows = transactions.filter { it.type != TransactionType.TRANSFER && (search.isBlank() || it.merchant.contains(search, true) || it.memo.contains(search, true)) }
             rows.take(visibleCount).forEach { transaction ->
                 TextButton(onClick = { linkingId = if (linkingId == transaction.id) null else transaction.id }) {
-                    Text("${transaction.merchant} · ${formatWon(transaction.amount)} · ${accounts.find { it.id == transaction.accountId }?.name ?: "미연결"}", maxLines = 2)
+                    Text("${transaction.merchant} · ${formatDisplayWon(transaction.amount)} · ${accounts.find { it.id == transaction.accountId }?.name ?: "미연결"}", maxLines = 2)
                 }
                 if (linkingId == transaction.id) AccountChips("연결 계좌", active, transaction.accountId, includeUnlinked = true) { selected ->
                     perform({ repository.linkTransactionAccount(transaction.id, selected) }) { linkingId = null }

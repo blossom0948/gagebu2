@@ -11,6 +11,9 @@ import com.moasseum.app.domain.PaymentCard
 import com.moasseum.app.domain.HomeDashboardCards
 import com.moasseum.app.domain.AiAdviceCards
 import com.moasseum.app.domain.NoSpendChallengeSettings
+import com.moasseum.app.domain.DisplayCurrencySetting
+import com.moasseum.app.domain.DisplayCurrencies
+import com.moasseum.app.domain.ExchangeRateQuote
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
@@ -57,7 +60,7 @@ class UserPreferencesRepository(
             isDarkTheme.first(), reduceMotion.first(), paymentMethods.first(), paymentCards.first(),
             categoryLabels.first(), categoryBudgets.first(), categoryOrder.first(), monthlyIncomeTargets.first(),
             homeDashboardCards.first(), challenge.goalDays, challenge.startDate,
-            yearEndGrossSalaries.first(), aiAdviceCards.first(), budgetPayday.first(),
+            yearEndGrossSalaries.first(), aiAdviceCards.first(), budgetPayday.first(), displayCurrencySetting.first().code,
         )
     }
 
@@ -78,6 +81,8 @@ class UserPreferencesRepository(
             preferences[HOME_DASHBOARD_CARDS] = settings.homeDashboardCards.filter { it in HomeDashboardCards.defaults }.sorted().joinToString("\n")
             preferences[AI_ADVICE_CARDS] = settings.aiAdviceCards.filter { it in AiAdviceCards.defaults }.sorted().joinToString("\n")
             preferences[BUDGET_PAYDAY] = settings.budgetPayday.takeIf { it in 1..31 } ?: 1
+            preferences[DISPLAY_CURRENCY] = settings.displayCurrencyCode.takeIf(DisplayCurrencies::isSupported) ?: DisplayCurrencies.KRW
+            preferences.remove(DISPLAY_CURRENCY_QUOTE)
             preferences[NO_SPEND_CHALLENGE_GOAL] = settings.noSpendChallengeGoalDays.takeIf { it in SUPPORTED_CHALLENGE_GOALS } ?: 7
             settings.noSpendChallengeStartDate?.let { preferences[NO_SPEND_CHALLENGE_START] = it.toEpochDay() }
                 ?: preferences.remove(NO_SPEND_CHALLENGE_START)
@@ -228,6 +233,38 @@ class UserPreferencesRepository(
 
     val budgetPayday: Flow<Int> = context.settingsDataStore.data.map { preferences ->
         preferences[BUDGET_PAYDAY]?.takeIf { it in 1..31 } ?: 1
+    }
+
+    val displayCurrencySetting: Flow<DisplayCurrencySetting> = context.settingsDataStore.data.map { preferences ->
+        val code = preferences[DISPLAY_CURRENCY]?.takeIf(DisplayCurrencies::isSupported) ?: DisplayCurrencies.KRW
+        val parts = preferences[DISPLAY_CURRENCY_QUOTE].orEmpty().split('|')
+        val quote = if (parts.size == 3 && parts[0] == code && code != DisplayCurrencies.KRW) {
+            val rate = parts[1].toBigDecimalOrNull()?.takeIf { it.signum() > 0 && it.precision() <= 24 && it.scale() <= 12 }
+            val date = parts[2].takeIf { runCatching { LocalDate.parse(it) }.isSuccess }
+            if (rate != null && date != null) rate.stripTrailingZeros().toPlainString() to date else null
+        } else null
+        DisplayCurrencySetting(code, quote?.first, quote?.second)
+    }
+
+    suspend fun saveDisplayCurrency(code: String) {
+        require(DisplayCurrencies.isSupported(code)) { "지원하지 않는 표시 통화예요." }
+        context.settingsDataStore.edit { preferences ->
+            if (preferences[DISPLAY_CURRENCY] != code) preferences.remove(DISPLAY_CURRENCY_QUOTE)
+            preferences[DISPLAY_CURRENCY] = code
+        }
+    }
+
+    suspend fun saveDisplayCurrencyQuote(quote: ExchangeRateQuote) {
+        require(quote.baseCurrency in DisplayCurrencies.foreignCodes && quote.quoteCurrency == "KRW")
+        val rate = quote.rate.toBigDecimalOrNull()?.takeIf { it.signum() > 0 && it.precision() <= 24 && it.scale() <= 12 }
+            ?: throw IllegalArgumentException("환율 정보를 확인하지 못했어요.")
+        val date = runCatching { LocalDate.parse(quote.date) }.getOrNull()
+            ?: throw IllegalArgumentException("환율 날짜를 확인하지 못했어요.")
+        context.settingsDataStore.edit { preferences ->
+            if (preferences[DISPLAY_CURRENCY] == quote.baseCurrency) {
+                preferences[DISPLAY_CURRENCY_QUOTE] = "${quote.baseCurrency}|${rate.stripTrailingZeros().toPlainString()}|$date"
+            }
+        }
     }
 
     val noSpendChallenge: Flow<NoSpendChallengeSettings> = context.settingsDataStore.data.map { preferences ->
@@ -535,6 +572,8 @@ class UserPreferencesRepository(
         val HOME_DASHBOARD_CARDS = stringPreferencesKey("home_dashboard_cards")
         val AI_ADVICE_CARDS = stringPreferencesKey("ai_advice_cards")
         val BUDGET_PAYDAY = intPreferencesKey("budget_payday")
+        val DISPLAY_CURRENCY = stringPreferencesKey("display_currency")
+        val DISPLAY_CURRENCY_QUOTE = stringPreferencesKey("display_currency_quote")
         val NO_SPEND_CHALLENGE_START = longPreferencesKey("no_spend_challenge_start")
         val NO_SPEND_CHALLENGE_GOAL = intPreferencesKey("no_spend_challenge_goal")
         val YEAR_END_GROSS_SALARIES = stringPreferencesKey("year_end_gross_salaries")

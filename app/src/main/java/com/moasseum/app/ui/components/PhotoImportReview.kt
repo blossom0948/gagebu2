@@ -50,7 +50,6 @@ import androidx.compose.ui.unit.dp
 import com.moasseum.app.data.PhotoImportState
 import com.moasseum.app.data.PhotoTransactionCandidate
 import com.moasseum.app.domain.formatDate
-import com.moasseum.app.domain.formatWon
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
@@ -216,7 +215,7 @@ private fun PhotoCandidateCard(
                 }
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Text(formatWon(draft.candidate.transaction.amount), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
+                Text(formatDisplayWon(draft.candidate.transaction.amount), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
                     color = if (draft.candidate.transaction.type.name == "INCOME") colors.income else colors.expense)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (draft.candidate.sourceImageUri != null || draft.candidate.sourceEvidenceImagePath != null) {

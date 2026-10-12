@@ -18,13 +18,21 @@ class ExchangeRateRepository(
     private val cache = ConcurrentHashMap<String, ExchangeRateQuote>()
 
     suspend fun quoteToKrw(currencyCode: String, date: LocalDate): ExchangeRateQuote = withContext(Dispatchers.IO) {
+        fetchQuote(currencyCode, date.toString())
+    }
+
+    suspend fun latestQuoteToKrw(currencyCode: String): ExchangeRateQuote = withContext(Dispatchers.IO) {
+        fetchQuote(currencyCode, null)
+    }
+
+    private fun fetchQuote(currencyCode: String, requestedDate: String?): ExchangeRateQuote {
         val base = currencyCode.uppercase()
         require(base.matches(Regex("[A-Z]{3}")) && base != "KRW") { "지원하지 않는 통화입니다." }
-        val requestedDate = date.toString()
-        val cacheKey = "$base:$requestedDate"
-        cache[cacheKey]?.let { return@withContext it }
+        val cacheKey = "$base:${requestedDate ?: "latest"}"
+        cache[cacheKey]?.let { return it }
 
-        val endpoint = URL("https://api.frankfurter.dev/v2/rate/${base.lowercase()}/krw?date=$requestedDate")
+        val dateQuery = requestedDate?.let { "?date=$it" }.orEmpty()
+        val endpoint = URL("https://api.frankfurter.dev/v2/rate/${base.lowercase()}/krw$dateQuery")
         val connection = openConnection(endpoint)
         try {
             connection.requestMethod = "GET"
@@ -49,7 +57,7 @@ class ExchangeRateRepository(
             val quote = parseExchangeRateQuote(body)
             require(quote.baseCurrency == base && quote.quoteCurrency == "KRW") { "환율 응답의 통화가 일치하지 않아요." }
             cache[cacheKey] = quote
-            quote
+            return quote
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (error: java.io.IOException) {

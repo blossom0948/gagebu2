@@ -77,10 +77,10 @@ import com.moasseum.app.domain.SpendingAnalysisState
 import com.moasseum.app.domain.SpendingQuestionState
 import com.moasseum.app.domain.formatLongDate
 import com.moasseum.app.domain.formatMonth
-import com.moasseum.app.domain.formatWon
 import com.moasseum.app.domain.noSpendStreakDays
 import com.moasseum.app.ui.components.AddMode
 import com.moasseum.app.ui.components.FinanceCard
+import com.moasseum.app.ui.components.formatDisplayWon
 import com.moasseum.app.ui.components.FittedAmountText
 import com.moasseum.app.ui.components.TransactionRow
 import com.moasseum.app.ui.components.categoryColor
@@ -500,7 +500,7 @@ private fun MonthlySummaryCard(
             Text("${uiState.budgetPeriodExpenseCount}건", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         }
         FittedAmountText(
-            formatWon(uiState.budgetPeriodExpenseTotal),
+            formatDisplayWon(uiState.budgetPeriodExpenseTotal),
             MaterialTheme.typography.displaySmall.copy(fontSize = 30.sp, lineHeight = 36.sp, letterSpacing = (-0.5).sp),
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -511,7 +511,7 @@ private fun MonthlySummaryCard(
                 shape = RoundedCornerShape(8.dp),
             ) {
                 Text(
-                    text = budget?.let { "목표 ${formatWon(it)}" } ?: "목표 설정",
+                    text = budget?.let { "목표 ${formatDisplayWon(it)}" } ?: "목표 설정",
                     modifier = Modifier.padding(horizontal = 2.dp, vertical = 1.dp),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
@@ -540,7 +540,7 @@ private fun MonthlySummaryCard(
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = "남은 금액 ${formatWon((budget - uiState.budgetPeriodExpenseTotal).coerceAtLeast(0))}",
+                    text = "남은 금액 ${formatDisplayWon((budget - uiState.budgetPeriodExpenseTotal).coerceAtLeast(0))}",
                     color = colors.textSecondary,
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.weight(1f).padding(start = 8.dp),
@@ -550,23 +550,23 @@ private fun MonthlySummaryCard(
         }
         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
             val pace = com.moasseum.app.domain.budgetPace(uiState)
-            if (uiState.carriedBudgetAmount > 0) Text("지난 예산 기간 이월 ${formatWon(uiState.carriedBudgetAmount)} 포함", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            if (uiState.carriedBudgetAmount > 0) Text("지난 예산 기간 이월 ${formatDisplayWon(uiState.carriedBudgetAmount)} 포함", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             if (budget != null && pace.remainingDays > 0) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("남은 ${pace.remainingDays}일 · 하루 ${formatWon(pace.dailyAllowance)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                    pace.projectedExpense?.let { Text("예상 ${formatWon(it)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium) }
+                    Text("남은 ${pace.remainingDays}일 · 하루 ${formatDisplayWon(pace.dailyAllowance)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                    pace.projectedExpense?.let { Text("예상 ${formatDisplayWon(it)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium) }
                 }
-            } else pace.projectedExpense?.let { Text("현재 속도 기간 종료 예상 ${formatWon(it)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium) }
-            if (pace.previousSamePeriodExpense > 0 && uiState.month == java.time.YearMonth.now()) Text("지난 예산 기간 같은 시점 ${formatWon(pace.previousSamePeriodExpense)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            } else pace.projectedExpense?.let { Text("현재 속도 기간 종료 예상 ${formatDisplayWon(it)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium) }
+            if (pace.previousSamePeriodExpense > 0 && uiState.month == java.time.YearMonth.now()) Text("지난 예산 기간 같은 시점 ${formatDisplayWon(pace.previousSamePeriodExpense)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             if (uiState.previousBudgetPeriodExpenseTotal > 0L) {
                 Text(
-                    text = if (change >= 0) "지난 예산 기간보다 ${formatWon(change)} 더 썼어요" else "지난 예산 기간보다 ${formatWon(-change)} 아꼈어요",
+                    text = if (change >= 0) "지난 예산 기간보다 ${formatDisplayWon(change)} 더 썼어요" else "지난 예산 기간보다 ${formatDisplayWon(-change)} 아꼈어요",
                     color = if (change > 0) colors.expense else colors.success,
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
             if (uiState.incomeTotal > 0) {
-                Text("수입 ${formatWon(uiState.incomeTotal)}", color = colors.income, style = MaterialTheme.typography.labelMedium)
+                Text("수입 ${formatDisplayWon(uiState.incomeTotal)}", color = colors.income, style = MaterialTheme.typography.labelMedium)
             }
         }
     }
@@ -603,13 +603,13 @@ private fun TodayInsightCard(uiState: LedgerUiState) {
         .sumOf { it.amount }
     val headline = when {
         todayTotal == 0L -> "오늘 소비가 없어요"
-        yesterdayTotal > todayTotal -> "어제보다 ${formatWon(yesterdayTotal - todayTotal)} 줄었어요"
-        yesterdayTotal in 1 until todayTotal -> "어제보다 ${formatWon(todayTotal - yesterdayTotal)} 더 썼어요"
-        else -> "오늘 ${formatWon(todayTotal)} 사용했어요"
+        yesterdayTotal > todayTotal -> "어제보다 ${formatDisplayWon(yesterdayTotal - todayTotal)} 줄었어요"
+        yesterdayTotal in 1 until todayTotal -> "어제보다 ${formatDisplayWon(todayTotal - yesterdayTotal)} 더 썼어요"
+        else -> "오늘 ${formatDisplayWon(todayTotal)} 사용했어요"
     }
     val supportingText = when {
         todayTotal == 0L && yesterdayTotal == 0L -> "좋은 하루 보내세요"
-        todayTotal == 0L -> "어제는 ${formatWon(yesterdayTotal)} 사용했어요"
+        todayTotal == 0L -> "어제는 ${formatDisplayWon(yesterdayTotal)} 사용했어요"
         else -> "오늘 기록 ${todayTransactions.size}건"
     }
     FinanceCard(highlighted = true) {
@@ -671,7 +671,7 @@ private fun MiniSpendCard(
     FinanceCard(modifier = modifier) {
         Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(label, color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-            FittedAmountText(formatWon(amount), MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+            FittedAmountText(formatDisplayWon(amount), MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
             Text("${count}건", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         }
     }
@@ -701,7 +701,7 @@ private fun CategorySpendingCard(uiState: LedgerUiState, categoryBudgets: Map<St
                 categoryBudgets[total.key]?.let { budget ->
                     val used = (total.total * 100L / budget.coerceAtLeast(1L)).coerceAtMost(999L)
                     Text(
-                        "${categoryLabel(total.key)} 예산 ${formatWon(budget)} 중 ${used}% 사용",
+                        "${categoryLabel(total.key)} 예산 ${formatDisplayWon(budget)} 중 ${used}% 사용",
                         color = if (used > 90L) colors.expense else colors.textSecondary,
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(start = 24.dp),
@@ -723,7 +723,7 @@ private fun CategoryBar(key: String, total: Long, maxValue: Long, allTotal: Long
     ) {
         Box(Modifier.size(8.dp).background(tint, CircleShape))
         Text(categoryLabel(key), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(formatWon(total), color = colors.textPrimary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        Text(formatDisplayWon(total), color = colors.textPrimary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(
@@ -772,7 +772,7 @@ private fun InsightsContent(
                 }
                 val message = when {
                     uiState.expenseTotal == 0L -> "기록된 지출 없음"
-                    uiState.budgetAmount != null && uiState.expenseTotal > uiState.budgetAmount -> "예산 ${formatWon(uiState.expenseTotal - uiState.budgetAmount)} 초과"
+                    uiState.budgetAmount != null && uiState.expenseTotal > uiState.budgetAmount -> "예산 ${formatDisplayWon(uiState.expenseTotal - uiState.budgetAmount)} 초과"
                     uiState.categoryTotals.isNotEmpty() -> "최다 지출 · ${categoryLabel(uiState.categoryTotals.first().key)}"
                     else -> "기록된 지출 없음"
                 }
@@ -787,9 +787,9 @@ private fun InsightsContent(
                 InsightRow("예산 소진율", uiState.budgetAmount?.let { "${(uiState.expenseTotal * 100 / it.coerceAtLeast(1)).coerceAtMost(999)}%" } ?: "예산 없음")
                 InsightRow(
                     "지난달 대비",
-                    if (previousExpense == 0L) "비교 기록 없음" else "${if (change > 0L) "+" else "−"}${formatWon(kotlin.math.abs(change))}",
+                    if (previousExpense == 0L) "비교 기록 없음" else "${if (change > 0L) "+" else "−"}${formatDisplayWon(kotlin.math.abs(change))}",
                 )
-                InsightRow("월말 예상 지출", pace.projectedExpense?.let(::formatWon) ?: "아직 계산 전")
+                InsightRow("월말 예상 지출", pace.projectedExpense?.let { formatDisplayWon(it) } ?: "아직 계산 전")
                 InsightRow("저축률", savingsRate)
             }
         }
@@ -853,11 +853,11 @@ private fun ReportContent(
                     Text(formatMonth(uiState.month), color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ReportMetric("지출", formatWon(uiState.expenseTotal), colors.expense, Modifier.weight(1f))
-                    ReportMetric("수입", formatWon(uiState.incomeTotal), colors.income, Modifier.weight(1f))
+                    ReportMetric("지출", formatDisplayWon(uiState.expenseTotal), colors.expense, Modifier.weight(1f))
+                    ReportMetric("수입", formatDisplayWon(uiState.incomeTotal), colors.income, Modifier.weight(1f))
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ReportMetric("목표 잔액", remainingBudget?.let(::formatWon) ?: "목표 없음", if ((remainingBudget ?: 0L) >= 0L) colors.income else colors.expense, Modifier.weight(1f))
+                    ReportMetric("목표 잔액", remainingBudget?.let { formatDisplayWon(it) } ?: "목표 없음", if ((remainingBudget ?: 0L) >= 0L) colors.income else colors.expense, Modifier.weight(1f))
                     ReportMetric("저축률", savingsRate?.let { "$it%" } ?: "수입 기록 없음", colors.accent, Modifier.weight(1f))
                 }
             }
@@ -935,7 +935,7 @@ private fun MonthlyTrendCard(uiState: LedgerUiState) {
         else -> {
             val difference = current.expenseTotal - previous.expenseTotal
             val percent = ((difference.toDouble() / previous.expenseTotal.toDouble()) * 100.0).roundToInt().coerceIn(-999, 999)
-            "지난달보다 ${formatWon(kotlin.math.abs(difference))} ${if (difference > 0L) "더 썼어요" else "덜 썼어요"} · ${kotlin.math.abs(percent)}%"
+            "지난달보다 ${formatDisplayWon(kotlin.math.abs(difference))} ${if (difference > 0L) "더 썼어요" else "덜 썼어요"} · ${kotlin.math.abs(percent)}%"
         }
     }
     FinanceCard {
@@ -1011,7 +1011,7 @@ private fun CategoryReportCard(uiState: LedgerUiState) {
                     text = when {
                         previous == 0L -> "지난달 기록 없음"
                         difference == 0L -> "지난달과 같아요"
-                        else -> "지난달보다 ${formatWon(kotlin.math.abs(difference))} ${if (difference > 0L) "더 썼어요" else "덜 썼어요"}"
+                        else -> "지난달보다 ${formatDisplayWon(kotlin.math.abs(difference))} ${if (difference > 0L) "더 썼어요" else "덜 썼어요"}"
                     },
                     color = when {
                         previous == 0L || difference == 0L -> colors.textSecondary
@@ -1245,7 +1245,7 @@ private fun RecentSpendingTrend(uiState: LedgerUiState) {
                     )
                 }
                 Text(
-                    text = formatWon(summary.expenseTotal),
+                    text = formatDisplayWon(summary.expenseTotal),
                     modifier = Modifier.width(82.dp),
                     color = colors.textPrimary,
                     style = MaterialTheme.typography.labelMedium,

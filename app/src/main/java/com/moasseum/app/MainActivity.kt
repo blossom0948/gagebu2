@@ -93,6 +93,8 @@ import com.moasseum.app.ui.components.AddMode
 import com.moasseum.app.ui.components.AddTransactionSheet
 import com.moasseum.app.ui.components.LocalCategoryLabels
 import com.moasseum.app.ui.components.LocalCategoryOrder
+import com.moasseum.app.ui.components.LocalDisplayCurrency
+import com.moasseum.app.ui.components.formatDisplayWon
 import com.moasseum.app.ui.components.BottomNavBar
 import com.moasseum.app.ui.components.ROUTE_HISTORY
 import com.moasseum.app.ui.components.ROUTE_HOME
@@ -130,6 +132,8 @@ import com.moasseum.app.domain.HomeDashboardCards
 import com.moasseum.app.domain.AiAdviceCards
 import com.moasseum.app.domain.incomingSharePayload
 import com.moasseum.app.domain.NoSpendChallengeSettings
+import com.moasseum.app.domain.DisplayCurrencySetting
+import com.moasseum.app.domain.DisplayCurrencies
 import com.moasseum.app.domain.NotificationCandidate
 import com.moasseum.app.domain.NetworkReconnectGate
 import com.moasseum.app.domain.SpendingAnalysisState
@@ -241,6 +245,7 @@ class MainActivity : FragmentActivity() {
             val homeDashboardCards by application.preferencesRepository.homeDashboardCards.collectAsStateWithLifecycle(initialValue = HomeDashboardCards.defaults)
             val aiAdviceCards by application.preferencesRepository.aiAdviceCards.collectAsStateWithLifecycle(initialValue = AiAdviceCards.defaults)
             val budgetPayday by application.preferencesRepository.budgetPayday.collectAsStateWithLifecycle(initialValue = 1)
+            val displayCurrencySetting by application.preferencesRepository.displayCurrencySetting.collectAsStateWithLifecycle(initialValue = DisplayCurrencySetting())
             val noSpendChallenge by application.preferencesRepository.noSpendChallenge.collectAsStateWithLifecycle(initialValue = NoSpendChallengeSettings())
             val yearEndGrossSalaries by application.preferencesRepository.yearEndGrossSalaries.collectAsStateWithLifecycle(initialValue = emptyMap())
             val profileDisplayName by application.preferencesRepository.profileDisplayName.collectAsStateWithLifecycle(initialValue = "")
@@ -258,9 +263,18 @@ class MainActivity : FragmentActivity() {
             val appLockEnabled by application.preferencesRepository.appLockEnabled.collectAsStateWithLifecycle(initialValue = false)
             val appLockReleased by biometricLockReleased.collectAsStateWithLifecycle()
             val financeRemindersEnabled by application.preferencesRepository.financeRemindersEnabled.collectAsStateWithLifecycle(initialValue = true)
+            LaunchedEffect(displayCurrencySetting.code) {
+                if (displayCurrencySetting.code != DisplayCurrencies.KRW &&
+                    displayCurrencySetting.rateDate != java.time.LocalDate.now().toString()
+                ) {
+                    runCatching { application.exchangeRateRepository.latestQuoteToKrw(displayCurrencySetting.code) }
+                        .onSuccess { quote -> application.preferencesRepository.saveDisplayCurrencyQuote(quote) }
+                }
+            }
             CompositionLocalProvider(
                 LocalCategoryLabels provides categoryLabels,
                 LocalCategoryOrder provides categoryOrder,
+                LocalDisplayCurrency provides displayCurrencySetting,
             ) {
                 MoasseumTheme(darkTheme = darkTheme, reduceMotion = reduceMotion) {
                     UpdateSystemBars(darkTheme)
@@ -294,6 +308,10 @@ class MainActivity : FragmentActivity() {
                         onSaveAiAdviceCards = { cards -> application.preferencesRepository.saveAiAdviceCards(cards) },
                         budgetPayday = budgetPayday,
                         onSaveBudgetPayday = viewModel::setBudgetPayday,
+                        displayCurrencySetting = displayCurrencySetting,
+                        onSaveDisplayCurrency = { code ->
+                            viewModel.performOperation("표시 통화 설정을 저장하지 못했어요.") { application.preferencesRepository.saveDisplayCurrency(code) }
+                        },
                         noSpendChallenge = noSpendChallenge,
                         yearEndGrossSalaries = yearEndGrossSalaries,
                         onSaveYearEndGrossSalary = application.preferencesRepository::saveYearEndGrossSalary,
@@ -471,6 +489,8 @@ private fun MoasseumApp(
     onSaveAiAdviceCards: suspend (Set<String>) -> Unit,
     budgetPayday: Int,
     onSaveBudgetPayday: suspend (Int) -> Unit,
+    displayCurrencySetting: DisplayCurrencySetting,
+    onSaveDisplayCurrency: (String) -> Unit,
     noSpendChallenge: NoSpendChallengeSettings,
     yearEndGrossSalaries: Map<Int, Long>,
     onSaveYearEndGrossSalary: suspend (Int, Long?) -> Unit,
@@ -1540,6 +1560,8 @@ private fun MoasseumApp(
                         onSaveAiAdviceCards = onSaveAiAdviceCards,
                         budgetPayday = budgetPayday,
                         onSaveBudgetPayday = onSaveBudgetPayday,
+                        displayCurrency = displayCurrencySetting,
+                        onSaveDisplayCurrency = { code -> onSaveDisplayCurrency(code) },
                         noSpendChallenge = noSpendChallenge,
                         yearEndGrossSalaries = yearEndGrossSalaries,
                         onSaveYearEndGrossSalary = onSaveYearEndGrossSalary,
@@ -1885,7 +1907,7 @@ private fun MoasseumApp(
             title = { Text("거래를 인식했어요. 추가할까요?") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("$direction · ${com.moasseum.app.domain.formatWon(candidate.amount)}", style = MaterialTheme.typography.titleLarge)
+                    Text("$direction · ${formatDisplayWon(candidate.amount)}", style = MaterialTheme.typography.titleLarge)
                     Text(candidate.merchant)
                     saving.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 }

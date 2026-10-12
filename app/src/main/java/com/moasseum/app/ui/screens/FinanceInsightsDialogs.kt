@@ -41,10 +41,10 @@ import com.moasseum.app.domain.cardUsage
 import com.moasseum.app.domain.detectRecurringExpensePatterns
 import com.moasseum.app.domain.formatDate
 import com.moasseum.app.domain.formatMonth
-import com.moasseum.app.domain.formatWon
 import com.moasseum.app.domain.upcomingFixedExpenses
 import com.moasseum.app.ui.components.FinanceCard
 import com.moasseum.app.ui.components.FittedAmountText
+import com.moasseum.app.ui.components.formatDisplayWon
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import java.time.LocalDate
 import java.time.YearMonth
@@ -98,7 +98,7 @@ fun CardUsageDialog(
                                 Text(usage.card.name, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                                 Text("${usage.dueDate.dayOfMonth}일 결제", color = colors.accent, style = MaterialTheme.typography.labelMedium)
                             }
-                            FittedAmountText(formatWon(usage.total), style = MaterialTheme.typography.titleLarge)
+                            FittedAmountText(formatDisplayWon(usage.total), style = MaterialTheme.typography.titleLarge)
                             Text("${usage.periodStart} ~ ${usage.periodEnd}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                             Text("${usage.card.paymentMethod} · ${usage.transactions.size}건 · ${if (expanded) "내역 접기" else "내역 보기"}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                             if (expanded) {
@@ -109,7 +109,7 @@ fun CardUsageDialog(
                                 usage.transactions.forEach { transaction ->
                                     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
                                         Text(transaction.merchant, style = MaterialTheme.typography.bodyMedium)
-                                        Text("${transaction.occurredDate} · ${formatWon(transaction.amount)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                                        Text("${transaction.occurredDate} · ${formatDisplayWon(transaction.amount)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                                     }
                                 }
                             }
@@ -161,7 +161,7 @@ fun FixedExpenseRadarDialog(
                             Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(pattern.merchant, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
-                                    FittedAmountText("월 ${formatWon(pattern.averageAmount)}", style = MaterialTheme.typography.bodyMedium)
+                                    FittedAmountText("월 ${formatDisplayWon(pattern.averageAmount)}", style = MaterialTheme.typography.bodyMedium)
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text("${pattern.monthsSeen}개월 반복 · ${pattern.paymentMethod}", modifier = Modifier.weight(1f), color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
@@ -185,7 +185,7 @@ fun FixedExpenseRadarDialog(
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(item.rule.merchant, fontWeight = FontWeight.SemiBold)
                             Text("${formatDate(item.date)} · ${item.rule.paymentMethod}", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
-                            FittedAmountText(formatWon(item.rule.amount), style = MaterialTheme.typography.titleMedium)
+                            FittedAmountText(formatDisplayWon(item.rule.amount), style = MaterialTheme.typography.titleMedium)
                         }
                     }
                 }
@@ -201,6 +201,6 @@ fun FixedExpenseRadarDialog(
 private fun InsightMetric(label: String, amount: Long) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(label, color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.labelMedium)
-        FittedAmountText(formatWon(amount), style = MaterialTheme.typography.titleMedium)
+        FittedAmountText(formatDisplayWon(amount), style = MaterialTheme.typography.titleMedium)
     }
 }

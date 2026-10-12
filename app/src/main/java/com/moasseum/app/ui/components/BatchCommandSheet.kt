@@ -49,8 +49,6 @@ import com.moasseum.app.domain.AiTransactionCandidate
 import com.moasseum.app.domain.Transaction
 import com.moasseum.app.domain.TransactionType
 import com.moasseum.app.domain.formatDate
-import com.moasseum.app.domain.formatSignedWon
-import com.moasseum.app.domain.formatWon
 import com.moasseum.app.domain.parseAmount
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import java.time.LocalDate
@@ -192,7 +190,7 @@ fun BatchCommandSheet(
                 }
                 if (current.edit != null) {
                     val patch = listOfNotNull(
-                        current.edit.amount?.let { "금액 ${formatWon(it)}" },
+                        current.edit.amount?.let { "금액 ${formatDisplayWon(it)}" },
                         current.edit.merchant?.let { "가맹점 $it" },
                         current.edit.categoryKey?.let { "카테고리 ${categoryLabel(it)}" },
                         current.edit.type?.let { "유형 ${if (it.name == "INCOME") "수입" else "지출"}" },
@@ -219,7 +217,7 @@ fun BatchCommandSheet(
                                     Text("${formatDate(row.occurredDate)} · ${categoryLabel(row.categoryKey)}",
                                         color = colors.textSecondary, style = MaterialTheme.typography.labelSmall)
                                 }
-                                Text(formatSignedWon(row.amount, row.type), style = MaterialTheme.typography.labelLarge,
+                                Text(formatDisplaySignedWon(row.amount, row.type), style = MaterialTheme.typography.labelLarge,
                                     color = if (row.type.name == "INCOME") colors.income else colors.expense)
                             }
                         }
@@ -287,7 +285,7 @@ private fun BatchCandidateRow(index: Int, candidate: AiTransactionCandidate, pay
                     Text("${formatDate(candidate.occurredDate)} · ${categoryLabel(candidate.categoryKey)} · $paymentMethod",
                         style = MaterialTheme.typography.labelSmall, color = colors.textSecondary)
                 }
-                Text(formatSignedWon(candidate.amount, candidate.type), style = MaterialTheme.typography.labelLarge,
+                Text(formatDisplaySignedWon(candidate.amount, candidate.type), style = MaterialTheme.typography.labelLarge,
                     color = if (candidate.type.name == "INCOME") colors.income else colors.expense)
                 IconButton(onClick = onEdit, modifier = Modifier.size(34.dp)) {
                     androidx.compose.material3.Icon(Icons.Rounded.Edit, contentDescription = "${index}번 거래 수정",

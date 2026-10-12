@@ -61,6 +61,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,8 +81,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.moasseum.app.domain.TransactionType
 import com.moasseum.app.domain.Transaction
-import com.moasseum.app.domain.formatSignedWon
-import com.moasseum.app.domain.formatWon
+import com.moasseum.app.domain.DisplayCurrencySetting
+import com.moasseum.app.domain.formatDisplayAmount
 import com.moasseum.app.domain.formatDate
 import com.moasseum.app.domain.foreignTransactionCaption
 import com.moasseum.app.ui.theme.CategoryFood
@@ -155,6 +156,23 @@ fun allCategorySpecs(): List<CategorySpec> {
 
 val LocalCategoryLabels = compositionLocalOf<Map<String, String>> { emptyMap() }
 val LocalCategoryOrder = compositionLocalOf { CategorySpecs.map(CategorySpec::key) }
+val LocalDisplayCurrency = staticCompositionLocalOf { DisplayCurrencySetting() }
+
+@Composable
+fun formatDisplayWon(amount: Long): String {
+    val setting = LocalDisplayCurrency.current
+    return formatDisplayAmount(amount, setting.code, setting.rateToKrw, setting.rateDate)
+}
+
+@Composable
+fun formatDisplaySignedWon(amount: Long, type: TransactionType): String {
+    val formatted = formatDisplayWon(amount)
+    return when (type) {
+        TransactionType.EXPENSE -> "−$formatted"
+        TransactionType.INCOME, TransactionType.EXTERNAL_DEPOSIT -> "+$formatted"
+        TransactionType.TRANSFER -> "↔ $formatted"
+    }
+}
 
 fun categoryColor(key: String): Color =
     CategorySpecs.firstOrNull { it.key == key }?.color ?: CategoryOther
@@ -235,7 +253,7 @@ fun AmountText(
 ) {
     val colors = LocalFinanceColors.current
     Text(
-        text = formatSignedWon(amount, type),
+        text = formatDisplaySignedWon(amount, type),
         color = when (type) { TransactionType.EXPENSE -> colors.expense; TransactionType.INCOME, TransactionType.EXTERNAL_DEPOSIT -> colors.income; TransactionType.TRANSFER -> colors.textSecondary },
         style = style,
         fontWeight = FontWeight.Bold,
@@ -499,7 +517,7 @@ fun TrendLabel(
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(15.dp))
         Text(
-            text = if (isPositive) "지난달보다 ${formatWon(amount)}" else "지난달보다 ${formatWon(-amount)}",
+            text = if (isPositive) "지난달보다 ${formatDisplayWon(amount)}" else "지난달보다 ${formatDisplayWon(-amount)}",
             color = tint,
             style = MaterialTheme.typography.labelMedium,
         )

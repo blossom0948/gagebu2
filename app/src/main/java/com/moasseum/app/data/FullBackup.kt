@@ -5,6 +5,7 @@ import com.moasseum.app.domain.PaymentCard
 import com.moasseum.app.domain.HomeDashboardCards
 import com.moasseum.app.domain.AiAdviceCards
 import com.moasseum.app.domain.TransactionType
+import com.moasseum.app.domain.DisplayCurrencies
 import com.moasseum.app.domain.validateAccount
 import org.json.JSONArray
 import org.json.JSONObject
@@ -28,6 +29,7 @@ data class BackupSettings(
     val yearEndGrossSalaries: Map<Int, Long> = emptyMap(),
     val aiAdviceCards: Set<String> = AiAdviceCards.defaults,
     val budgetPayday: Int = 1,
+    val displayCurrencyCode: String = DisplayCurrencies.KRW,
 )
 
 data class FullBackup(
@@ -95,6 +97,7 @@ object FullBackupCodec {
             put("noSpendChallengeStartDate", s.noSpendChallengeStartDate?.toString() ?: JSONObject.NULL)
             put("yearEndGrossSalaries", JSONObject(s.yearEndGrossSalaries.entries.associate { it.key.toString() to it.value }))
             put("budgetPayday", s.budgetPayday)
+            put("displayCurrencyCode", s.displayCurrencyCode)
         }) }
     }.toString(2)
 
@@ -209,6 +212,9 @@ object FullBackupCodec {
             }
             val budgetPayday = s.optInt("budgetPayday", 1)
             require(budgetPayday in 1..31) { "예산 기준일 설정이 올바르지 않은 백업이에요." }
+            val displayCurrencyCode = s.optString("displayCurrencyCode", DisplayCurrencies.KRW)
+                .takeIf(DisplayCurrencies::isSupported)
+                ?: throw IllegalArgumentException("표시 통화 설정이 올바르지 않은 백업이에요.")
             val noSpendChallengeGoalDays = s.optInt("noSpendChallengeGoalDays", 7)
             require(noSpendChallengeGoalDays in setOf(7, 14, 30)) { "무지출 챌린지 설정이 올바르지 않은 백업이에요." }
             val noSpendChallengeStartDate = if (s.has("noSpendChallengeStartDate") && !s.isNull("noSpendChallengeStartDate")) {
@@ -234,7 +240,7 @@ object FullBackupCodec {
             BackupSettings(
                 s.getBoolean("darkTheme"), s.getBoolean("reduceMotion"), methods, cards, labels,
                 categoryBudgets, upgradedCategoryOrder, monthlyIncomeTargets, homeDashboardCards,
-                noSpendChallengeGoalDays, noSpendChallengeStartDate, yearEndGrossSalaries, aiAdviceCards, budgetPayday,
+                noSpendChallengeGoalDays, noSpendChallengeStartDate, yearEndGrossSalaries, aiAdviceCards, budgetPayday, displayCurrencyCode,
             )
         }
         if (version == 2) require(settings != null) { "앱 설정이 없는 백업이에요." }

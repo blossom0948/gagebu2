@@ -45,6 +45,7 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -64,16 +65,20 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.moasseum.app.domain.LedgerUiState
 import com.moasseum.app.domain.HomeDashboardCards
 import com.moasseum.app.domain.AiAdviceCards
+import com.moasseum.app.domain.DisplayCurrencies
+import com.moasseum.app.domain.DisplayCurrencySetting
 import com.moasseum.app.domain.NoSpendChallengeSettings
 import com.moasseum.app.domain.NotificationCandidate
 import com.moasseum.app.domain.PaymentCard
@@ -81,9 +86,9 @@ import com.moasseum.app.domain.RecurringRule
 import com.moasseum.app.domain.TransactionType
 import com.moasseum.app.domain.formatDate
 import com.moasseum.app.domain.formatMonth
-import com.moasseum.app.domain.formatWon
 import com.moasseum.app.domain.cardUsage
 import com.moasseum.app.ui.components.FinanceCard
+import com.moasseum.app.ui.components.formatDisplayWon
 import com.moasseum.app.ui.components.rememberSaveActionState
 import com.moasseum.app.ui.components.CategorySpecs
 import com.moasseum.app.ui.components.LocalCategoryLabels
@@ -104,6 +109,8 @@ fun ManageScreen(
     onSaveAiAdviceCards: suspend (Set<String>) -> Unit,
     budgetPayday: Int,
     onSaveBudgetPayday: suspend (Int) -> Unit,
+    displayCurrency: DisplayCurrencySetting,
+    onSaveDisplayCurrency: (String) -> Unit,
     noSpendChallenge: NoSpendChallengeSettings,
     onSaveNoSpendChallenge: suspend (Boolean, Int) -> Unit,
     yearEndGrossSalaries: Map<Int, Long>,
@@ -189,6 +196,7 @@ fun ManageScreen(
     var showInstallmentDialog by rememberSaveable { mutableStateOf(false) }
     var showYearEndDialog by rememberSaveable { mutableStateOf(false) }
     var showBudgetPaydayDialog by rememberSaveable { mutableStateOf(false) }
+    var showDisplayCurrencyDialog by rememberSaveable { mutableStateOf(false) }
     var selectedReportYear by rememberSaveable { mutableStateOf(java.time.LocalDate.now().year) }
     val colors = LocalFinanceColors.current
     val listState = rememberLazyListState()
@@ -217,7 +225,7 @@ fun ManageScreen(
                         }
                         Icon(Icons.Rounded.ChevronRight, contentDescription = null, modifier = Modifier.size(24.dp))
                     }
-                    Text(budget?.let(::formatWon) ?: "목표 설정하기", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(budget?.let { formatDisplayWon(it) } ?: "목표 설정하기", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     if (budget != null) {
                         ManageProgressBar(
                             progress = spent.toFloat() / budget,
@@ -225,8 +233,8 @@ fun ManageScreen(
                             trackColor = colors.surfaceRaised,
                         )
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("현재 ${formatWon(spent)} 사용", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-                            Text("목표 ${formatWon(budget)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                            Text("현재 ${formatDisplayWon(spent)} 사용", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                            Text("목표 ${formatDisplayWon(budget)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                         }
                     }
                 }
@@ -236,7 +244,7 @@ fun ManageScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ManageSectionTitle("예산과 장부")
                 FinanceCard {
-                    ManageRow(Icons.Rounded.AccountBalance, "월 수입 목표", monthlyIncomeTarget?.let(::formatWon) ?: "설정 안 됨", onClick = { showIncomeTargetDialog = true })
+                    ManageRow(Icons.Rounded.AccountBalance, "월 수입 목표", monthlyIncomeTarget?.let { formatDisplayWon(it) } ?: "설정 안 됨", onClick = { showIncomeTargetDialog = true })
                     HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                     ManageRow(Icons.Rounded.CalendarMonth, "예산 시작일", "매월 ${budgetPayday}일", onClick = { showBudgetPaydayDialog = true })
                     HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
@@ -269,13 +277,13 @@ fun ManageScreen(
                     val installmentGroups = uiState.transactions.filter { it.installmentGroupId != null }.groupBy { it.installmentGroupId }
                     ManageRow(Icons.Rounded.CreditCard, "할부 관리", if (installmentGroups.isEmpty()) "" else "${installmentGroups.size}건", onClick = { showInstallmentDialog = true })
                     HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                    ManageRow(Icons.Rounded.CalendarMonth, "결제일 기준 보기", if (paymentCards.isEmpty()) "등록된 카드 없음" else "${formatMonth(uiState.month)} · ${formatWon(paymentCards.sumOf { cardUsage(it, uiState.month, uiState.transactions).total })}", onClick = { showCardUsageDialog = true })
+                    ManageRow(Icons.Rounded.CalendarMonth, "결제일 기준 보기", if (paymentCards.isEmpty()) "등록된 카드 없음" else "${formatMonth(uiState.month)} · ${formatDisplayWon(paymentCards.sumOf { cardUsage(it, uiState.month, uiState.transactions).total })}", onClick = { showCardUsageDialog = true })
                     HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                     ManageRow(Icons.Rounded.CreditCard, "카드·결제일", if (paymentCards.isEmpty()) "" else "${paymentCards.size}장", onClick = { showPaymentCardsDialog = true })
                     HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                     ManageRow(Icons.Rounded.Repeat, "반복 거래 관리", "${recurringRules.count { it.isActive }}개 사용 중", onClick = { showRecurringDialog = true })
                     HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                    ManageRow(Icons.Rounded.Wallet, "구독·고정비 레이더", "월 예정 ${formatWon(recurringRules.filter { it.isActive && it.type == TransactionType.EXPENSE }.sumOf { it.amount })}", onClick = { showFixedRadarDialog = true })
+                    ManageRow(Icons.Rounded.Wallet, "구독·고정비 레이더", "월 예정 ${formatDisplayWon(recurringRules.filter { it.isActive && it.type == TransactionType.EXPENSE }.sumOf { it.amount })}", onClick = { showFixedRadarDialog = true })
                 }
                 FinanceCard {
                     SettingSwitchRow(Icons.Rounded.NotificationsActive, "예산·고정비·기념일 알림", "예산 · 고정 결제 · 기념일", financeRemindersEnabled, onSetFinanceRemindersEnabled)
@@ -316,6 +324,8 @@ fun ManageScreen(
                     HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                     ManageRow(Icons.Rounded.AutoAwesome, "AI 조언 카드", "${aiAdviceCards.size}/4 표시", onClick = { showAiAdviceDialog = true })
                     HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
+                    ManageRow(Icons.Rounded.Wallet, "표시 통화", displayCurrencySummary(displayCurrency), onClick = { showDisplayCurrencyDialog = true })
+                    HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                     SettingSwitchRow(Icons.Rounded.DarkMode, "다크 모드", "", darkTheme, onDarkThemeChanged)
                     HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                     SettingSwitchRow(Icons.Rounded.Palette, "모션 줄이기", "", reduceMotion, onReduceMotionChanged)
@@ -347,6 +357,16 @@ fun ManageScreen(
             currentDay = budgetPayday,
             onDismiss = { showBudgetPaydayDialog = false },
             onSave = { day -> onSaveBudgetPayday(day); showBudgetPaydayDialog = false },
+        )
+    }
+    if (showDisplayCurrencyDialog) {
+        DisplayCurrencyDialog(
+            current = displayCurrency,
+            onDismiss = { showDisplayCurrencyDialog = false },
+            onSave = { code ->
+                onSaveDisplayCurrency(code)
+                showDisplayCurrencyDialog = false
+            },
         )
     }
     if (showIncomeTargetDialog) {
@@ -621,7 +641,7 @@ private fun YearEndSummaryDialog(
                         if (taxProgress == null) {
                             Text("총급여를 입력하면 기준을 계산해요.", color = colors.textSecondary, style = MaterialTheme.typography.bodySmall)
                         } else {
-                            Text(formatWon(taxProgress.minimumSpend), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(formatDisplayWon(taxProgress.minimumSpend), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             LinearProgressIndicator(
                                 progress = { taxProgress.progress },
                                 modifier = Modifier.fillMaxWidth().height(6.dp),
@@ -629,8 +649,8 @@ private fun YearEndSummaryDialog(
                                 trackColor = colors.surfaceOverlay,
                             )
                             Text(
-                                if (taxProgress.remainingToMinimum > 0L) "등록 지출 기준까지 ${formatWon(taxProgress.remainingToMinimum)} 남았어요."
-                                else "등록 지출 기준으로 ${formatWon(taxProgress.recordedOverMinimum)} 초과했어요.",
+                                if (taxProgress.remainingToMinimum > 0L) "등록 지출 기준까지 ${formatDisplayWon(taxProgress.remainingToMinimum)} 남았어요."
+                                else "등록 지출 기준으로 ${formatDisplayWon(taxProgress.recordedOverMinimum)} 초과했어요.",
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -650,8 +670,8 @@ private fun YearEndSummaryDialog(
                 }
                 FinanceCard {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        SummaryLine("연간 지출", formatWon(summary.expenseTotal), colors.expense)
-                        SummaryLine("연간 수입", formatWon(summary.incomeTotal), colors.income)
+                        SummaryLine("연간 지출", formatDisplayWon(summary.expenseTotal), colors.expense)
+                        SummaryLine("연간 수입", formatDisplayWon(summary.incomeTotal), colors.income)
                         SummaryLine("수입·지출 기록", "${summary.transactionCount}건", colors.textPrimary)
                     }
                 }
@@ -663,8 +683,8 @@ private fun YearEndSummaryDialog(
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text("${month.month}월", modifier = Modifier.width(40.dp), style = MaterialTheme.typography.labelMedium)
-                            Text("지출 ${formatWon(month.expenseTotal)}", modifier = Modifier.weight(1f), color = colors.expense, style = MaterialTheme.typography.labelMedium)
-                            Text("수입 ${formatWon(month.incomeTotal)}", color = colors.income, style = MaterialTheme.typography.labelMedium)
+                            Text("지출 ${formatDisplayWon(month.expenseTotal)}", modifier = Modifier.weight(1f), color = colors.expense, style = MaterialTheme.typography.labelMedium)
+                            Text("수입 ${formatDisplayWon(month.incomeTotal)}", color = colors.income, style = MaterialTheme.typography.labelMedium)
                         }
                         LinearProgressIndicator(
                             progress = { (month.expenseTotal.toFloat() / maxMonthlyExpense).coerceIn(0f, 1f) },
@@ -679,7 +699,7 @@ private fun YearEndSummaryDialog(
                 summary.categories.forEach { item ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(categoryLabel(item.key), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                        Text("${formatWon(item.total)} · ${item.count}건", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text("${formatDisplayWon(item.total)} · ${item.count}건", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                     }
                 }
                 Text("결제 수단별 지출", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
@@ -687,7 +707,7 @@ private fun YearEndSummaryDialog(
                 summary.paymentMethods.forEach { item ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(item.paymentMethod, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                        Text("${formatWon(item.total)} · ${item.count}건", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text("${formatDisplayWon(item.total)} · ${item.count}건", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                     }
                 }
                 Text("기록된 지출 전체로 계산한 참고 흐름이에요. 공제 제외 항목·결제자·실제 공제액과 환급액은 판정하지 않으니 홈택스 자료를 확인하세요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
@@ -752,7 +772,7 @@ private fun InstallmentPlansDialog(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text(first?.merchant.orEmpty(), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                                    Text("${rows.size}회 · 총 ${formatWon(rows.sumOf { it.amount })}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                                    Text("${rows.size}회 · 총 ${formatDisplayWon(rows.sumOf { it.amount })}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                                 }
                                 Column(horizontalAlignment = Alignment.End) {
                                     TextButton(enabled = !saving.busy, onClick = {
@@ -1016,7 +1036,7 @@ private fun CategoryWeightCard(
                         Text(categoryLabel(spec.key), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                         val sharePercent = ((spent.toDouble() / totalCategorySpend) * 100).toInt()
                         Text(
-                            if (limit == null) "${formatWon(spent)} · ${sharePercent}%" else "${formatWon(spent)} / ${formatWon(limit)}",
+                            if (limit == null) "${formatDisplayWon(spent)} · ${sharePercent}%" else "${formatDisplayWon(spent)} / ${formatDisplayWon(limit)}",
                             color = colors.textSecondary,
                             style = MaterialTheme.typography.labelMedium,
                         )
@@ -1533,7 +1553,7 @@ private fun RecurringRulesDialog(
                                 Text(rule.merchant, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
                                 Switch(checked = rule.isActive, onCheckedChange = { onToggle(rule.id, it) })
                             }
-                            Text("${if (rule.type == TransactionType.EXPENSE) "지출" else "수입"} ${formatWon(rule.amount)} · 매월 ${rule.dayOfMonth}일", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                            Text("${if (rule.type == TransactionType.EXPENSE) "지출" else "수입"} ${formatDisplayWon(rule.amount)} · 매월 ${rule.dayOfMonth}일", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                             Text("${if (rule.isActive) "다음 ${rule.nextOccurrenceDate}" else "일시 중지"} · ${categoryLabel(rule.categoryKey)} · ${rule.paymentMethod}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                             Row {
                                 TextButton(onClick = { onEdit(rule.id) }) { Text("수정") }
@@ -1774,6 +1794,72 @@ private fun SettingSwitchRow(
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
+}
+
+private val displayCurrencyChoices = listOf(
+    DisplayCurrencies.KRW to "한국 원화",
+    "USD" to "미국 달러",
+    "JPY" to "일본 엔",
+    "EUR" to "유로",
+    "TWD" to "대만 달러",
+    "SGD" to "싱가포르 달러",
+)
+
+private fun displayCurrencySummary(setting: DisplayCurrencySetting): String {
+    if (setting.code == DisplayCurrencies.KRW) return "한국 원화"
+    val date = setting.rateDate?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() }
+    val hasRecentRate = date != null && !date.isAfter(java.time.LocalDate.now()) && !date.isBefore(java.time.LocalDate.now().minusDays(7)) && setting.rateToKrw != null
+    return if (hasRecentRate) "${setting.code} · ${date} 기준" else "${setting.code} · 환율 확인 중, 원화로 표시"
+}
+
+@Composable
+fun DisplayCurrencyDialog(
+    current: DisplayCurrencySetting,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    val colors = LocalFinanceColors.current
+    AlertDialog(
+        modifier = Modifier.testTag("display_currency_settings_dialog"),
+        onDismissRequest = onDismiss,
+        title = { Text("표시 통화") },
+        text = {
+            Column(
+                Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                displayCurrencyChoices.forEach { (code, name) ->
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(role = Role.RadioButton) { onSave(code) }.padding(horizontal = 4.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = current.code == code, onClick = null)
+                        Column(Modifier.weight(1f)) {
+                            Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Text(code, color = colors.textSecondary, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+                if (current.code != DisplayCurrencies.KRW) {
+                    val rate = current.rateToKrw?.toBigDecimalOrNull()
+                    val date = current.rateDate?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() }
+                    if (rate != null && date != null && date >= java.time.LocalDate.now().minusDays(7) && !date.isAfter(java.time.LocalDate.now())) {
+                        val rateText = java.text.NumberFormat.getNumberInstance(Locale.US).apply { maximumFractionDigits = 4 }.format(rate)
+                        Text("1 ${current.code} = ₩$rateText · $date 기준", color = colors.textSecondary, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 6.dp, start = 8.dp))
+                    } else {
+                        Text("환율을 확인하는 동안 금액은 원화로 표시해요.", color = colors.textSecondary, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 6.dp, start = 8.dp))
+                    }
+                }
+                Text(
+                    "표시만 환산해요. 거래·예산은 원화로 저장되며 AI, 알림, CSV·PDF 내보내기도 원화 기준이에요. 환율은 참고용 중앙은행 고시값입니다.",
+                    color = colors.textSecondary,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(top = 8.dp, start = 8.dp, end = 8.dp),
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("닫기") } },
+    )
 }
 
 @Composable

@@ -33,7 +33,7 @@ import com.moasseum.app.domain.ActivityNotice
 import com.moasseum.app.domain.ActivityNoticeCategory
 import com.moasseum.app.domain.NotificationCandidate
 import com.moasseum.app.domain.formatDate
-import com.moasseum.app.domain.formatSignedWon
+import com.moasseum.app.ui.components.formatDisplaySignedWon
 import com.moasseum.app.ui.components.EmptyState
 import com.moasseum.app.ui.components.FinanceCard
 import com.moasseum.app.ui.components.categoryLabel
@@ -125,7 +125,7 @@ fun NotificationsScreen(
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
-                        Text(formatSignedWon(candidate.amount, candidate.type), style = MaterialTheme.typography.titleLarge, color = if (candidate.type.name == "INCOME") colors.income else colors.expense)
+                        Text(formatDisplaySignedWon(candidate.amount, candidate.type), style = MaterialTheme.typography.titleLarge, color = if (candidate.type.name == "INCOME") colors.income else colors.expense)
                         Text("${formatDate(candidate.occurredDate)} · ${candidate.title}", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Text(candidate.preview, style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

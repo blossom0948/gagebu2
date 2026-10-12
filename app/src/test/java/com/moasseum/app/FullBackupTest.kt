@@ -23,6 +23,7 @@ class FullBackupTest {
             mapOf(2025 to 48_000_000L, 2026 to 52_000_000L),
             setOf(AiAdviceCards.HOME_SUMMARY, AiAdviceCards.COUPLE_REPORT),
             15,
+            "USD",
         ),
     )
     @Test fun completeRoundTripPreservesAccountsRulesTombstonesAndSettings() {
@@ -60,6 +61,7 @@ class FullBackupTest {
         root.getJSONObject("settings").remove("yearEndGrossSalaries")
         root.getJSONObject("settings").remove("aiAdviceCards")
         root.getJSONObject("settings").remove("budgetPayday")
+        root.getJSONObject("settings").remove("displayCurrencyCode")
         val restored = FullBackupCodec.decode(root.toString())
         assertEquals(DEFAULT_CATEGORY_LABELS.keys.toList(), restored.settings?.categoryOrder)
         assertEquals(emptyMap<String, Long>(), restored.settings?.monthlyIncomeTargets)
@@ -69,9 +71,15 @@ class FullBackupTest {
         assertEquals(emptyMap<Int, Long>(), restored.settings?.yearEndGrossSalaries)
         assertEquals(AiAdviceCards.defaults, restored.settings?.aiAdviceCards)
         assertEquals(1, restored.settings?.budgetPayday)
+        assertEquals("KRW", restored.settings?.displayCurrencyCode)
     }
     @Test fun budgetPaydaySurvivesSettingsBackup() {
         assertEquals(15, FullBackupCodec.decode(FullBackupCodec.encode(backup())).settings?.budgetPayday)
+    }
+    @Test fun displayCurrencySurvivesSettingsBackupWithoutExportingExchangeRateCache() {
+        val root = JSONObject(FullBackupCodec.encode(backup()))
+        assertEquals("USD", root.getJSONObject("settings").getString("displayCurrencyCode"))
+        assertEquals("USD", FullBackupCodec.decode(root.toString()).settings?.displayCurrencyCode)
     }
     @Test fun legacySevenCategorySettingsUpgradeToNineteenWithoutLosingOrder() {
         val root = JSONObject(FullBackupCodec.encode(backup()))

@@ -14,6 +14,15 @@ class ReleaseNotesPolicyTest {
     }
 
     @Test
+    fun `v0139 release note documents display currency behavior and real screenshot`() {
+        val slide = ReleaseNotesCatalog.slides("0.1.39").single()
+        assertTrue(slide.title.contains("통화"))
+        assertTrue(slide.description.contains("원화로 그대로 저장"))
+        assertTrue(slide.imageDescription.contains("실제 표시 통화 선택 창"))
+        assertTrue(slide.imageAspectRatio in 0.5f..0.9f)
+    }
+
+    @Test
     fun `v0138 release note uses actual app screenshots for the new free features`() {
         val slides = ReleaseNotesCatalog.slides("0.1.38")
         assertEquals(4, slides.size)

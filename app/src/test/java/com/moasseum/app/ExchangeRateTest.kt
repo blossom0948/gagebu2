@@ -4,9 +4,15 @@ import com.moasseum.app.data.convertForeignAmountToKrw
 import com.moasseum.app.data.currencyFractionDigits
 import com.moasseum.app.data.parseExchangeRateQuote
 import com.moasseum.app.data.parseForeignAmount
+import com.moasseum.app.data.ExchangeRateRepository
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 import java.math.BigDecimal
+import java.net.HttpURLConnection
+import java.net.URL
+import java.io.ByteArrayInputStream
+import java.util.concurrent.CopyOnWriteArrayList
 
 class ExchangeRateTest {
     @Test fun parsesAndPreservesPublishedReferenceDate() {
@@ -38,5 +44,26 @@ class ExchangeRateTest {
         assertTrue(runCatching { parseExchangeRateQuote("""{"date":"2026-10-09","base":"USD","quote":"EUR","rate":1}""") }.isFailure)
         assertTrue(runCatching { parseExchangeRateQuote("""{"date":"2026-10-09","base":"USD","quote":"KRW","rate":0}""") }.isFailure)
         assertNull(convertForeignAmountToKrw(BigDecimal("999999999999999999"), parseExchangeRateQuote("""{"date":"2026-10-09","base":"USD","quote":"KRW","rate":100000}""")))
+    }
+
+    @Test fun latestDisplayRateUsesTheLatestEndpointAndCachesWithinTheProcess() = runBlocking {
+        val requestedUrls = CopyOnWriteArrayList<String>()
+        val payload = """{"date":"2026-10-12","base":"USD","quote":"KRW","rate":1350.25}""".toByteArray()
+        val repository = ExchangeRateRepository { url ->
+            requestedUrls += url.toString()
+            object : HttpURLConnection(url) {
+                override fun connect() = Unit
+                override fun disconnect() = Unit
+                override fun usingProxy() = false
+                override fun getResponseCode() = 200
+                override fun getInputStream() = ByteArrayInputStream(payload)
+            }
+        }
+
+        assertEquals("2026-10-12", repository.latestQuoteToKrw("USD").date)
+        repository.latestQuoteToKrw("USD")
+
+        assertEquals(1, requestedUrls.size)
+        assertEquals("https://api.frankfurter.dev/v2/rate/usd/krw", requestedUrls.single())
     }
 }

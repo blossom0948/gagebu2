@@ -359,6 +359,46 @@ fun formatWon(amount: Long): String {
     return "₩${formatter.format(amount)}"
 }
 
+object DisplayCurrencies {
+    const val KRW = "KRW"
+    val foreignCodes = listOf("USD", "JPY", "EUR", "TWD", "SGD")
+    val allCodes = listOf(KRW) + foreignCodes
+    fun isSupported(code: String): Boolean = code in allCodes
+}
+
+data class DisplayCurrencySetting(
+    val code: String = DisplayCurrencies.KRW,
+    val rateToKrw: String? = null,
+    val rateDate: String? = null,
+)
+
+/** Formats a stored KRW value in the user's optional display currency without changing ledger data. */
+fun formatDisplayAmount(
+    amountKrw: Long,
+    currencyCode: String,
+    rateToKrw: String?,
+    rateDate: String?,
+    today: LocalDate = LocalDate.now(),
+): String {
+    if (currencyCode == DisplayCurrencies.KRW || !DisplayCurrencies.isSupported(currencyCode)) return formatWon(amountKrw)
+    val rate = rateToKrw?.toBigDecimalOrNull()?.takeIf { it.signum() > 0 && it.precision() <= 24 && it.scale() <= 12 }
+        ?: return formatWon(amountKrw)
+    val published = rateDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        ?: return formatWon(amountKrw)
+    if (published.isAfter(today) || published.isBefore(today.minusDays(7))) return formatWon(amountKrw)
+    val digits = runCatching { java.util.Currency.getInstance(currencyCode).defaultFractionDigits }
+        .getOrDefault(2).coerceIn(0, 3)
+    val converted = runCatching {
+        java.math.BigDecimal.valueOf(amountKrw).divide(rate, digits, java.math.RoundingMode.HALF_UP)
+    }.getOrNull() ?: return formatWon(amountKrw)
+    val formatter = NumberFormat.getNumberInstance(Locale.US).apply {
+        minimumFractionDigits = digits
+        maximumFractionDigits = digits
+        roundingMode = java.math.RoundingMode.HALF_UP
+    }
+    return "$currencyCode ${formatter.format(converted)}"
+}
+
 fun formatSignedWon(amount: Long, type: TransactionType): String =
     when (type) {
         TransactionType.EXPENSE -> "−${formatWon(amount)}"

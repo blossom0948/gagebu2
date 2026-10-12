@@ -76,12 +76,12 @@ import com.moasseum.app.domain.HistorySort
 import com.moasseum.app.domain.filterHistoryTransactions
 import com.moasseum.app.domain.formatDate
 import com.moasseum.app.domain.formatMonth
-import com.moasseum.app.domain.formatWon
 import com.moasseum.app.domain.foreignTransactionCaption
 import com.moasseum.app.ui.components.AmountText
 import com.moasseum.app.ui.components.allCategorySpecs
 import com.moasseum.app.ui.components.EmptyState
 import com.moasseum.app.ui.components.FinanceCard
+import com.moasseum.app.ui.components.formatDisplayWon
 import com.moasseum.app.ui.components.rememberSaveActionState
 import com.moasseum.app.ui.components.TransactionRow
 import com.moasseum.app.ui.components.categoryColor
@@ -252,11 +252,11 @@ fun HistoryScreen(
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("지출 ${formatWon(filteredTransactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount })}",
+                    Text("지출 ${formatDisplayWon(filteredTransactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount })}",
                         color = LocalFinanceColors.current.expense, style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1,
                         overflow = TextOverflow.Ellipsis)
-                    Text("수입 ${formatWon(filteredTransactions.filter { it.type == TransactionType.INCOME }.sumOf { it.amount })}",
+                    Text("수입 ${formatDisplayWon(filteredTransactions.filter { it.type == TransactionType.INCOME }.sumOf { it.amount })}",
                         color = LocalFinanceColors.current.income, style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1,
                         overflow = TextOverflow.Ellipsis, textAlign = TextAlign.End)

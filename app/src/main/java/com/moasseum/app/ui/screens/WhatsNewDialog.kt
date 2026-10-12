@@ -55,6 +55,15 @@ data class ReleaseNoteSlide(
 
 object ReleaseNotesCatalog {
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.39" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_39_currency,
+                imageAspectRatio = 840f / 1139f,
+                title = "화면 금액을 원하는 통화로",
+                description = "미국·일본·유럽·대만·싱가포르 통화로 화면 금액을 환산해 볼 수 있어요. 거래와 예산은 원화로 그대로 저장하고, 환율이 없거나 7일이 지나면 원화로 표시해요. 앱 언어와 내보내기 파일은 기존처럼 한국어·원화 기준이에요.",
+                imageDescription = "Galaxy Z Fold4 QA 앱에서 캡처한 실제 표시 통화 선택 창. 미국 달러가 선택되어 있고 환율 확인 전 원화 대체 안내가 보여요.",
+            ),
+        )
         "0.1.38" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_38_album,

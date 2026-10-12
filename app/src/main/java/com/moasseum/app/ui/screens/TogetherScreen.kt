@@ -80,9 +80,7 @@ import com.moasseum.app.domain.TransactionType
 import com.moasseum.app.domain.SpendingAnalysisState
 import com.moasseum.app.domain.SpendingQuestionState
 import com.moasseum.app.domain.formatDate
-import com.moasseum.app.domain.formatSignedWon
 import com.moasseum.app.domain.formatMonth
-import com.moasseum.app.domain.formatWon
 import com.moasseum.app.domain.daysUntilNextAnniversary
 import com.moasseum.app.domain.SharedLedgerSettings
 import com.moasseum.app.domain.SharedMoneyMode
@@ -96,6 +94,8 @@ import com.moasseum.app.ui.components.categoryLabel
 import com.moasseum.app.ui.components.EmptyState
 import com.moasseum.app.ui.components.FinanceCard
 import com.moasseum.app.ui.components.FinanceTextField
+import com.moasseum.app.ui.components.formatDisplaySignedWon
+import com.moasseum.app.ui.components.formatDisplayWon
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import java.time.YearMonth
 import java.time.LocalDate
@@ -477,7 +477,7 @@ fun TogetherScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(transaction.merchant, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(formatSignedWon(transaction.amount, transaction.type),
+                            Text(formatDisplaySignedWon(transaction.amount, transaction.type),
                                 color = if (transaction.type == TransactionType.INCOME) colors.income else colors.expense,
                                 style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                         }
@@ -830,9 +830,9 @@ private fun SharedPayerSummaryCard(mode: SharedMoneyMode, totals: SharedPayerTot
                     val progress = sharedSavingsProgress(goals.map { SharedSavingsGoalAmount(it.targetAmount, it.currentAmount) })
                     if (progress.target > 0L) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text("${formatWon(progress.current)} 모음", style = MaterialTheme.typography.bodyMedium,
+                            Text("${formatDisplayWon(progress.current)} 모음", style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold, color = colors.accent, modifier = Modifier.weight(1f))
-                            Text("목표 ${formatWon(progress.target)}", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+                            Text("목표 ${formatDisplayWon(progress.target)}", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
                         }
                         androidx.compose.foundation.layout.Box(
                             Modifier.fillMaxWidth().height(7.dp).background(colors.surfaceOverlay, RoundedCornerShape(8.dp)),
@@ -854,8 +854,8 @@ private fun SharedPayerSummaryCard(mode: SharedMoneyMode, totals: SharedPayerTot
                     SharedMoneyMetric("파트너가 결제", totals.partnerExpense, colors.textPrimary)
                     if (mode == SharedMoneyMode.EQUAL_SPLIT) {
                         val settlement = when {
-                            totals.partnerOwesMe > 0 -> "파트너가 나에게 ${formatWon(totals.partnerOwesMe)}"
-                            totals.iOwePartner > 0 -> "내가 파트너에게 ${formatWon(totals.iOwePartner)}"
+                            totals.partnerOwesMe > 0 -> "파트너가 나에게 ${formatDisplayWon(totals.partnerOwesMe)}"
+                            totals.iOwePartner > 0 -> "내가 파트너에게 ${formatDisplayWon(totals.iOwePartner)}"
                             else -> "현재 50:50 기준 차액 없음"
                         }
                         HorizontalDivider(color = colors.divider)
@@ -873,7 +873,7 @@ private fun SharedPayerSummaryCard(mode: SharedMoneyMode, totals: SharedPayerTot
 private fun SharedMoneyMetric(label: String, amount: Long, color: Color) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, style = MaterialTheme.typography.bodySmall, color = LocalFinanceColors.current.textSecondary, modifier = Modifier.weight(1f))
-        Text(formatWon(amount), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = color)
+        Text(formatDisplayWon(amount), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = color)
     }
 }
 
@@ -996,9 +996,9 @@ private fun SharedMonthlyOverview(
                 Spacer(Modifier.weight(1f))
                 Text("우리 지출", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
             }
-            Text(formatWon(expense), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(formatDisplayWon(expense), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SharedMetric("공동 수입", formatWon(income), colors.income, Modifier.weight(1f))
+                SharedMetric("공동 수입", formatDisplayWon(income), colors.income, Modifier.weight(1f))
                 SharedMetric("공유 거래", "${transactionCount}건", colors.textSecondary, Modifier.weight(1f))
             }
             HorizontalDivider(color = colors.divider.copy(alpha = 0.5f))
@@ -1041,7 +1041,7 @@ private fun SharedCategoryBreakdown(transactions: List<Transaction>) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(categoryLabel(key), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(formatWon(amount), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                            Text(formatDisplayWon(amount), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                         }
                         androidx.compose.foundation.layout.Box(
                             Modifier.fillMaxWidth().height(6.dp).background(colors.surfaceOverlay, RoundedCornerShape(8.dp)),
@@ -1127,7 +1127,7 @@ private fun SharedGoalCard(goal: SharedLedgerGoal, busy: Boolean, onEdit: () -> 
                 Column(Modifier.weight(1f)) {
                     Text(goal.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("목표 ${formatWon(goal.targetAmount)}", style = MaterialTheme.typography.labelMedium,
+                    Text("목표 ${formatDisplayWon(goal.targetAmount)}", style = MaterialTheme.typography.labelMedium,
                         color = colors.textSecondary)
                 }
                 TextButton(onClick = onEdit, enabled = !busy) {
@@ -1147,7 +1147,7 @@ private fun SharedGoalCard(goal: SharedLedgerGoal, busy: Boolean, onEdit: () -> 
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("${formatWon(goal.currentAmount)} 모음", style = MaterialTheme.typography.labelLarge,
+                Text("${formatDisplayWon(goal.currentAmount)} 모음", style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold, color = colors.accent, modifier = Modifier.weight(1f))
                 Text("${(progress * 100).toInt()}%", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
             }
@@ -1179,7 +1179,7 @@ private fun SharedFinanceItemCard(
                     }
                     Text(detail, style = MaterialTheme.typography.labelSmall, color = colors.textSecondary)
                 }
-                if (item.amount != null) Text(formatWon(item.amount), style = MaterialTheme.typography.titleSmall,
+                if (item.amount != null) Text(formatDisplayWon(item.amount), style = MaterialTheme.typography.titleSmall,
                     color = colors.accent, fontWeight = FontWeight.Bold)
                 TextButton(onClick = onEdit, enabled = !busy) { Text("수정") }
                 androidx.compose.material3.IconButton(onClick = onDelete, enabled = !busy) {
@@ -1217,7 +1217,7 @@ private fun SharedFinanceTotals(items: List<SharedFinanceItem>) {
 private fun SharedFinanceMetric(label: String, amount: Long, modifier: Modifier, color: Color) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = LocalFinanceColors.current.textSecondary)
-        Text(formatWon(amount), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = color,
+        Text(formatDisplayWon(amount), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = color,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -1325,7 +1325,7 @@ private fun ShareableTransactionRow(transaction: Transaction, shared: Boolean, b
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("${formatDate(transaction.occurredDate)} · ${transaction.memo.ifBlank { transaction.categoryKey }}",
                     style = MaterialTheme.typography.labelSmall, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(formatSignedWon(transaction.amount, transaction.type),
+                Text(formatDisplaySignedWon(transaction.amount, transaction.type),
                     color = if (transaction.type == TransactionType.INCOME) colors.income else colors.expense,
                     style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
             }
