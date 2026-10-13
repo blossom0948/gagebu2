@@ -1,12 +1,17 @@
 package com.moasseum.app.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
@@ -21,6 +26,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -66,11 +72,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,6 +91,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.BackHandler
 import com.moasseum.app.domain.LedgerUiState
 import com.moasseum.app.domain.HomeDashboardCards
 import com.moasseum.app.domain.AiAdviceCards
@@ -105,6 +114,7 @@ import com.moasseum.app.ui.components.LocalCategoryLabels
 import com.moasseum.app.ui.components.allCategorySpecs
 import com.moasseum.app.ui.components.categoryLabel
 import com.moasseum.app.ui.theme.LocalFinanceColors
+import com.moasseum.app.ui.theme.LocalFinanceMotion
 import com.moasseum.app.update.AppRelease
 import com.moasseum.app.update.UpdateCheckState
 import com.moasseum.app.data.ManageSettingSearchOption
@@ -191,6 +201,7 @@ fun ManageScreen(
     scrollToTopRequest: Int = 0,
     initialActionId: String? = null,
     onInitialActionConsumed: () -> Unit = {},
+    onManageSearchPageOpenChanged: (Boolean) -> Unit = {},
 ) {
     var showBudgetDialog by rememberSaveable { mutableStateOf(false) }
     var showCategoryDialog by rememberSaveable { mutableStateOf(false) }
@@ -217,8 +228,20 @@ fun ManageScreen(
     var showDisplayCurrencyDialog by rememberSaveable { mutableStateOf(false) }
     var appDataSettingsExpanded by rememberSaveable { mutableStateOf(false) }
     var selectedReportYear by rememberSaveable { mutableStateOf(java.time.LocalDate.now().year) }
+    var searchPageOpen by rememberSaveable { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
     val colors = LocalFinanceColors.current
+    val motion = LocalFinanceMotion.current
+    val screenStateHolder = rememberSaveableStateHolder()
     val listState = rememberLazyListState()
+    BackHandler(enabled = searchPageOpen) {
+        searchPageOpen = false
+        onManageSearchPageOpenChanged(false)
+    }
+    LaunchedEffect(searchPageOpen) { onManageSearchPageOpenChanged(searchPageOpen) }
+    DisposableEffect(Unit) {
+        onDispose { onManageSearchPageOpenChanged(false) }
+    }
     LaunchedEffect(scrollToTopRequest) {
         if (scrollToTopRequest > 0) listState.animateScrollToItem(0)
     }
@@ -293,25 +316,63 @@ fun ManageScreen(
             description = currentDescription,
             aliases = descriptor.aliases,
             actionLabel = currentActionLabel,
-            onSelect = checkNotNull(searchActions[descriptor.id]) { "Missing Manage search action: ${descriptor.id}" },
+            onSelect = {
+                searchPageOpen = false
+                onManageSearchPageOpenChanged(false)
+                checkNotNull(searchActions[descriptor.id]) { "Missing Manage search action: ${descriptor.id}" }.invoke()
+            },
         )
     }
-    LazyColumn(
-        state = listState,
-        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
+    AnimatedContent(
+        targetState = searchPageOpen,
+        transitionSpec = {
+            if (targetState) {
+                (slideInHorizontally(tween(motion.standard, easing = FastOutSlowInEasing)) { it / 12 } + fadeIn(tween(motion.fast))) togetherWith
+                    (slideOutHorizontally(tween(motion.fast, easing = FastOutSlowInEasing)) { -it / 18 } + fadeOut(tween(motion.fast)))
+            } else {
+                (slideInHorizontally(tween(motion.standard, easing = FastOutSlowInEasing)) { -it / 12 } + fadeIn(tween(motion.fast))) togetherWith
+                    (slideOutHorizontally(tween(motion.fast, easing = FastOutSlowInEasing)) { it / 18 } + fadeOut(tween(motion.fast)))
+            }
+        },
+        label = "manageSearchPage",
+    ) { pageOpen ->
+        screenStateHolder.SaveableStateProvider(if (pageOpen) "manage-search" else "manage-list") {
+            if (pageOpen) {
+                Column(modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp)) {
+                    ManageSearchPageHeader(
+                        onBack = {
+                            searchPageOpen = false
+                            onManageSearchPageOpenChanged(false)
+                        },
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        ManageNaturalSearch(
+                            entries = searchEntries,
+                            aiAvailable = !aiLoginRequired,
+                            onAiSearch = onAiSearchManageSettings,
+                            recentIds = recentManageSearchIds,
+                            onRememberSelected = onRememberManageSearchId,
+                            onClearRecent = onClearRecentManageSearches,
+                            queryValue = searchQuery,
+                            onQueryValueChange = { searchQuery = it },
+                            requestFocusOnStart = true,
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    state = listState,
+                    contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
         item { Text("관리", style = MaterialTheme.typography.headlineSmall) }
-        item {
-            ManageNaturalSearch(
-                entries = searchEntries,
-                aiAvailable = !aiLoginRequired,
-                onAiSearch = onAiSearchManageSettings,
-                recentIds = recentManageSearchIds,
-                onRememberSelected = onRememberManageSearchId,
-                onClearRecent = onClearRecentManageSearches,
-            )
-        }
+        item { ManageSearchLauncher(onClick = {
+            searchPageOpen = true
+            onManageSearchPageOpenChanged(true)
+        }) }
         item {
             val budget = uiState.budgetAmount?.takeIf { it > 0L }
             val spent = uiState.budgetPeriodExpenseTotal
@@ -446,6 +507,9 @@ fun ManageScreen(
                 }
                 AppUpdateCard(updateState, onCheckForUpdate, onInstallUpdate, onContinueInstall)
                 Text("모아씀 ${com.moasseum.app.BuildConfig.VERSION_NAME}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 4.dp, vertical = 5.dp))
+            }
+        }
+                }
             }
         }
     }

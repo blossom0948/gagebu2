@@ -1,5 +1,15 @@
 package com.moasseum.app.ui.components
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
@@ -58,12 +68,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.moasseum.app.domain.TransactionType
 import com.moasseum.app.domain.AiParseState
@@ -85,6 +94,7 @@ import com.moasseum.app.data.parseForeignAmount
 import com.moasseum.app.data.supportedForeignCurrencies
 import com.moasseum.app.ui.components.categoryLabel
 import com.moasseum.app.ui.theme.LocalFinanceColors
+import com.moasseum.app.ui.theme.LocalFinanceMotion
 import java.time.LocalDate
 import java.time.ZoneOffset
 
@@ -162,74 +172,98 @@ fun AddTransactionSheet(
     onShareOnSaveChange: (Boolean) -> Unit = {},
 ) {
     val scrollState = rememberScrollState()
+    val reduceMotion = LocalFinanceMotion.current.reduceMotion
     LaunchedEffect(mode) { scrollState.scrollTo(0) }
     Column(Modifier.fillMaxWidth().verticalScroll(scrollState)) {
         if (saving) androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (canShareOnSave && mode in setOf(AddMode.MENU, AddMode.DIRECT, AddMode.AI_INPUT, AddMode.PHOTO_REVIEW)) {
-            SaveDestinationSelector(shareOnSave, onShareOnSaveChange)
-        }
-        when (mode) {
-            AddMode.MENU -> AddMenu(
-                paymentMethods = paymentMethods,
-                saving = saving,
-                onModeChange = onModeChange,
-                onStartVoiceInput = onStartVoiceInput,
-                speechResult = speechResult,
-                onSpeechResultConsumed = onSpeechResultConsumed,
-                onParseAi = onParseAi,
-                onQuickSave = { input ->
-                    val candidate = parseQuickEntry(input) ?: return@AddMenu false
-                    val category = com.moasseum.app.notification.PaymentNotificationParser.inferCategoryFrom(candidate.merchant)
-                    onSave(
-                        candidate.amount.toString(), candidate.type, candidate.merchant, category, "",
-                        paymentMethods.firstOrNull() ?: "카드", null, initialDate, null, null,
+        AnimatedContent(
+            targetState = mode,
+            modifier = Modifier.fillMaxWidth(),
+            transitionSpec = {
+                if (reduceMotion) {
+                    EnterTransition.None togetherWith ExitTransition.None
+                } else {
+                    (fadeIn(tween(150)) + slideInVertically(
+                        animationSpec = tween(190, easing = FastOutSlowInEasing),
+                    ) { height -> height / 24 }) togetherWith
+                        (fadeOut(tween(100)) + slideOutVertically(
+                            animationSpec = tween(150, easing = FastOutSlowInEasing),
+                        ) { height -> -height / 32 })
+                }
+            },
+            label = "transactionEntryMode",
+        ) { activeMode ->
+            Column(Modifier.fillMaxWidth()) {
+                if (canShareOnSave && activeMode in setOf(AddMode.DIRECT, AddMode.AI_INPUT, AddMode.PHOTO_REVIEW)) {
+                    SaveDestinationSelector(shareOnSave, onShareOnSaveChange)
+                }
+                when (activeMode) {
+                    AddMode.MENU -> AddMenu(
+                        paymentMethods = paymentMethods,
+                        saving = saving,
+                        canShareOnSave = canShareOnSave,
+                        shareOnSave = shareOnSave,
+                        onShareOnSaveChange = onShareOnSaveChange,
+                        onModeChange = onModeChange,
+                        onStartVoiceInput = onStartVoiceInput,
+                        speechResult = speechResult,
+                        onSpeechResultConsumed = onSpeechResultConsumed,
+                        onParseAi = onParseAi,
+                        onQuickSave = { input ->
+                            val candidate = parseQuickEntry(input) ?: return@AddMenu false
+                            val category = com.moasseum.app.notification.PaymentNotificationParser.inferCategoryFrom(candidate.merchant)
+                            onSave(
+                                candidate.amount.toString(), candidate.type, candidate.merchant, category, "",
+                                paymentMethods.firstOrNull() ?: "카드", null, initialDate, null, null,
+                            )
+                        },
+                        onPickReceipt = onPickReceipt,
+                        onTakeReceipt = onTakeReceipt,
                     )
-                },
-                onPickReceipt = onPickReceipt,
-                onTakeReceipt = onTakeReceipt,
-            )
-            AddMode.DIRECT -> DirectTransactionForm(
-                initialDate = initialDate, initialType = initialType, paymentMethods = paymentMethods, accounts = accounts,
-                transactions = transactions, hiddenSuggestionKeys = hiddenSuggestionKeys, onHideSuggestion = onHideSuggestion,
-                onFetchExchangeRate = onFetchExchangeRate, saving = saving, onModeChange = onModeChange,
-                onDismiss = onDismiss, onSave = onSave,
-            )
-            AddMode.AI_INPUT, AddMode.AI_NOTICE -> AiInputForm(
-                paymentMethods = paymentMethods,
-                aiState = aiState,
-                saving = saving,
-                onModeChange = onModeChange,
-                onParseAi = onParseAi,
-                onConfirm = onConfirmAi,
-                onStartVoiceInput = onStartVoiceInput,
-                speechResult = speechResult,
-                onSpeechResultConsumed = onSpeechResultConsumed,
-                prefillText = prefillText,
-                prefillKey = prefillKey,
-            )
-            AddMode.RECEIPT_NOTICE -> ReceiptInputNotice(
-                aiState = aiState,
-                onPickReceipt = onPickReceipt,
-                onTakeReceipt = onTakeReceipt,
-                onBack = { onModeChange(AddMode.MENU) },
-            )
-            AddMode.PHOTO_REVIEW -> PhotoImportReview(
-                state = photoImportState,
-                saving = saving,
-                onPickMore = { candidates, unselectedIds -> onPickMorePhotos(candidates, unselectedIds) },
-                onRestoreCancelled = onRestoreCancelledPhotoCandidate,
-                onSave = onAddPhotoCandidates,
-                onCancel = onDismiss,
-            )
-            AddMode.BATCH -> BatchCommandSheet(
-                transactions = transactions,
-                paymentMethods = paymentMethods,
-                saving = saving,
-                onDismiss = onDismiss,
-                onAdd = onAddBatch,
-                onParseWithAi = onParseBatchWithAi,
-                onApply = onApplyBatch,
-            )
+                    AddMode.DIRECT -> DirectTransactionForm(
+                        initialDate = initialDate, initialType = initialType, paymentMethods = paymentMethods, accounts = accounts,
+                        transactions = transactions, hiddenSuggestionKeys = hiddenSuggestionKeys, onHideSuggestion = onHideSuggestion,
+                        onFetchExchangeRate = onFetchExchangeRate, saving = saving, onModeChange = onModeChange,
+                        onDismiss = onDismiss, onSave = onSave,
+                    )
+                    AddMode.AI_INPUT, AddMode.AI_NOTICE -> AiInputForm(
+                        paymentMethods = paymentMethods,
+                        aiState = aiState,
+                        saving = saving,
+                        onModeChange = onModeChange,
+                        onParseAi = onParseAi,
+                        onConfirm = onConfirmAi,
+                        onStartVoiceInput = onStartVoiceInput,
+                        speechResult = speechResult,
+                        onSpeechResultConsumed = onSpeechResultConsumed,
+                        prefillText = prefillText,
+                        prefillKey = prefillKey,
+                    )
+                    AddMode.RECEIPT_NOTICE -> ReceiptInputNotice(
+                        aiState = aiState,
+                        onPickReceipt = onPickReceipt,
+                        onTakeReceipt = onTakeReceipt,
+                        onBack = { onModeChange(AddMode.MENU) },
+                    )
+                    AddMode.PHOTO_REVIEW -> PhotoImportReview(
+                        state = photoImportState,
+                        saving = saving,
+                        onPickMore = { candidates, unselectedIds -> onPickMorePhotos(candidates, unselectedIds) },
+                        onRestoreCancelled = onRestoreCancelledPhotoCandidate,
+                        onSave = onAddPhotoCandidates,
+                        onCancel = onDismiss,
+                    )
+                    AddMode.BATCH -> BatchCommandSheet(
+                        transactions = transactions,
+                        paymentMethods = paymentMethods,
+                        saving = saving,
+                        onDismiss = onDismiss,
+                        onAdd = onAddBatch,
+                        onParseWithAi = onParseBatchWithAi,
+                        onApply = onApplyBatch,
+                    )
+                }
+            }
         }
     }
 }
@@ -254,6 +288,9 @@ private fun SaveDestinationSelector(
 private fun AddMenu(
     paymentMethods: List<String>,
     saving: Boolean,
+    canShareOnSave: Boolean,
+    shareOnSave: Boolean,
+    onShareOnSaveChange: (Boolean) -> Unit,
     onModeChange: (AddMode) -> Unit,
     onStartVoiceInput: () -> Unit,
     speechResult: String?,
@@ -264,12 +301,10 @@ private fun AddMenu(
     onTakeReceipt: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
-    val focusRequester = remember { FocusRequester() }
     var aiMode by rememberSaveable { mutableStateOf(true) }
     var input by rememberSaveable { mutableStateOf("") }
     var moreOpen by rememberSaveable { mutableStateOf(false) }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
     LaunchedEffect(speechResult) {
         if (!speechResult.isNullOrBlank()) {
             input = speechResult.take(240)
@@ -283,7 +318,24 @@ private fun AddMenu(
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("빠른 기록", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            if (canShareOnSave) {
+                FilterChip(
+                    selected = !shareOnSave,
+                    onClick = { onShareOnSaveChange(false) },
+                    enabled = !saving,
+                    label = { Text("개인") },
+                )
+                Spacer(Modifier.width(5.dp))
+                FilterChip(
+                    selected = shareOnSave,
+                    onClick = { onShareOnSaveChange(true) },
+                    enabled = !saving,
+                    label = { Text("함께") },
+                )
+            } else {
+                Text("빠른 기록", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            }
+            if (canShareOnSave) Spacer(Modifier.weight(1f))
             FilterChip(selected = aiMode, onClick = { aiMode = true; error = null }, enabled = !saving, label = { Text("AI") }, leadingIcon = {
                 Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(15.dp))
             })
@@ -296,7 +348,7 @@ private fun AddMenu(
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it.take(240); error = null },
-                modifier = Modifier.weight(1f).focusRequester(focusRequester),
+                modifier = Modifier.weight(1f).testTag("quick_add_input"),
                 placeholder = { Text(if (aiMode) "예: 점심 8천원" else "가게 이름과 금액 · 예: 점심 8천원") },
                 singleLine = true,
                 enabled = !saving,

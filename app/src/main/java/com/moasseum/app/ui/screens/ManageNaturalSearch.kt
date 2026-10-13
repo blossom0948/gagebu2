@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Search
@@ -23,14 +24,19 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -54,6 +60,44 @@ data class ManageSearchEntry(
 )
 
 @Composable
+fun ManageSearchLauncher(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LocalFinanceColors.current
+    FinanceCard(
+        modifier = modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick)
+            .testTag("manage_search_launcher"),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(Icons.Rounded.Search, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(20.dp))
+            Text("설정·기능 검색", color = colors.textSecondary, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(19.dp))
+        }
+    }
+}
+
+@Composable
+fun ManageSearchPageHeader(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack, modifier = Modifier.testTag("manage_search_back")) {
+            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "관리로 돌아가기")
+        }
+        Text("설정 검색", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
 fun ManageNaturalSearch(
     entries: List<ManageSearchEntry>,
     aiAvailable: Boolean,
@@ -62,8 +106,24 @@ fun ManageNaturalSearch(
     recentIds: List<String> = emptyList(),
     onRememberSelected: suspend (String) -> Unit = {},
     onClearRecent: suspend () -> Unit = {},
+    queryValue: String? = null,
+    onQueryValueChange: ((String) -> Unit)? = null,
+    requestFocusOnStart: Boolean = false,
 ) {
-    var query by rememberSaveable { mutableStateOf("") }
+    var internalQuery by rememberSaveable { mutableStateOf("") }
+    val query = queryValue ?: internalQuery
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    LaunchedEffect(requestFocusOnStart) {
+        if (requestFocusOnStart) {
+            withFrameNanos { }
+            focusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
+    fun updateQuery(value: String) {
+        if (queryValue == null) internalQuery = value else onQueryValueChange?.invoke(value)
+    }
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     var aiQuery by rememberSaveable { mutableStateOf("") }
     var aiRankedIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
@@ -88,7 +148,7 @@ fun ManageNaturalSearch(
         FinanceTextField(
             value = query,
             onValueChange = {
-                query = it.take(100)
+                updateQuery(it.take(100))
                 selectedId = null
                 aiQuery = ""
                 aiRankedIds = emptyList()
@@ -96,7 +156,7 @@ fun ManageNaturalSearch(
                 aiUnavailable = false
                 aiSearchSucceeded = false
             },
-            modifier = Modifier.fillMaxWidth().testTag("manage_natural_search_input"),
+            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester).testTag("manage_natural_search_input"),
             singleLine = true,
             label = null,
             placeholder = { Text("예: 생활비가 얼마나 남았지?") },
@@ -104,7 +164,7 @@ fun ManageNaturalSearch(
             trailingIcon = if (query.isNotEmpty()) {
                 {
                     IconButton(onClick = {
-                        query = ""
+                        updateQuery("")
                         selectedId = null
                         aiQuery = ""
                         aiRankedIds = emptyList()
@@ -127,7 +187,7 @@ fun ManageNaturalSearch(
                 recentEntries.forEach { entry ->
                     AssistChip(
                         onClick = {
-                            query = entry.title
+                            updateQuery(entry.title)
                             selectedId = entry.id
                             aiQuery = ""
                             aiRankedIds = emptyList()
@@ -150,7 +210,7 @@ fun ManageNaturalSearch(
                 ManageSearchCatalog.shortcuts.forEach { shortcut ->
                     AssistChip(
                         onClick = {
-                            query = shortcut.query
+                            updateQuery(shortcut.query)
                             selectedId = null
                             aiQuery = ""
                             aiRankedIds = emptyList()

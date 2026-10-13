@@ -239,11 +239,11 @@ class ReleaseNotesPolicyTest {
 
     @Test
     fun `release catalog contains a note for every published version in the supported range`() {
-        val versions = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.49")
+        val versions = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.50")
             .mapNotNull { it.releaseVersion }
             .toSet()
 
-        assertEquals((listOf("0.1.1", "0.1.2") + (4..49).map { "0.1.$it" }).toSet(), versions)
+        assertEquals((listOf("0.1.1", "0.1.2") + (4..50).map { "0.1.$it" }).toSet(), versions)
     }
 
     @Test
@@ -260,5 +260,15 @@ class ReleaseNotesPolicyTest {
         assertEquals(1, slides.size)
         assertEquals("0.1.49", slides.single().releaseVersion)
         assertTrue(slides.single().description.contains("예산 주기"))
+    }
+
+    @Test
+    fun `v0 1 50 reports its two new screens without replaying prior releases`() {
+        val slides = ReleaseNotesCatalog.slidesSince("0.1.49", "0.1.50")
+
+        assertEquals(2, slides.size)
+        assertTrue(slides.all { it.releaseVersion == "0.1.50" && it.imageResId != null })
+        assertTrue(slides.first().description.contains("키보드"))
+        assertTrue(slides.last().description.contains("검색 전용 화면"))
     }
 }

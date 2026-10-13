@@ -59,7 +59,7 @@ data class ReleaseNoteSlide(
 )
 
 object ReleaseNotesCatalog {
-    private val supportedVersions = listOf("0.1.1", "0.1.2") + (4..49).map { "0.1.$it" }
+    private val supportedVersions = listOf("0.1.1", "0.1.2") + (4..50).map { "0.1.$it" }
 
     /** Returns only releases newer than [lastSeenVersion], in chronological order. */
     fun slidesSince(lastSeenVersion: String?, currentVersion: String): List<ReleaseNoteSlide> {
@@ -593,6 +593,22 @@ object ReleaseNotesCatalog {
                 title = "알림 후보를 더 정확하고 간편하게",
                 description = "금액이 언급된 일반 알림은 걸러내고, 승인·입금·출금이 확인되는 거래 위주로 후보를 만들어요. 마트 상호는 식비로 분류하고 후보를 한 번에 정리할 수도 있어요.",
                 imageDescription = "모아씀 알림 후보함의 카테고리와 전체 정리 동작",
+            ),
+        )
+        "0.1.50" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_50_quick_add,
+                imageAspectRatio = 904f / 473f,
+                title = "기록 추가 창을 더 빠르게",
+                description = "개인·함께 저장과 AI·직접 입력을 한 줄에서 고를 수 있어요. 창을 열 때 키보드를 먼저 띄우지 않아 음성·카메라·사진 입력을 바로 볼 수 있고, 입력 방식 전환도 짧고 부드럽게 이어져요.",
+                imageDescription = "Galaxy Z Fold4 격리 QA에서 촬영한 합성 빠른 기록 창. 개인·함께 저장과 AI·직접 입력 선택이 보이며 입력창은 아직 포커스되지 않았습니다.",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_50_manage_search,
+                imageAspectRatio = 904f / 760f,
+                title = "관리 검색은 결과 화면에서",
+                description = "설정 검색을 열면 원래 관리 메뉴 대신 검색 전용 화면만 보여요. 자연어 검색 결과를 바로 확인하고, 돌아와도 입력한 검색어가 유지돼요.",
+                imageDescription = "Galaxy Z Fold4 격리 QA에서 캡처한 어두운 테마의 모아씀 설정 검색 결과 화면. 테스트 검색어와 가짜 설정 결과만 담겼습니다.",
             ),
         )
         else -> emptyList()

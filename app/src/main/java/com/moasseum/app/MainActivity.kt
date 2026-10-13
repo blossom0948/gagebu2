@@ -39,6 +39,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
@@ -541,6 +544,7 @@ private fun MoasseumApp(
     var historyScrollToTopRequest by rememberSaveable { mutableIntStateOf(0) }
     var togetherScrollToTopRequest by rememberSaveable { mutableIntStateOf(0) }
     var manageScrollToTopRequest by rememberSaveable { mutableIntStateOf(0) }
+    var manageSearchPageOpen by rememberSaveable { mutableStateOf(false) }
     var pendingManageInsightActionId by rememberSaveable { mutableStateOf<String?>(null) }
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val selectedDate by viewModel.date.collectAsStateWithLifecycle()
@@ -1313,36 +1317,38 @@ private fun MoasseumApp(
     }
 
     BackHandler(enabled = addOpen) { closeAdd() }
-    // Weeple's primary tabs settle almost immediately on-device; keep this
-    // crossfade short so navigation feels responsive without a hard flash.
-    val transitionDuration = if (reduceMotion) 0 else 120
+    // Short, low-distance transitions keep tab changes soft without making
+    // the finance screens feel slow. The accessibility toggle removes motion.
+    val transitionDuration = if (reduceMotion) 0 else 200
 
     Scaffold(
         containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            BottomNavBar(
-                currentRoute = currentRoute,
-                onNavigate = { route ->
-                    if (route == currentRoute) {
-                        when (route) {
-                            ROUTE_HOME -> homeScrollToTopRequest++
-                            ROUTE_HISTORY -> historyScrollToTopRequest++
-                            ROUTE_TOGETHER -> togetherScrollToTopRequest++
-                            ROUTE_MANAGE -> manageScrollToTopRequest++
+            if (currentRoute != ROUTE_MANAGE || !manageSearchPageOpen) {
+                BottomNavBar(
+                    currentRoute = currentRoute,
+                    onNavigate = { route ->
+                        if (route == currentRoute) {
+                            when (route) {
+                                ROUTE_HOME -> homeScrollToTopRequest++
+                                ROUTE_HISTORY -> historyScrollToTopRequest++
+                                ROUTE_TOGETHER -> togetherScrollToTopRequest++
+                                ROUTE_MANAGE -> manageScrollToTopRequest++
+                            }
+                        } else navigateTo(navController, route)
+                    },
+                    addExpanded = addOpen,
+                    onAdd = {
+                        if (addOpen) closeAdd() else {
+                            addInitialDate = java.time.LocalDate.now().toString()
+                            addInitialTypeName = com.moasseum.app.domain.TransactionType.EXPENSE.name
+                            addOpen = true
+                            addModeName = AddMode.MENU.name
                         }
-                    } else navigateTo(navController, route)
-                },
-                addExpanded = addOpen,
-                onAdd = {
-                    if (addOpen) closeAdd() else {
-                        addInitialDate = java.time.LocalDate.now().toString()
-                        addInitialTypeName = com.moasseum.app.domain.TransactionType.EXPENSE.name
-                        addOpen = true
-                        addModeName = AddMode.MENU.name
-                    }
-                },
-            )
+                    },
+                )
+            }
         },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
@@ -1350,10 +1356,22 @@ private fun MoasseumApp(
                 navController = navController,
                 startDestination = ROUTE_HOME,
                 modifier = Modifier.fillMaxSize(),
-                enterTransition = { fadeIn(tween(transitionDuration)) },
-                exitTransition = { fadeOut(tween(transitionDuration)) },
-                popEnterTransition = { fadeIn(tween(transitionDuration)) },
-                popExitTransition = { fadeOut(tween(transitionDuration)) },
+                enterTransition = {
+                    slideInHorizontally(tween(transitionDuration, easing = FastOutSlowInEasing)) { it / 16 } +
+                        fadeIn(tween(transitionDuration))
+                },
+                exitTransition = {
+                    slideOutHorizontally(tween(transitionDuration, easing = FastOutSlowInEasing)) { -it / 28 } +
+                        fadeOut(tween(transitionDuration))
+                },
+                popEnterTransition = {
+                    slideInHorizontally(tween(transitionDuration, easing = FastOutSlowInEasing)) { -it / 16 } +
+                        fadeIn(tween(transitionDuration))
+                },
+                popExitTransition = {
+                    slideOutHorizontally(tween(transitionDuration, easing = FastOutSlowInEasing)) { it / 28 } +
+                        fadeOut(tween(transitionDuration))
+                },
             ) {
                 composable(ROUTE_HOME) {
                     HomeScreen(
@@ -1724,6 +1742,7 @@ private fun MoasseumApp(
                         onCheckForUpdate = { checkForAppUpdate(automatic = false) },
                         onInstallUpdate = ::downloadAndInstallUpdate,
                         onContinueInstall = ::continueWithDownloadedUpdate,
+                        onManageSearchPageOpenChanged = { manageSearchPageOpen = it },
                         onOpenNotificationSettings = {
                             NotificationAccess.openSettings(context)
                         },

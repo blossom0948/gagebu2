@@ -249,6 +249,33 @@ class WhatsNewDialogInteractionTest {
         assertTrue(dismissed)
     }
 
+    @Test fun v0150PopupShowsOnlyTheNewQuickAddAndDedicatedSearchScreens() {
+        val slides = ReleaseNotesCatalog.slidesSince("0.1.49", "0.1.50")
+        var dismissed = false
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Box(Modifier.fillMaxSize().background(LocalFinanceColors.current.surfaceBase)) {
+                    WhatsNewDialog(versionName = "0.1.50", slides = slides, onDismiss = { dismissed = true })
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("v0.1.50 신기능").assertExists()
+        composeRule.onNodeWithText("기록 추가 창을 더 빠르게").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4 격리 QA에서 촬영한 합성 빠른 기록 창. 개인·함께 저장과 AI·직접 입력 선택이 보이며 입력창은 아직 포커스되지 않았습니다.",
+        ).assertExists()
+        composeRule.onNodeWithText("1 / 2").assertExists()
+        composeRule.onNodeWithText("다음").performScrollTo().performClick()
+
+        composeRule.onNodeWithText("v0.1.50 신기능").assertExists()
+        composeRule.onNodeWithText("관리 검색은 결과 화면에서").assertExists()
+        composeRule.onNodeWithContentDescription("Galaxy Z Fold4 격리 QA에서 캡처한 어두운 테마의 모아씀 설정 검색 결과 화면. 테스트 검색어와 가짜 설정 결과만 담겼습니다.").assertExists()
+        composeRule.onNodeWithText("2 / 2").assertExists()
+        composeRule.onNodeWithText("확인").performScrollTo().performClick()
+        assertTrue(dismissed)
+    }
+
     @Test fun oldReleaseWithoutAnAuthenticCaptureUsesAReadableSummaryCard() {
         val slides = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.2")
         composeRule.setContent {
