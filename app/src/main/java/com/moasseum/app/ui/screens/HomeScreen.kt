@@ -14,11 +14,14 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -31,6 +34,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -47,6 +51,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -89,9 +95,20 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.platform.testTag
@@ -100,6 +117,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import com.moasseum.app.domain.LedgerUiState
 import com.moasseum.app.domain.HomeDashboardCards
@@ -126,6 +144,8 @@ import com.moasseum.app.ui.theme.LocalFinanceMotion
 import java.time.YearMonth
 import java.time.LocalDate
 import java.time.DayOfWeek
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.math.roundToInt
 
 private enum class HomeTab(val label: String) {
@@ -170,6 +190,10 @@ fun HomeScreen(
     var selectedTabName by rememberSaveable { mutableStateOf(HomeTab.SUMMARY.name) }
     var showProfileEditor by rememberSaveable { mutableStateOf(false) }
     var showAiAssistant by rememberSaveable { mutableStateOf(false) }
+    var showAiLaunchTransition by remember { mutableStateOf(false) }
+    var aiButtonBounds by remember { mutableStateOf(Rect.Zero) }
+    var homeRootBounds by remember { mutableStateOf(Rect.Zero) }
+    val reduceMotion = LocalFinanceMotion.current.reduceMotion
     val context = LocalContext.current
     val profilePhotoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
@@ -204,6 +228,11 @@ fun HomeScreen(
         if (savedTab !in availableTabs) selectedTabName = HomeTab.SUMMARY.name
     }
 
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { homeRootBounds = it.boundsInRoot() },
+    ) {
     LazyVerticalGrid(
         columns = if (expandedLayout) GridCells.Adaptive(minSize = 320.dp) else GridCells.Fixed(1),
         state = listState,
@@ -243,7 +272,26 @@ fun HomeScreen(
                     onSelect = { selectedTabName = it.name },
                     modifier = if (showAiEntry) Modifier.weight(1f) else Modifier.fillMaxWidth(),
                 )
-                if (showAiEntry) HomeAiAssistantButton(onClick = { showAiAssistant = true })
+                if (showAiEntry) {
+                    HomeAiAssistantButton(
+                        onClick = {
+                            if (reduceMotion || aiButtonBounds.width <= 0f || aiButtonBounds.height <= 0f) {
+                                showAiAssistant = true
+                            } else {
+                                showAiLaunchTransition = true
+                            }
+                        },
+                        onPositioned = {
+                            val bounds = it.boundsInRoot()
+                            aiButtonBounds = Rect(
+                                left = bounds.left - homeRootBounds.left,
+                                top = bounds.top - homeRootBounds.top,
+                                right = bounds.right - homeRootBounds.left,
+                                bottom = bounds.bottom - homeRootBounds.top,
+                            )
+                        },
+                    )
+                }
             }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
@@ -319,6 +367,16 @@ fun HomeScreen(
                 }
             }
         }
+    }
+    if (showAiLaunchTransition && showAiEntry) {
+        AiLaunchTransitionOverlay(
+            originBounds = aiButtonBounds,
+            onAnimationFinished = {
+                showAiLaunchTransition = false
+                showAiAssistant = true
+            },
+        )
+    }
     }
 
     if (showProfileEditor) {
@@ -556,11 +614,15 @@ private fun HomeTabs(
 }
 
 @Composable
-private fun HomeAiAssistantButton(onClick: () -> Unit) {
+private fun HomeAiAssistantButton(
+    onClick: () -> Unit,
+    onPositioned: (LayoutCoordinates) -> Unit,
+) {
     val colors = LocalFinanceColors.current
     Surface(
         modifier = Modifier
             .size(width = 54.dp, height = 48.dp)
+            .onGloballyPositioned(onPositioned)
             .testTag("home_ai_assistant_button")
             .semantics { contentDescription = "AI 소비 코치 열기" },
         onClick = onClick,
@@ -577,6 +639,196 @@ private fun HomeAiAssistantButton(onClick: () -> Unit) {
             Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(17.dp))
             Spacer(Modifier.width(4.dp))
             Text("AI", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun AiLaunchTransitionOverlay(
+    originBounds: Rect,
+    onAnimationFinished: () -> Unit,
+) {
+    val colors = LocalFinanceColors.current
+    val reduceMotion = LocalFinanceMotion.current.reduceMotion
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(reduceMotion) {
+        if (reduceMotion) {
+            progress.snapTo(1f)
+            onAnimationFinished()
+        } else {
+            progress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(430, easing = FastOutSlowInEasing),
+            )
+            onAnimationFinished()
+        }
+    }
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("home_ai_launch_transition")
+            .semantics { contentDescription = "AI 소비 코치 팝업 여는 중" }
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+            ),
+    ) {
+        val density = LocalDensity.current
+        val targetTop = with(density) { maxHeight.toPx() * 0.20f }
+        val targetPanelWidth = maxWidth.coerceAtMost(640.dp)
+        val panelLeftPx = with(density) { ((maxWidth - targetPanelWidth) / 2f).toPx() }
+        val targetIconCenterX = panelLeftPx + with(density) { 59.dp.toPx() }
+        val targetIconCenterY = targetTop + with(density) { 61.dp.toPx() }
+        val fraction = progress.value
+        val currentIconCenterX = originBounds.center.x + (targetIconCenterX - originBounds.center.x) * fraction
+        val currentIconCenterY = originBounds.center.y + (targetIconCenterY - originBounds.center.y) * fraction
+        val iconSizePx = with(density) { 19.dp.toPx() + (39.dp.toPx() - 19.dp.toPx()) * fraction }
+        val panelTitleAlpha = ((fraction - 0.57f) / 0.36f).coerceIn(0f, 1f)
+
+        Canvas(Modifier.fillMaxSize()) {
+            val drawProgress = fraction.coerceIn(0f, 1f)
+            drawRect(Color.Black.copy(alpha = 0.46f * drawProgress))
+
+            val left = originBounds.left + (panelLeftPx - originBounds.left) * drawProgress
+            val top = originBounds.top + (size.height * 0.20f - originBounds.top) * drawProgress
+            val targetRight = size.width - panelLeftPx
+            val right = originBounds.right + (targetRight - originBounds.right) * drawProgress
+            val bottom = originBounds.bottom + (size.height - originBounds.bottom) * drawProgress
+            val topRadius = with(density) { 16.dp.toPx() + (28.dp.toPx() - 16.dp.toPx()) * drawProgress }
+            val bottomRadius = with(density) { 16.dp.toPx() * (1f - drawProgress) }
+            val morphPath = Path().apply {
+                moveTo(left + topRadius, top)
+                lineTo(right - topRadius, top)
+                quadraticTo(right, top, right, top + topRadius)
+                lineTo(right, bottom - bottomRadius)
+                quadraticTo(right, bottom, right - bottomRadius, bottom)
+                lineTo(left + bottomRadius, bottom)
+                quadraticTo(left, bottom, left, bottom - bottomRadius)
+                lineTo(left, top + topRadius)
+                quadraticTo(left, top, left + topRadius, top)
+                close()
+            }
+            drawPath(
+                path = morphPath,
+                color = androidx.compose.ui.graphics.lerp(
+                    colors.accent.copy(alpha = 0.14f),
+                    colors.surfaceRaised,
+                    drawProgress,
+                ),
+            )
+            clipPath(morphPath) {
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(colors.accent.copy(alpha = 0.17f * drawProgress), colors.surfaceRaised),
+                        startY = top,
+                        endY = (top + with(density) { 190.dp.toPx() }).coerceAtLeast(top + 1f),
+                    ),
+                )
+            }
+            if (drawProgress < 0.99f) {
+                drawPath(
+                    path = morphPath,
+                    color = colors.accent.copy(alpha = 0.38f * (1f - drawProgress)),
+                    style = Stroke(width = with(density) { 1.2.dp.toPx() }),
+                )
+            }
+
+            val burst = (1f - drawProgress).coerceIn(0f, 1f)
+            val haloRadius = with(density) { 22.dp.toPx() + 33.dp.toPx() * drawProgress }
+            drawCircle(
+                color = colors.accent.copy(alpha = 0.22f * burst),
+                radius = haloRadius,
+                center = Offset(currentIconCenterX, currentIconCenterY),
+            )
+            drawCircle(
+                color = colors.income.copy(alpha = 0.9f * burst),
+                radius = with(density) { 10.dp.toPx() + 14.dp.toPx() * drawProgress },
+                center = Offset(currentIconCenterX, currentIconCenterY),
+                style = Stroke(width = with(density) { 1.3.dp.toPx() }),
+            )
+            repeat(6) { index ->
+                val angle = (index * 60f - 90f) * (Math.PI.toFloat() / 180f)
+                val particleDistance = with(density) { 16.dp.toPx() + 30.dp.toPx() * drawProgress }
+                val particle = Offset(
+                    x = currentIconCenterX + cos(angle) * particleDistance,
+                    y = currentIconCenterY + sin(angle) * particleDistance,
+                )
+                val particleColor = if (index % 2 == 0) colors.income else colors.accent
+                drawCircle(
+                    color = particleColor.copy(alpha = 0.95f * burst),
+                    radius = with(density) { 1.8.dp.toPx() * burst },
+                    center = particle,
+                )
+                if (index % 2 == 0 && burst > 0f) {
+                    val ray = with(density) { 3.6.dp.toPx() * burst }
+                    drawLine(
+                        color = particleColor.copy(alpha = 0.7f * burst),
+                        start = Offset(particle.x - ray, particle.y),
+                        end = Offset(particle.x + ray, particle.y),
+                        strokeWidth = with(density) { 0.8.dp.toPx() },
+                    )
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .offset {
+                    IntOffset(
+                        x = (currentIconCenterX - iconSizePx / 2f).roundToInt(),
+                        y = (currentIconCenterY - iconSizePx / 2f).roundToInt(),
+                    )
+                }
+                .size(with(density) { iconSizePx.toDp() })
+                .graphicsLayer { rotationZ = -32f * (1f - fraction) }
+                .background(Brush.linearGradient(listOf(colors.accent, colors.income, colors.accent)), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = Color.White, modifier = Modifier.size(21.dp))
+        }
+
+        Column(
+            modifier = Modifier
+                .offset {
+                    IntOffset(
+                        x = panelLeftPx.roundToInt() + with(density) { 98.dp.roundToPx() },
+                        y = targetTop.roundToInt() + with(density) { 38.dp.roundToPx() },
+                    )
+                }
+                .graphicsLayer { alpha = panelTitleAlpha },
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text("AI 소비 코치", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = colors.textPrimary)
+            Text("이번 달 흐름을 함께 살펴봐요", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+        }
+    }
+}
+
+@Composable
+private fun AiLaunchOrb(modifier: Modifier = Modifier) {
+    val colors = LocalFinanceColors.current
+    Box(modifier.size(58.dp), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize().testTag("home_ai_launch_orb")) {
+            drawCircle(colors.accent.copy(alpha = 0.12f), radius = size.minDimension * 0.47f)
+            drawCircle(colors.income.copy(alpha = 0.25f), radius = size.minDimension * 0.39f, style = Stroke(width = 1.dp.toPx()))
+        }
+        Box(
+            modifier = Modifier
+                .size(39.dp)
+                .background(
+                    brush = Brush.linearGradient(listOf(colors.accent, colors.income, colors.accent)),
+                    shape = CircleShape,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Rounded.AutoAwesome,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(21.dp),
+            )
         }
     }
 }
@@ -598,6 +850,15 @@ private fun AiAssistantBottomSheet(
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val bodyVisibility = remember { MutableTransitionState(false) }
+    val labelAlpha by animateFloatAsState(
+        targetValue = if (bodyVisibility.targetState) 1f else 0f,
+        animationSpec = tween(
+            durationMillis = if (motion.reduceMotion) 0 else 300,
+            delayMillis = if (motion.reduceMotion) 0 else 145,
+            easing = FastOutSlowInEasing,
+        ),
+        label = "aiAssistantTitleEntrance",
+    )
     LaunchedEffect(Unit) { bodyVisibility.targetState = true }
 
     ModalBottomSheet(
@@ -633,12 +894,16 @@ private fun AiAssistantBottomSheet(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Surface(color = colors.accent.copy(alpha = 0.16f), shape = CircleShape) {
-                        Box(modifier = Modifier.size(38.dp), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
-                        }
-                    }
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    AiLaunchOrb()
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .graphicsLayer {
+                                alpha = labelAlpha
+                                translationY = (1f - labelAlpha) * 7.dp.toPx()
+                            },
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
                         Text("AI 소비 코치", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Text("이번 달 흐름을 함께 살펴봐요", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                     }

@@ -282,10 +282,26 @@ class HomeDashboardScreenshotTest {
         composeRule.onNodeWithTag("home_tab_report").performClick().assertIsSelected()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("home_tab_content_report").assertExists()
+        composeRule.mainClock.autoAdvance = false
         composeRule.onNodeWithTag("home_ai_assistant_button").performClick()
+        composeRule.mainClock.advanceTimeBy(300)
+        composeRule.onNodeWithTag("home_ai_launch_transition").assertExists()
+        val morphBytes = composeRule.onRoot().captureToImage().asAndroidBitmap().let { bitmap ->
+            ByteArrayOutputStream().use { output ->
+                assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output))
+                output.toByteArray().also { bitmap.recycle() }
+            }
+        }
+        assertTrue("The AI button-to-popup transition screenshot was not created.", morphBytes.size > 10_000)
+        Base64.encodeToString(morphBytes, Base64.NO_WRAP).chunked(2_000).forEachIndexed { index, chunk ->
+            Log.i("MOASSEUM_CAPTURE", "MSS_HOME_AI_MORPH|$index|$chunk")
+        }
+        composeRule.mainClock.advanceTimeBy(250)
+        composeRule.mainClock.autoAdvance = true
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("home_ai_assistant_sheet").assertExists()
         composeRule.onNodeWithTag("home_ai_sheet_content").assertExists()
+        composeRule.onNodeWithTag("home_ai_launch_orb").assertExists()
         composeRule.onNodeWithText("AI 소비 코치").assertExists()
         composeRule.onNodeWithText("AI 분석 만들기").assertExists()
         val lastSuggestionBounds = composeRule.onNodeWithText("가장 많이 쓴 항목은?").getBoundsInRoot()

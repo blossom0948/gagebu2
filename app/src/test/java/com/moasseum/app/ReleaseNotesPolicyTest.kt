@@ -239,11 +239,11 @@ class ReleaseNotesPolicyTest {
 
     @Test
     fun `release catalog contains a note for every published version in the supported range`() {
-        val versions = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.51")
+        val versions = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.52")
             .mapNotNull { it.releaseVersion }
             .toSet()
 
-        assertEquals((listOf("0.1.1", "0.1.2") + (4..51).map { "0.1.$it" }).toSet(), versions)
+        assertEquals((listOf("0.1.1", "0.1.2") + (4..52).map { "0.1.$it" }).toSet(), versions)
     }
 
     @Test
@@ -282,5 +282,18 @@ class ReleaseNotesPolicyTest {
         assertTrue(slides.last().title.contains("팝업"))
         assertTrue(slides.last().description.contains("등장 모션"))
         assertTrue(slides.last().imageDescription.contains("12,000원 QA 합성"))
+    }
+
+    @Test
+    fun `v0 1 52 documents the AI launch effect with a real screen capture`() {
+        val slides = ReleaseNotesCatalog.slidesSince("0.1.51", "0.1.52")
+
+        assertEquals(1, slides.size)
+        assertEquals("0.1.52", slides.single().releaseVersion)
+        assertTrue(slides.single().title.contains("버튼에서 팝업"))
+        assertTrue(slides.single().description.contains("빛 고리"))
+        assertTrue(slides.single().description.contains("모션 줄이기"))
+        assertTrue(slides.single().imageResId != null)
+        assertEquals(904f / 1821f, slides.single().imageAspectRatio, 0.001f)
     }
 }

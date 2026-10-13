@@ -305,6 +305,26 @@ class WhatsNewDialogInteractionTest {
         assertTrue(dismissed)
     }
 
+    @Test fun v0152PopupShowsTheActualAiEntranceScreen() {
+        val slides = ReleaseNotesCatalog.slidesSince("0.1.51", "0.1.52")
+        var dismissed = false
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Box(Modifier.fillMaxSize().background(LocalFinanceColors.current.surfaceBase)) {
+                    WhatsNewDialog(versionName = "0.1.52", slides = slides, onDismiss = { dismissed = true })
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("v0.1.52 신기능").assertExists()
+        composeRule.onNodeWithText("AI 버튼에서 팝업이 펼쳐져요").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4 격리 QA에서 촬영한 AI 소비 코치 팝업 화면. AI 비주얼은 실제 앱 UI이며, 합성 QA 거래만 표시되고 개인 기록은 없습니다.",
+        ).assertExists()
+        composeRule.onNodeWithText("확인").performScrollTo().performClick()
+        assertTrue(dismissed)
+    }
+
     @Test fun oldReleaseWithoutAnAuthenticCaptureUsesAReadableSummaryCard() {
         val slides = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.2")
         composeRule.setContent {
