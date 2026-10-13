@@ -2,11 +2,11 @@ package com.moasseum.app.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
@@ -16,14 +16,17 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -76,16 +79,13 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import com.moasseum.app.ui.components.FinanceTextField as OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -144,8 +144,6 @@ import com.moasseum.app.ui.theme.LocalFinanceMotion
 import java.time.YearMonth
 import java.time.LocalDate
 import java.time.DayOfWeek
-import kotlin.math.cos
-import kotlin.math.sin
 import kotlin.math.roundToInt
 
 private enum class HomeTab(val label: String) {
@@ -189,11 +187,9 @@ fun HomeScreen(
 ) {
     var selectedTabName by rememberSaveable { mutableStateOf(HomeTab.SUMMARY.name) }
     var showProfileEditor by rememberSaveable { mutableStateOf(false) }
-    var showAiAssistant by rememberSaveable { mutableStateOf(false) }
-    var showAiLaunchTransition by remember { mutableStateOf(false) }
+    var showAiAssistant by remember { mutableStateOf(false) }
     var aiButtonBounds by remember { mutableStateOf(Rect.Zero) }
     var homeRootBounds by remember { mutableStateOf(Rect.Zero) }
-    val reduceMotion = LocalFinanceMotion.current.reduceMotion
     val context = LocalContext.current
     val profilePhotoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
@@ -274,12 +270,9 @@ fun HomeScreen(
                 )
                 if (showAiEntry) {
                     HomeAiAssistantButton(
+                        visible = !showAiAssistant,
                         onClick = {
-                            if (reduceMotion || aiButtonBounds.width <= 0f || aiButtonBounds.height <= 0f) {
-                                showAiAssistant = true
-                            } else {
-                                showAiLaunchTransition = true
-                            }
+                            showAiAssistant = true
                         },
                         onPositioned = {
                             val bounds = it.boundsInRoot()
@@ -368,13 +361,17 @@ fun HomeScreen(
             }
         }
     }
-    if (showAiLaunchTransition && showAiEntry) {
-        AiLaunchTransitionOverlay(
+    if (showAiAssistant && showAiEntry) {
+        AiAssistantPopup(
+            uiState = uiState,
+            analysisState = aiAnalysisState,
+            onGenerateAnalysis = onGenerateAiAnalysis,
+            questionState = aiQuestionState,
+            onAskQuestion = onAskAiQuestion,
+            showSummary = AiAdviceCards.HOME_SUMMARY in aiAdviceCards,
+            showReport = AiAdviceCards.HOME_REPORT in aiAdviceCards,
             originBounds = aiButtonBounds,
-            onAnimationFinished = {
-                showAiLaunchTransition = false
-                showAiAssistant = true
-            },
+            onDismiss = { showAiAssistant = false },
         )
     }
     }
@@ -397,18 +394,6 @@ fun HomeScreen(
                 } }
                 onSaveProfilePhotoUri(null)
             },
-        )
-    }
-    if (showAiAssistant && showAiEntry) {
-        AiAssistantBottomSheet(
-            uiState = uiState,
-            analysisState = aiAnalysisState,
-            onGenerateAnalysis = onGenerateAiAnalysis,
-            questionState = aiQuestionState,
-            onAskQuestion = onAskAiQuestion,
-            showSummary = AiAdviceCards.HOME_SUMMARY in aiAdviceCards,
-            showReport = AiAdviceCards.HOME_REPORT in aiAdviceCards,
-            onDismiss = { showAiAssistant = false },
         )
     }
 }
@@ -615,6 +600,7 @@ private fun HomeTabs(
 
 @Composable
 private fun HomeAiAssistantButton(
+    visible: Boolean,
     onClick: () -> Unit,
     onPositioned: (LayoutCoordinates) -> Unit,
 ) {
@@ -622,6 +608,7 @@ private fun HomeAiAssistantButton(
     Surface(
         modifier = Modifier
             .size(width = 54.dp, height = 48.dp)
+            .graphicsLayer { alpha = if (visible) 1f else 0f }
             .onGloballyPositioned(onPositioned)
             .testTag("home_ai_assistant_button")
             .semantics { contentDescription = "AI 소비 코치 열기" },
@@ -644,23 +631,45 @@ private fun HomeAiAssistantButton(
 }
 
 @Composable
-private fun AiLaunchTransitionOverlay(
+private fun AiAssistantPopup(
+    uiState: LedgerUiState,
+    analysisState: SpendingAnalysisState,
+    onGenerateAnalysis: () -> Unit,
+    questionState: SpendingQuestionState,
+    onAskQuestion: (String) -> Unit,
+    showSummary: Boolean,
+    showReport: Boolean,
     originBounds: Rect,
-    onAnimationFinished: () -> Unit,
+    onDismiss: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
     val reduceMotion = LocalFinanceMotion.current.reduceMotion
-    val progress = remember { Animatable(0f) }
+    val progress = remember { Animatable(if (reduceMotion) 1f else 0f) }
+    var dismissing by remember { mutableStateOf(false) }
+    val dismiss = { if (!dismissing) dismissing = true }
+
+    BackHandler(enabled = !dismissing, onBack = dismiss)
     LaunchedEffect(reduceMotion) {
         if (reduceMotion) {
             progress.snapTo(1f)
-            onAnimationFinished()
-        } else {
+        } else if (!dismissing) {
             progress.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(430, easing = FastOutSlowInEasing),
+                animationSpec = spring(dampingRatio = 0.92f, stiffness = 420f),
             )
-            onAnimationFinished()
+        }
+    }
+    LaunchedEffect(dismissing, reduceMotion) {
+        if (dismissing) {
+            if (reduceMotion) {
+                progress.snapTo(0f)
+            } else {
+                progress.animateTo(
+                    targetValue = 0f,
+                    animationSpec = spring(dampingRatio = 0.92f, stiffness = 420f),
+                )
+            }
+            onDismiss()
         }
     }
 
@@ -668,141 +677,195 @@ private fun AiLaunchTransitionOverlay(
         modifier = Modifier
             .fillMaxSize()
             .testTag("home_ai_launch_transition")
-            .semantics { contentDescription = "AI 소비 코치 팝업 여는 중" }
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = {},
-            ),
+            .semantics { contentDescription = "AI 소비 코치 팝업" },
     ) {
         val density = LocalDensity.current
-        val targetTop = with(density) { maxHeight.toPx() * 0.20f }
-        val targetPanelWidth = maxWidth.coerceAtMost(640.dp)
-        val panelLeftPx = with(density) { ((maxWidth - targetPanelWidth) / 2f).toPx() }
-        val targetIconCenterX = panelLeftPx + with(density) { 59.dp.toPx() }
-        val targetIconCenterY = targetTop + with(density) { 61.dp.toPx() }
-        val fraction = progress.value
-        val currentIconCenterX = originBounds.center.x + (targetIconCenterX - originBounds.center.x) * fraction
-        val currentIconCenterY = originBounds.center.y + (targetIconCenterY - originBounds.center.y) * fraction
-        val iconSizePx = with(density) { 19.dp.toPx() + (39.dp.toPx() - 19.dp.toPx()) * fraction }
-        val panelTitleAlpha = ((fraction - 0.57f) / 0.36f).coerceIn(0f, 1f)
+        val fraction = progress.value.coerceIn(0f, 1f)
+        val targetWidth = maxWidth.coerceAtMost(640.dp)
+        val targetLeft = with(density) { ((maxWidth - targetWidth) / 2f).toPx() }
+        val targetWidthPx = with(density) { targetWidth.toPx() }
+        val targetTop = with(density) { maxHeight.toPx() * 0.12f }
+        val targetBottom = with(density) { maxHeight.toPx() }
+        val targetRight = targetLeft + targetWidthPx
+        val measuredOrigin = originBounds.takeIf { it.width > 0f && it.height > 0f } ?: run {
+            val fallbackWidth = with(density) { 54.dp.toPx() }
+            val fallbackHeight = with(density) { 48.dp.toPx() }
+            Rect(
+                left = targetLeft + (targetWidthPx - fallbackWidth) / 2f,
+                top = targetTop + with(density) { 8.dp.toPx() },
+                right = targetLeft + (targetWidthPx + fallbackWidth) / 2f,
+                bottom = targetTop + with(density) { 8.dp.toPx() } + fallbackHeight,
+            )
+        }
+        val bounds = Rect(
+            left = measuredOrigin.left + (targetLeft - measuredOrigin.left) * fraction,
+            top = measuredOrigin.top + (targetTop - measuredOrigin.top) * fraction,
+            right = measuredOrigin.right + (targetRight - measuredOrigin.right) * fraction,
+            bottom = measuredOrigin.bottom + (targetBottom - measuredOrigin.bottom) * fraction,
+        )
+        val topRadius = with(density) { 16.dp.toPx() + (28.dp.toPx() - 16.dp.toPx()) * fraction }
+        val bottomRadius = with(density) { 16.dp.toPx() * (1f - fraction) }
+        val popupPath = remember(bounds, topRadius, bottomRadius) {
+            aiPopupMorphPath(bounds, topRadius, bottomRadius)
+        }
+        val targetIconCenterX = targetLeft + with(density) { 59.dp.toPx() }
+        val targetIconCenterY = targetTop + with(density) { 54.dp.toPx() }
+        val iconCenter = Offset(
+            x = measuredOrigin.center.x + (targetIconCenterX - measuredOrigin.center.x) * fraction,
+            y = measuredOrigin.center.y + (targetIconCenterY - measuredOrigin.center.y) * fraction,
+        )
+        val iconSize = with(density) { 19.dp.toPx() + (39.dp.toPx() - 19.dp.toPx()) * fraction }
+        val contentReveal = ((fraction - 0.58f) / 0.34f).coerceIn(0f, 1f)
+        val settledOrbReveal = ((fraction - 0.82f) / 0.12f).coerceIn(0f, 1f)
+
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .graphicsLayer { alpha = 0.50f * fraction }
+                .background(Color.Black)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = dismiss,
+                )
+                .testTag("home_ai_popup_scrim"),
+        )
 
         Canvas(Modifier.fillMaxSize()) {
-            val drawProgress = fraction.coerceIn(0f, 1f)
-            drawRect(Color.Black.copy(alpha = 0.46f * drawProgress))
-
-            val left = originBounds.left + (panelLeftPx - originBounds.left) * drawProgress
-            val top = originBounds.top + (size.height * 0.20f - originBounds.top) * drawProgress
-            val targetRight = size.width - panelLeftPx
-            val right = originBounds.right + (targetRight - originBounds.right) * drawProgress
-            val bottom = originBounds.bottom + (size.height - originBounds.bottom) * drawProgress
-            val topRadius = with(density) { 16.dp.toPx() + (28.dp.toPx() - 16.dp.toPx()) * drawProgress }
-            val bottomRadius = with(density) { 16.dp.toPx() * (1f - drawProgress) }
-            val morphPath = Path().apply {
-                moveTo(left + topRadius, top)
-                lineTo(right - topRadius, top)
-                quadraticTo(right, top, right, top + topRadius)
-                lineTo(right, bottom - bottomRadius)
-                quadraticTo(right, bottom, right - bottomRadius, bottom)
-                lineTo(left + bottomRadius, bottom)
-                quadraticTo(left, bottom, left, bottom - bottomRadius)
-                lineTo(left, top + topRadius)
-                quadraticTo(left, top, left + topRadius, top)
-                close()
-            }
             drawPath(
-                path = morphPath,
+                path = popupPath,
                 color = androidx.compose.ui.graphics.lerp(
-                    colors.accent.copy(alpha = 0.14f),
+                    colors.accent.copy(alpha = 0.16f),
                     colors.surfaceRaised,
-                    drawProgress,
+                    fraction,
                 ),
             )
-            clipPath(morphPath) {
+            clipPath(popupPath) {
                 drawRect(
                     brush = Brush.verticalGradient(
-                        colors = listOf(colors.accent.copy(alpha = 0.17f * drawProgress), colors.surfaceRaised),
-                        startY = top,
-                        endY = (top + with(density) { 190.dp.toPx() }).coerceAtLeast(top + 1f),
+                        colors = listOf(colors.accent.copy(alpha = 0.10f * fraction), colors.surfaceRaised),
+                        startY = bounds.top,
+                        endY = (bounds.top + with(density) { 220.dp.toPx() }).coerceAtLeast(bounds.top + 1f),
                     ),
                 )
             }
-            if (drawProgress < 0.99f) {
+            if (fraction < 0.995f) {
                 drawPath(
-                    path = morphPath,
-                    color = colors.accent.copy(alpha = 0.38f * (1f - drawProgress)),
-                    style = Stroke(width = with(density) { 1.2.dp.toPx() }),
+                    path = popupPath,
+                    color = colors.accent.copy(alpha = 0.18f * (1f - fraction)),
+                    style = Stroke(width = with(density) { 1.dp.toPx() }),
                 )
             }
-
-            val burst = (1f - drawProgress).coerceIn(0f, 1f)
-            val haloRadius = with(density) { 22.dp.toPx() + 33.dp.toPx() * drawProgress }
+            val coreGlow = (1f - fraction).coerceIn(0f, 1f)
             drawCircle(
-                color = colors.accent.copy(alpha = 0.22f * burst),
-                radius = haloRadius,
-                center = Offset(currentIconCenterX, currentIconCenterY),
+                color = colors.accent.copy(alpha = 0.15f * coreGlow),
+                radius = with(density) { 22.dp.toPx() + 12.dp.toPx() * fraction },
+                center = iconCenter,
             )
-            drawCircle(
-                color = colors.income.copy(alpha = 0.9f * burst),
-                radius = with(density) { 10.dp.toPx() + 14.dp.toPx() * drawProgress },
-                center = Offset(currentIconCenterX, currentIconCenterY),
-                style = Stroke(width = with(density) { 1.3.dp.toPx() }),
-            )
-            repeat(6) { index ->
-                val angle = (index * 60f - 90f) * (Math.PI.toFloat() / 180f)
-                val particleDistance = with(density) { 16.dp.toPx() + 30.dp.toPx() * drawProgress }
-                val particle = Offset(
-                    x = currentIconCenterX + cos(angle) * particleDistance,
-                    y = currentIconCenterY + sin(angle) * particleDistance,
-                )
-                val particleColor = if (index % 2 == 0) colors.income else colors.accent
-                drawCircle(
-                    color = particleColor.copy(alpha = 0.95f * burst),
-                    radius = with(density) { 1.8.dp.toPx() * burst },
-                    center = particle,
-                )
-                if (index % 2 == 0 && burst > 0f) {
-                    val ray = with(density) { 3.6.dp.toPx() * burst }
-                    drawLine(
-                        color = particleColor.copy(alpha = 0.7f * burst),
-                        start = Offset(particle.x - ray, particle.y),
-                        end = Offset(particle.x + ray, particle.y),
-                        strokeWidth = with(density) { 0.8.dp.toPx() },
-                    )
-                }
-            }
         }
 
         Box(
             modifier = Modifier
-                .offset {
-                    IntOffset(
-                        x = (currentIconCenterX - iconSizePx / 2f).roundToInt(),
-                        y = (currentIconCenterY - iconSizePx / 2f).roundToInt(),
+                .fillMaxSize()
+                .drawWithCache {
+                    val clip = popupPath
+                    onDrawWithContent {
+                        clipPath(clip) { this@onDrawWithContent.drawContent() }
+                    }
+                },
+        ) {
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(targetLeft.roundToInt(), targetTop.roundToInt()) }
+                    .size(width = targetWidth, height = with(density) { (targetBottom - targetTop).toDp() })
+                    .pointerInput(Unit) { detectTapGestures(onTap = {}) }
+                    .testTag("home_ai_assistant_sheet"),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            alpha = contentReveal
+                            translationY = (1f - contentReveal) * with(density) { 10.dp.toPx() }
+                        }
+                        .verticalScroll(rememberScrollState())
+                        .imePadding()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 16.dp)
+                        .padding(top = 14.dp, bottom = 18.dp)
+                        .testTag("home_ai_sheet_content"),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    FinanceCard(highlighted = true) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(start = 14.dp, top = 11.dp, end = 8.dp, bottom = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            AiLaunchOrb(modifier = Modifier.graphicsLayer { alpha = settledOrbReveal })
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                Text("AI 소비 코치", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text("이번 달 흐름을 함께 살펴봐요", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                            }
+                            androidx.compose.material3.IconButton(onClick = dismiss) {
+                                Icon(Icons.Rounded.Close, contentDescription = "AI 창 닫기", tint = colors.textSecondary)
+                            }
+                        }
+                    }
+                    AiAnalysisContent(
+                        uiState = uiState,
+                        state = analysisState,
+                        onGenerate = onGenerateAnalysis,
+                        questionState = questionState,
+                        onAskQuestion = onAskQuestion,
+                        showSummary = showSummary,
+                        showReport = showReport,
                     )
                 }
-                .size(with(density) { iconSizePx.toDp() })
-                .graphicsLayer { rotationZ = -32f * (1f - fraction) }
-                .background(Brush.linearGradient(listOf(colors.accent, colors.income, colors.accent)), CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = Color.White, modifier = Modifier.size(21.dp))
-        }
+            }
 
-        Column(
-            modifier = Modifier
-                .offset {
-                    IntOffset(
-                        x = panelLeftPx.roundToInt() + with(density) { 98.dp.roundToPx() },
-                        y = targetTop.roundToInt() + with(density) { 38.dp.roundToPx() },
-                    )
-                }
-                .graphicsLayer { alpha = panelTitleAlpha },
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text("AI 소비 코치", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = colors.textPrimary)
-            Text("이번 달 흐름을 함께 살펴봐요", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            x = (iconCenter.x - iconSize / 2f).roundToInt(),
+                            y = (iconCenter.y - iconSize / 2f).roundToInt(),
+                        )
+                    }
+                    .size(with(density) { iconSize.toDp() })
+                    .graphicsLayer { rotationZ = -8f * (1f - fraction) }
+                    .background(Brush.linearGradient(listOf(colors.accent, colors.income)), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Rounded.AutoAwesome,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(with(density) { (17.dp.toPx() + 4.dp.toPx() * fraction).toDp() }),
+                )
+            }
         }
+    }
+}
+
+private fun aiPopupMorphPath(bounds: Rect, requestedTopRadius: Float, requestedBottomRadius: Float): Path {
+    val radiusLimit = (minOf(bounds.width, bounds.height) / 2f).coerceAtLeast(0f)
+    val topRadius = requestedTopRadius.coerceIn(0f, radiusLimit)
+    val bottomRadius = requestedBottomRadius.coerceIn(0f, radiusLimit)
+    return Path().apply {
+        moveTo(bounds.left + topRadius, bounds.top)
+        lineTo(bounds.right - topRadius, bounds.top)
+        quadraticTo(bounds.right, bounds.top, bounds.right, bounds.top + topRadius)
+        lineTo(bounds.right, bounds.bottom - bottomRadius)
+        quadraticTo(bounds.right, bounds.bottom, bounds.right - bottomRadius, bounds.bottom)
+        lineTo(bounds.left + bottomRadius, bounds.bottom)
+        quadraticTo(bounds.left, bounds.bottom, bounds.left, bounds.bottom - bottomRadius)
+        lineTo(bounds.left, bounds.top + topRadius)
+        quadraticTo(bounds.left, bounds.top, bounds.left + topRadius, bounds.top)
+        close()
     }
 }
 
@@ -829,108 +892,6 @@ private fun AiLaunchOrb(modifier: Modifier = Modifier) {
                 tint = Color.White,
                 modifier = Modifier.size(21.dp),
             )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun AiAssistantBottomSheet(
-    uiState: LedgerUiState,
-    analysisState: SpendingAnalysisState,
-    onGenerateAnalysis: () -> Unit,
-    questionState: SpendingQuestionState,
-    onAskQuestion: (String) -> Unit,
-    showSummary: Boolean,
-    showReport: Boolean,
-    onDismiss: () -> Unit,
-) {
-    val colors = LocalFinanceColors.current
-    val motion = LocalFinanceMotion.current
-    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val bodyVisibility = remember { MutableTransitionState(false) }
-    val labelAlpha by animateFloatAsState(
-        targetValue = if (bodyVisibility.targetState) 1f else 0f,
-        animationSpec = tween(
-            durationMillis = if (motion.reduceMotion) 0 else 300,
-            delayMillis = if (motion.reduceMotion) 0 else 145,
-            easing = FastOutSlowInEasing,
-        ),
-        label = "aiAssistantTitleEntrance",
-    )
-    LaunchedEffect(Unit) { bodyVisibility.targetState = true }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = colors.surfaceRaised,
-        contentColor = colors.textPrimary,
-        dragHandle = null,
-        modifier = Modifier.testTag("home_ai_assistant_sheet"),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = screenHeight * 0.88f)
-                .verticalScroll(rememberScrollState())
-                .imePadding()
-                .navigationBarsPadding()
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 18.dp)
-                .testTag("home_ai_sheet_content"),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .padding(top = 6.dp, bottom = 2.dp)
-                    .size(width = 34.dp, height = 4.dp)
-                    .background(colors.textSecondary.copy(alpha = 0.34f), CircleShape),
-            )
-            FinanceCard(highlighted = true) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(start = 14.dp, top = 11.dp, end = 8.dp, bottom = 11.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    AiLaunchOrb()
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .graphicsLayer {
-                                alpha = labelAlpha
-                                translationY = (1f - labelAlpha) * 7.dp.toPx()
-                            },
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        Text("AI 소비 코치", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("이번 달 흐름을 함께 살펴봐요", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-                    }
-                    androidx.compose.material3.IconButton(onClick = onDismiss) {
-                        Icon(Icons.Rounded.Close, contentDescription = "AI 창 닫기", tint = colors.textSecondary)
-                    }
-                }
-            }
-            AnimatedVisibility(
-                visibleState = bodyVisibility,
-                enter = if (motion.reduceMotion) EnterTransition.None else
-                    fadeIn(tween(230, easing = FastOutSlowInEasing)) + slideInVertically(
-                        animationSpec = tween(230, easing = FastOutSlowInEasing),
-                        initialOffsetY = { height -> height / 18 },
-                    ),
-                exit = if (motion.reduceMotion) ExitTransition.None else fadeOut(tween(120)),
-            ) {
-                AiAnalysisContent(
-                    uiState = uiState,
-                    state = analysisState,
-                    onGenerate = onGenerateAnalysis,
-                    questionState = questionState,
-                    onAskQuestion = onAskQuestion,
-                    showSummary = showSummary,
-                    showReport = showReport,
-                )
-            }
         }
     }
 }

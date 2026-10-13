@@ -239,11 +239,11 @@ class ReleaseNotesPolicyTest {
 
     @Test
     fun `release catalog contains a note for every published version in the supported range`() {
-        val versions = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.52")
+        val versions = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.53")
             .mapNotNull { it.releaseVersion }
             .toSet()
 
-        assertEquals((listOf("0.1.1", "0.1.2") + (4..52).map { "0.1.$it" }).toSet(), versions)
+        assertEquals((listOf("0.1.1", "0.1.2") + (4..53).map { "0.1.$it" }).toSet(), versions)
     }
 
     @Test
@@ -295,5 +295,18 @@ class ReleaseNotesPolicyTest {
         assertTrue(slides.single().description.contains("모션 줄이기"))
         assertTrue(slides.single().imageResId != null)
         assertEquals(904f / 1821f, slides.single().imageAspectRatio, 0.001f)
+    }
+
+    @Test
+    fun `v0 1 53 documents one reversible AI popup instead of stacking a sheet`() {
+        val slides = ReleaseNotesCatalog.slidesSince("0.1.52", "0.1.53")
+
+        assertEquals(1, slides.size)
+        assertEquals("0.1.53", slides.single().releaseVersion)
+        assertTrue(slides.single().title.contains("한 번에"))
+        assertTrue(slides.single().description.contains("같은 경로"))
+        assertTrue(slides.single().description.contains("두 번째 창은 없고"))
+        assertTrue(slides.single().imageResId != null)
+        assertEquals(904f / 2038f, slides.single().imageAspectRatio, 0.001f)
     }
 }

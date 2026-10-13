@@ -4,6 +4,7 @@ import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.util.Base64
 import android.util.Log
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -15,15 +16,19 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -42,6 +47,7 @@ import java.io.ByteArrayOutputStream
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -232,9 +238,10 @@ class HomeDashboardScreenshotTest {
         composeRule.runOnIdle { assertEquals("budget", openedManageFeature.get()) }
     }
 
-    @Test fun homeTabsExposeSelectionAndSwitchDashboardContent() {
+    @Test fun homeTabsSwitchAndAiPopupExpandsAndCollapsesAsOneSurface() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         check(context.packageName.endsWith(".qa")) { "Home tab interaction tests are restricted to the isolated QA app." }
+        val aiAnalysisClicks = AtomicInteger()
 
         composeRule.setContent {
             MoasseumTheme(darkTheme = true) {
@@ -250,7 +257,7 @@ class HomeDashboardScreenshotTest {
                             budgetAmount = 250_000,
                         ),
                         aiAnalysisState = SpendingAnalysisState.Idle,
-                        onGenerateAiAnalysis = {},
+                        onGenerateAiAnalysis = { aiAnalysisClicks.incrementAndGet() },
                         aiQuestionState = SpendingQuestionState.Idle,
                         onAskAiQuestion = {},
                         categoryBudgets = emptyMap(),
@@ -284,8 +291,9 @@ class HomeDashboardScreenshotTest {
         composeRule.onNodeWithTag("home_tab_content_report").assertExists()
         composeRule.mainClock.autoAdvance = false
         composeRule.onNodeWithTag("home_ai_assistant_button").performClick()
-        composeRule.mainClock.advanceTimeBy(300)
+        composeRule.mainClock.advanceTimeBy(120)
         composeRule.onNodeWithTag("home_ai_launch_transition").assertExists()
+        composeRule.onAllNodesWithTag("home_ai_assistant_sheet").assertCountEquals(1)
         val morphBytes = composeRule.onRoot().captureToImage().asAndroidBitmap().let { bitmap ->
             ByteArrayOutputStream().use { output ->
                 assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output))
@@ -296,10 +304,12 @@ class HomeDashboardScreenshotTest {
         Base64.encodeToString(morphBytes, Base64.NO_WRAP).chunked(2_000).forEachIndexed { index, chunk ->
             Log.i("MOASSEUM_CAPTURE", "MSS_HOME_AI_MORPH|$index|$chunk")
         }
-        composeRule.mainClock.advanceTimeBy(250)
+        composeRule.mainClock.advanceTimeBy(420)
         composeRule.mainClock.autoAdvance = true
         composeRule.waitForIdle()
+        captureAndLogRoot("MSS_HOME_AI_EXPANDED")
         composeRule.onNodeWithTag("home_ai_assistant_sheet").assertExists()
+        composeRule.onAllNodesWithTag("home_ai_assistant_sheet").assertCountEquals(1)
         composeRule.onNodeWithTag("home_ai_sheet_content").assertExists()
         composeRule.onNodeWithTag("home_ai_launch_orb").assertExists()
         composeRule.onNodeWithText("AI 소비 코치").assertExists()
@@ -318,9 +328,39 @@ class HomeDashboardScreenshotTest {
         Base64.encodeToString(bytes, Base64.NO_WRAP).chunked(2_000).forEachIndexed { index, chunk ->
             Log.i("MOASSEUM_CAPTURE", "MSS_HOME_AI_SHEET|$index|$chunk")
         }
+        composeRule.onNodeWithText("AI 분석 만들기").performClick()
+        composeRule.runOnIdle { assertEquals(1, aiAnalysisClicks.get()) }
+        composeRule.mainClock.autoAdvance = false
         composeRule.onNodeWithContentDescription("AI 창 닫기").performClick()
+        composeRule.mainClock.advanceTimeBy(140)
+        composeRule.onNodeWithTag("home_ai_assistant_sheet").assertExists()
+        captureAndLogRoot("MSS_HOME_AI_COLLAPSE")
+        composeRule.mainClock.advanceTimeBy(600)
+        composeRule.mainClock.autoAdvance = true
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("home_ai_assistant_sheet").assertDoesNotExist()
+
+        composeRule.onNodeWithTag("home_ai_assistant_button").performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("home_ai_assistant_sheet").assertCountEquals(1)
+        composeRule.onNodeWithTag("home_ai_popup_scrim").performTouchInput {
+            click(Offset(2f, 2f))
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("home_ai_assistant_sheet").assertDoesNotExist()
+    }
+
+    private fun captureAndLogRoot(tag: String) {
+        val bytes = composeRule.onRoot().captureToImage().asAndroidBitmap().let { bitmap ->
+            ByteArrayOutputStream().use { output ->
+                assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output))
+                output.toByteArray().also { bitmap.recycle() }
+            }
+        }
+        assertTrue("The $tag screenshot was not created.", bytes.size > 10_000)
+        Base64.encodeToString(bytes, Base64.NO_WRAP).chunked(2_000).forEachIndexed { index, chunk ->
+            Log.i("MOASSEUM_CAPTURE", "$tag|$index|$chunk")
+        }
     }
 
     @Test fun expandedFoldDashboardPairsCategoryAndRecentCardsAtEqualWidths() {

@@ -59,7 +59,7 @@ data class ReleaseNoteSlide(
 )
 
 object ReleaseNotesCatalog {
-    private val supportedVersions = listOf("0.1.1", "0.1.2") + (4..52).map { "0.1.$it" }
+    private val supportedVersions = listOf("0.1.1", "0.1.2") + (4..53).map { "0.1.$it" }
 
     /** Returns only releases newer than [lastSeenVersion], in chronological order. */
     fun slidesSince(lastSeenVersion: String?, currentVersion: String): List<ReleaseNoteSlide> {
@@ -634,6 +634,15 @@ object ReleaseNotesCatalog {
                 title = "AI 버튼에서 팝업이 펼쳐져요",
                 description = "버튼 위치에서 반짝이는 AI 코어가 커지며 전용 팝업으로 이어져요. 빛 고리와 스파클이 퍼지고 제목이 차례로 나타납니다. 모션 줄이기 설정도 존중해요.",
                 imageDescription = "Galaxy Z Fold4 격리 QA에서 촬영한 AI 소비 코치 팝업 화면. AI 비주얼은 실제 앱 UI이며, 합성 QA 거래만 표시되고 개인 기록은 없습니다.",
+            ),
+        )
+        "0.1.53" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_53_ai_morph,
+                imageAspectRatio = 904f / 2038f,
+                title = "AI 버튼이 메뉴로 한 번에 펼쳐져요",
+                description = "버튼 자리에서 AI 창 하나가 커지며 메뉴가 함께 나타나요. 닫기·뒤로가기·바깥 탭을 누르면 같은 경로로 버튼까지 접혀요. 겹쳐 뜨는 두 번째 창은 없고, 모션 줄이기도 그대로 적용돼요.",
+                imageDescription = "Galaxy Z Fold4 격리 QA에서 촬영한 단일 AI 팝업 화면. 실제 UI와 합성 QA 거래만 표시되며 개인 장부·사진은 포함되지 않았습니다.",
             ),
         )
         else -> emptyList()
