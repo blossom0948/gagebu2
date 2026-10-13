@@ -239,11 +239,11 @@ class ReleaseNotesPolicyTest {
 
     @Test
     fun `release catalog contains a note for every published version in the supported range`() {
-        val versions = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.50")
+        val versions = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.51")
             .mapNotNull { it.releaseVersion }
             .toSet()
 
-        assertEquals((listOf("0.1.1", "0.1.2") + (4..50).map { "0.1.$it" }).toSet(), versions)
+        assertEquals((listOf("0.1.1", "0.1.2") + (4..51).map { "0.1.$it" }).toSet(), versions)
     }
 
     @Test
@@ -270,5 +270,17 @@ class ReleaseNotesPolicyTest {
         assertTrue(slides.all { it.releaseVersion == "0.1.50" && it.imageResId != null })
         assertTrue(slides.first().description.contains("키보드"))
         assertTrue(slides.last().description.contains("검색 전용 화면"))
+    }
+
+    @Test
+    fun `v0 1 51 separates the home AI entry and documents its animated popup`() {
+        val slides = ReleaseNotesCatalog.slidesSince("0.1.50", "0.1.51")
+
+        assertEquals(2, slides.size)
+        assertTrue(slides.all { it.releaseVersion == "0.1.51" && it.imageResId != null })
+        assertTrue(slides.first().description.contains("AI는 전용 버튼"))
+        assertTrue(slides.last().title.contains("팝업"))
+        assertTrue(slides.last().description.contains("등장 모션"))
+        assertTrue(slides.last().imageDescription.contains("12,000원 QA 합성"))
     }
 }

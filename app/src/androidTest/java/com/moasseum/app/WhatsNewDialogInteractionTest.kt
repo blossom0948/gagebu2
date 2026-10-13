@@ -276,6 +276,35 @@ class WhatsNewDialogInteractionTest {
         assertTrue(dismissed)
     }
 
+    @Test fun v0151PopupShowsOnlyTheNewHomeAiScreens() {
+        val slides = ReleaseNotesCatalog.slidesSince("0.1.50", "0.1.51")
+        var dismissed = false
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Box(Modifier.fillMaxSize().background(LocalFinanceColors.current.surfaceBase)) {
+                    WhatsNewDialog(versionName = "0.1.51", slides = slides, onDismiss = { dismissed = true })
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("v0.1.51 신기능").assertExists()
+        composeRule.onNodeWithText("AI 분석을 홈에서 바로 열어요").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4 격리 QA에서 촬영한 홈 화면. 거래가 없는 테스트 장부와 모아씀 AI 전용 버튼이 보입니다.",
+        ).assertExists()
+        composeRule.onNodeWithText("1 / 2").assertExists()
+        composeRule.onNodeWithText("다음").performScrollTo().performClick()
+
+        composeRule.onNodeWithText("v0.1.51 신기능").assertExists()
+        composeRule.onNodeWithText("AI 소비 코치를 팝업으로").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4 격리 QA에서 촬영한 AI 팝업. 12,000원 QA 합성 지출 한 건만 사용했고, 실제 장부나 개인 사진은 포함하지 않았습니다.",
+        ).assertExists()
+        composeRule.onNodeWithText("2 / 2").assertExists()
+        composeRule.onNodeWithText("확인").performScrollTo().performClick()
+        assertTrue(dismissed)
+    }
+
     @Test fun oldReleaseWithoutAnAuthenticCaptureUsesAReadableSummaryCard() {
         val slides = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.2")
         composeRule.setContent {

@@ -5,6 +5,17 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.clickable
@@ -14,6 +25,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,15 +34,19 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -38,6 +55,7 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.KeyboardVoice
 import androidx.compose.material.icons.rounded.NotificationsNone
@@ -52,13 +70,16 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import com.moasseum.app.ui.components.FinanceTextField as OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -111,7 +132,6 @@ private enum class HomeTab(val label: String) {
     SUMMARY("요약"),
     INSIGHTS("인사이트"),
     REPORT("리포트"),
-    AI("AI 분석"),
 }
 
 @Composable
@@ -149,6 +169,7 @@ fun HomeScreen(
 ) {
     var selectedTabName by rememberSaveable { mutableStateOf(HomeTab.SUMMARY.name) }
     var showProfileEditor by rememberSaveable { mutableStateOf(false) }
+    var showAiAssistant by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     val profilePhotoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
@@ -163,12 +184,11 @@ fun HomeScreen(
             onSaveProfilePhotoUri(uri.toString())
         }
     }
-    val availableTabs = remember(aiAdviceCards) {
-        HomeTab.entries.filter { it != HomeTab.AI ||
-            AiAdviceCards.HOME_SUMMARY in aiAdviceCards || AiAdviceCards.HOME_REPORT in aiAdviceCards
-        }
-    }
-    val selectedTab = HomeTab.valueOf(selectedTabName).takeIf { it in availableTabs } ?: HomeTab.SUMMARY
+    val availableTabs = HomeTab.entries
+    // Older saved state may still contain the removed AI tab name.
+    val selectedTab = runCatching { HomeTab.valueOf(selectedTabName) }.getOrDefault(HomeTab.SUMMARY)
+        .takeIf { it in availableTabs } ?: HomeTab.SUMMARY
+    val showAiEntry = AiAdviceCards.HOME_SUMMARY in aiAdviceCards || AiAdviceCards.HOME_REPORT in aiAdviceCards
     val isCurrentMonth = uiState.month == YearMonth.now()
     val listState = rememberLazyGridState()
     // The Fold4 inner display is about 690dp wide in portrait. Keep the cover
@@ -180,7 +200,8 @@ fun HomeScreen(
         if (scrollToTopRequest > 0) listState.animateScrollToItem(0)
     }
     LaunchedEffect(selectedTab, availableTabs) {
-        if (HomeTab.valueOf(selectedTabName) !in availableTabs) selectedTabName = HomeTab.SUMMARY.name
+        val savedTab = runCatching { HomeTab.valueOf(selectedTabName) }.getOrNull()
+        if (savedTab !in availableTabs) selectedTabName = HomeTab.SUMMARY.name
     }
 
     LazyVerticalGrid(
@@ -211,61 +232,91 @@ fun HomeScreen(
             )
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
-            HomeTabs(
-                tabs = availableTabs,
-                selected = selectedTab,
-                onSelect = { selectedTabName = it.name },
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                HomeTabs(
+                    tabs = availableTabs,
+                    selected = selectedTab,
+                    onSelect = { selectedTabName = it.name },
+                    modifier = if (showAiEntry) Modifier.weight(1f) else Modifier.fillMaxWidth(),
+                )
+                if (showAiEntry) HomeAiAssistantButton(onClick = { showAiAssistant = true })
+            }
         }
-        when (selectedTab) {
-            HomeTab.SUMMARY -> {
-                item(span = { GridItemSpan(maxLineSpan) }) { MonthlySummaryCard(uiState, onOpenManageFeature, onSelectMonth) }
-                // These cards describe live, current-day state. Do not leave
-                // them beside a historical month's budget and transactions.
-                if (isCurrentMonth && noSpendChallenge.enabled && HomeDashboardCards.NO_SPEND_CHALLENGE in homeDashboardCards) {
-                    item(span = { GridItemSpan(maxLineSpan) }) { NoSpendChallengeCard(uiState, noSpendChallenge) }
-                }
-                if (isCurrentMonth && HomeDashboardCards.TODAY_WEEK in homeDashboardCards) item(span = { GridItemSpan(maxLineSpan) }) { TodayAndWeekCard(uiState) }
-                if (isCurrentMonth && HomeDashboardCards.TODAY_INSIGHT in homeDashboardCards) item(span = { GridItemSpan(maxLineSpan) }) { TodayInsightCard(uiState) }
-                if (HomeDashboardCards.CATEGORIES in homeDashboardCards) {
-                    item { CategorySpendingCard(uiState, categoryBudgets, onOpenHistory = onOpenHistory) }
-                }
-                if (HomeDashboardCards.RECENT_TRANSACTIONS in homeDashboardCards && uiState.monthTransactions.any { it.type != com.moasseum.app.domain.TransactionType.TRANSFER }) {
-                    item { RecentTransactionsCard(uiState, onOpenHistory, onOpenTransaction) }
-                }
-            }
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            val reduceMotion = LocalFinanceMotion.current.reduceMotion
+            AnimatedContent(
+                targetState = selectedTab,
+                transitionSpec = {
+                    if (reduceMotion) {
+                        EnterTransition.None togetherWith ExitTransition.None
+                    } else {
+                        (fadeIn(tween(190, easing = FastOutSlowInEasing)) +
+                            slideInVertically(
+                                animationSpec = tween(190, easing = FastOutSlowInEasing),
+                                initialOffsetY = { height -> height / 36 },
+                            )) togetherWith
+                            (fadeOut(tween(110)) + slideOutVertically(
+                                animationSpec = tween(110),
+                                targetOffsetY = { height -> -height / 54 },
+                            ))
+                    }
+                },
+                label = "homeDashboardTabContent",
+            ) { tab ->
+                Column(
+                    modifier = Modifier.fillMaxWidth().testTag("home_tab_content_${tab.name.lowercase()}"),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    when (tab) {
+                        HomeTab.SUMMARY -> {
+                            MonthlySummaryCard(uiState, onOpenManageFeature, onSelectMonth)
+                            // Live cards belong to the present, not to a historical month.
+                            if (isCurrentMonth && noSpendChallenge.enabled && HomeDashboardCards.NO_SPEND_CHALLENGE in homeDashboardCards) {
+                                NoSpendChallengeCard(uiState, noSpendChallenge)
+                            }
+                            if (isCurrentMonth && HomeDashboardCards.TODAY_WEEK in homeDashboardCards) TodayAndWeekCard(uiState)
+                            if (isCurrentMonth && HomeDashboardCards.TODAY_INSIGHT in homeDashboardCards) TodayInsightCard(uiState)
+                            val hasCategories = HomeDashboardCards.CATEGORIES in homeDashboardCards
+                            val hasRecent = HomeDashboardCards.RECENT_TRANSACTIONS in homeDashboardCards &&
+                                uiState.monthTransactions.any { it.type != com.moasseum.app.domain.TransactionType.TRANSFER }
+                            if (expandedLayout && hasCategories && hasRecent) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().testTag("home_summary_secondary_cards_wide"),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.Top,
+                                ) {
+                                    CategorySpendingCard(uiState, categoryBudgets, onOpenHistory, Modifier.weight(1f))
+                                    RecentTransactionsCard(uiState, onOpenHistory, onOpenTransaction, Modifier.weight(1f))
+                                }
+                            } else {
+                                if (hasCategories) CategorySpendingCard(uiState, categoryBudgets, onOpenHistory)
+                                if (hasRecent) RecentTransactionsCard(uiState, onOpenHistory, onOpenTransaction)
+                            }
+                        }
 
-            HomeTab.INSIGHTS -> item(span = { GridItemSpan(maxLineSpan) }) {
-                InsightsContent(
-                    uiState = uiState,
-                    noSpendChallenge = noSpendChallenge,
-                    onOpenManageFeature = onOpenManageFeature,
-                    activeFixedCostCount = activeFixedCostCount,
-                    activeFixedCostMonthlyAmount = activeFixedCostMonthlyAmount,
-                )
-            }
-            HomeTab.REPORT -> item(span = { GridItemSpan(maxLineSpan) }) {
-                ReportContent(
-                    uiState = uiState,
-                    onSelectMonth = onSelectMonth,
-                    onOpenManageFeature = onOpenManageFeature,
-                    onExportPdf = onExportPdf,
-                    onExportCsv = onExportCsv,
-                    aiState = aiAnalysisState,
-                    onGenerateAiReport = onGenerateAiAnalysis,
-                    showAiReport = AiAdviceCards.HOME_REPORT in aiAdviceCards,
-                )
-            }
-            HomeTab.AI -> item(span = { GridItemSpan(maxLineSpan) }) {
-                AiAnalysisContent(
-                    uiState = uiState,
-                    state = aiAnalysisState,
-                    onGenerate = onGenerateAiAnalysis,
-                    questionState = aiQuestionState,
-                    onAskQuestion = onAskAiQuestion,
-                    showSummary = AiAdviceCards.HOME_SUMMARY in aiAdviceCards,
-                    showReport = AiAdviceCards.HOME_REPORT in aiAdviceCards,
-                )
+                        HomeTab.INSIGHTS -> InsightsContent(
+                            uiState = uiState,
+                            noSpendChallenge = noSpendChallenge,
+                            onOpenManageFeature = onOpenManageFeature,
+                            activeFixedCostCount = activeFixedCostCount,
+                            activeFixedCostMonthlyAmount = activeFixedCostMonthlyAmount,
+                        )
+                        HomeTab.REPORT -> ReportContent(
+                            uiState = uiState,
+                            onSelectMonth = onSelectMonth,
+                            onOpenManageFeature = onOpenManageFeature,
+                            onExportPdf = onExportPdf,
+                            onExportCsv = onExportCsv,
+                            aiState = aiAnalysisState,
+                            onGenerateAiReport = onGenerateAiAnalysis,
+                            showAiReport = AiAdviceCards.HOME_REPORT in aiAdviceCards,
+                        )
+                    }
+                }
             }
         }
     }
@@ -288,6 +339,18 @@ fun HomeScreen(
                 } }
                 onSaveProfilePhotoUri(null)
             },
+        )
+    }
+    if (showAiAssistant && showAiEntry) {
+        AiAssistantBottomSheet(
+            uiState = uiState,
+            analysisState = aiAnalysisState,
+            onGenerateAnalysis = onGenerateAiAnalysis,
+            questionState = aiQuestionState,
+            onAskQuestion = onAskAiQuestion,
+            showSummary = AiAdviceCards.HOME_SUMMARY in aiAdviceCards,
+            showReport = AiAdviceCards.HOME_REPORT in aiAdviceCards,
+            onDismiss = { showAiAssistant = false },
         )
     }
 }
@@ -457,20 +520,29 @@ private fun HomeTabs(
     tabs: List<HomeTab>,
     selected: HomeTab,
     onSelect: (HomeTab) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = LocalFinanceColors.current
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .background(colors.surfaceRaised, RoundedCornerShape(24.dp))
-            .padding(3.dp),
+            .padding(3.dp)
+            .selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         tabs.forEach { tab ->
             val tabColor by animateColorAsState(if (tab == selected) colors.accent else Color.Transparent, tween(if (LocalFinanceMotion.current.reduceMotion) 0 else 140), label = "homeTab")
             Surface(
-                modifier = Modifier.weight(1f).heightIn(min = 33.dp),
-                onClick = { onSelect(tab) },
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 33.dp)
+                    .selectable(
+                        selected = tab == selected,
+                        role = Role.Tab,
+                        onClick = { onSelect(tab) },
+                    )
+                    .testTag("home_tab_${tab.name.lowercase()}"),
                 color = tabColor,
                 contentColor = if (tab == selected) MaterialTheme.colorScheme.onPrimary else colors.textSecondary,
                 shape = RoundedCornerShape(19.dp),
@@ -478,6 +550,121 @@ private fun HomeTabs(
                 Box(contentAlignment = Alignment.Center) {
                     Text(text = tab.label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeAiAssistantButton(onClick: () -> Unit) {
+    val colors = LocalFinanceColors.current
+    Surface(
+        modifier = Modifier
+            .size(width = 54.dp, height = 48.dp)
+            .testTag("home_ai_assistant_button")
+            .semantics { contentDescription = "AI 소비 코치 열기" },
+        onClick = onClick,
+        color = colors.accent.copy(alpha = 0.14f),
+        contentColor = colors.accent,
+        shape = RoundedCornerShape(16.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, colors.accent.copy(alpha = 0.30f)),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(17.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("AI", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AiAssistantBottomSheet(
+    uiState: LedgerUiState,
+    analysisState: SpendingAnalysisState,
+    onGenerateAnalysis: () -> Unit,
+    questionState: SpendingQuestionState,
+    onAskQuestion: (String) -> Unit,
+    showSummary: Boolean,
+    showReport: Boolean,
+    onDismiss: () -> Unit,
+) {
+    val colors = LocalFinanceColors.current
+    val motion = LocalFinanceMotion.current
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val bodyVisibility = remember { MutableTransitionState(false) }
+    LaunchedEffect(Unit) { bodyVisibility.targetState = true }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = colors.surfaceRaised,
+        contentColor = colors.textPrimary,
+        dragHandle = null,
+        modifier = Modifier.testTag("home_ai_assistant_sheet"),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = screenHeight * 0.88f)
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 18.dp)
+                .testTag("home_ai_sheet_content"),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(top = 6.dp, bottom = 2.dp)
+                    .size(width = 34.dp, height = 4.dp)
+                    .background(colors.textSecondary.copy(alpha = 0.34f), CircleShape),
+            )
+            FinanceCard(highlighted = true) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 14.dp, top = 11.dp, end = 8.dp, bottom = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Surface(color = colors.accent.copy(alpha = 0.16f), shape = CircleShape) {
+                        Box(modifier = Modifier.size(38.dp), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("AI 소비 코치", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("이번 달 흐름을 함께 살펴봐요", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                    }
+                    androidx.compose.material3.IconButton(onClick = onDismiss) {
+                        Icon(Icons.Rounded.Close, contentDescription = "AI 창 닫기", tint = colors.textSecondary)
+                    }
+                }
+            }
+            AnimatedVisibility(
+                visibleState = bodyVisibility,
+                enter = if (motion.reduceMotion) EnterTransition.None else
+                    fadeIn(tween(230, easing = FastOutSlowInEasing)) + slideInVertically(
+                        animationSpec = tween(230, easing = FastOutSlowInEasing),
+                        initialOffsetY = { height -> height / 18 },
+                    ),
+                exit = if (motion.reduceMotion) ExitTransition.None else fadeOut(tween(120)),
+            ) {
+                AiAnalysisContent(
+                    uiState = uiState,
+                    state = analysisState,
+                    onGenerate = onGenerateAnalysis,
+                    questionState = questionState,
+                    onAskQuestion = onAskQuestion,
+                    showSummary = showSummary,
+                    showReport = showReport,
+                )
             }
         }
     }
@@ -675,13 +862,18 @@ private fun TodayInsightCard(uiState: LedgerUiState) {
 }
 
 @Composable
-private fun RecentTransactionsCard(uiState: LedgerUiState, onOpenHistory: () -> Unit, onOpenTransaction: (Long) -> Unit) {
+private fun RecentTransactionsCard(
+    uiState: LedgerUiState,
+    onOpenHistory: () -> Unit,
+    onOpenTransaction: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val latest = uiState.monthTransactions
         .filter { it.type != com.moasseum.app.domain.TransactionType.TRANSFER }
         .sortedByDescending { it.occurredAt }
         .take(3)
     val colors = LocalFinanceColors.current
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(modifier = modifier.testTag("home_recent_transactions_card"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("최근 내역", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             Surface(onClick = onOpenHistory, color = Color.Transparent, contentColor = colors.accent) {
@@ -725,9 +917,14 @@ private fun MiniSpendCard(
 }
 
 @Composable
-private fun CategorySpendingCard(uiState: LedgerUiState, categoryBudgets: Map<String, Long>, onOpenHistory: () -> Unit) {
+private fun CategorySpendingCard(
+    uiState: LedgerUiState,
+    categoryBudgets: Map<String, Long>,
+    onOpenHistory: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = LocalFinanceColors.current
-    Column(modifier = Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+    Column(modifier = modifier.padding(horizontal = 4.dp).testTag("home_category_spending_card"), verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 Text("${formatMonth(uiState.month)} 카테고리 TOP", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -1299,6 +1496,7 @@ private fun AiAnalysisContent(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SpendingQuestionCard(
     uiState: LedgerUiState,
@@ -1315,8 +1513,11 @@ private fun SpendingQuestionCard(
                 Text("내 소비에 물어보기", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
             Text("최근 4개월의 합계와 카테고리만 사용해 답해요.", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(quickQuestions) { suggested ->
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                quickQuestions.forEach { suggested ->
                     AssistChip(
                         onClick = {
                             question = suggested

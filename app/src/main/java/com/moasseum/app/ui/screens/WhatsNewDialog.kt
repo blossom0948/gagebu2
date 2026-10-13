@@ -59,7 +59,7 @@ data class ReleaseNoteSlide(
 )
 
 object ReleaseNotesCatalog {
-    private val supportedVersions = listOf("0.1.1", "0.1.2") + (4..50).map { "0.1.$it" }
+    private val supportedVersions = listOf("0.1.1", "0.1.2") + (4..51).map { "0.1.$it" }
 
     /** Returns only releases newer than [lastSeenVersion], in chronological order. */
     fun slidesSince(lastSeenVersion: String?, currentVersion: String): List<ReleaseNoteSlide> {
@@ -609,6 +609,22 @@ object ReleaseNotesCatalog {
                 title = "관리 검색은 결과 화면에서",
                 description = "설정 검색을 열면 원래 관리 메뉴 대신 검색 전용 화면만 보여요. 자연어 검색 결과를 바로 확인하고, 돌아와도 입력한 검색어가 유지돼요.",
                 imageDescription = "Galaxy Z Fold4 격리 QA에서 캡처한 어두운 테마의 모아씀 설정 검색 결과 화면. 테스트 검색어와 가짜 설정 결과만 담겼습니다.",
+            ),
+        )
+        "0.1.51" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_51_home_ai,
+                imageAspectRatio = 904f / 1458f,
+                title = "AI 분석을 홈에서 바로 열어요",
+                description = "요약·인사이트·리포트는 세 탭으로 정돈하고, AI는 전용 버튼으로 분리했어요. 홈 탭 내용도 짧고 부드럽게 전환됩니다.",
+                imageDescription = "Galaxy Z Fold4 격리 QA에서 촬영한 홈 화면. 거래가 없는 테스트 장부와 모아씀 AI 전용 버튼이 보입니다.",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_51_ai_sheet,
+                imageAspectRatio = 904f / 1795f,
+                title = "AI 소비 코치를 팝업으로",
+                description = "AI 분석과 소비 질문을 전용 창에서 이어서 사용할 수 있어요. 화면 전환에는 가벼운 등장 모션을 적용하고, 추천 질문은 잘리지 않게 배치했어요. 분석은 버튼을 눌렀을 때만 기존의 최근 4개월 합계·카테고리 데이터를 사용합니다.",
+                imageDescription = "Galaxy Z Fold4 격리 QA에서 촬영한 AI 팝업. 12,000원 QA 합성 지출 한 건만 사용했고, 실제 장부나 개인 사진은 포함하지 않았습니다.",
             ),
         )
         else -> emptyList()

@@ -1,20 +1,30 @@
 package com.moasseum.app
 
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.util.Base64
 import android.util.Log
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.moasseum.app.domain.HomeDashboardCards
@@ -220,6 +230,142 @@ class HomeDashboardScreenshotTest {
         composeRule.onNodeWithText("남은 예산 ${formatWon(0L)}").assertDoesNotExist()
         composeRule.onNodeWithTag("home_budget_target_action").performClick()
         composeRule.runOnIdle { assertEquals("budget", openedManageFeature.get()) }
+    }
+
+    @Test fun homeTabsExposeSelectionAndSwitchDashboardContent() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        check(context.packageName.endsWith(".qa")) { "Home tab interaction tests are restricted to the isolated QA app." }
+
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ) {
+                    HomeScreen(
+                        uiState = LedgerUiState(
+                            YearMonth.now(),
+                            listOf(transactionFor(LocalDate.now(), 12_000L, "FOOD", 92L)),
+                            budgetAmount = 250_000,
+                        ),
+                        aiAnalysisState = SpendingAnalysisState.Idle,
+                        onGenerateAiAnalysis = {},
+                        aiQuestionState = SpendingQuestionState.Idle,
+                        onAskAiQuestion = {},
+                        categoryBudgets = emptyMap(),
+                        onExportCsv = {},
+                        onExportPdf = {},
+                        onSelectMonth = {},
+                        onAdd = {},
+                        onOpenManage = {},
+                        onOpenHistory = {},
+                        onOpenTransaction = {},
+                        onOpenHelp = {},
+                        onOpenNotifications = {},
+                        onStartVoiceInput = {},
+                        onPickReceipt = {},
+                        onTakeReceipt = {},
+                        displayName = "모아씀 QA",
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("home_tab_summary").assertIsSelected()
+        composeRule.onNodeWithTag("home_tab_insights").performClick().assertIsSelected()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("home_tab_content_insights").assertExists()
+        composeRule.onNodeWithText("예산 주기 요약").assertExists()
+        composeRule.onNodeWithTag("home_tab_content_summary").assertDoesNotExist()
+
+        composeRule.onNodeWithTag("home_tab_report").performClick().assertIsSelected()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("home_tab_content_report").assertExists()
+        composeRule.onNodeWithTag("home_ai_assistant_button").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("home_ai_assistant_sheet").assertExists()
+        composeRule.onNodeWithTag("home_ai_sheet_content").assertExists()
+        composeRule.onNodeWithText("AI 소비 코치").assertExists()
+        composeRule.onNodeWithText("AI 분석 만들기").assertExists()
+        val lastSuggestionBounds = composeRule.onNodeWithText("가장 많이 쓴 항목은?").getBoundsInRoot()
+        val sheetBounds = composeRule.onNodeWithTag("home_ai_sheet_content").getBoundsInRoot()
+        assertTrue("AI prompt suggestions should wrap without clipping at the sheet edge.", lastSuggestionBounds.right <= sheetBounds.right)
+
+        val bytes = composeRule.onNodeWithTag("home_ai_sheet_content").captureToImage().asAndroidBitmap().let { bitmap ->
+            ByteArrayOutputStream().use { output ->
+                assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output))
+                output.toByteArray().also { bitmap.recycle() }
+            }
+        }
+        assertTrue("The AI popup screenshot was not created.", bytes.size > 10_000)
+        Base64.encodeToString(bytes, Base64.NO_WRAP).chunked(2_000).forEachIndexed { index, chunk ->
+            Log.i("MOASSEUM_CAPTURE", "MSS_HOME_AI_SHEET|$index|$chunk")
+        }
+        composeRule.onNodeWithContentDescription("AI 창 닫기").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("home_ai_assistant_sheet").assertDoesNotExist()
+    }
+
+    @Test fun expandedFoldDashboardPairsCategoryAndRecentCardsAtEqualWidths() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        check(context.packageName.endsWith(".qa")) { "Expanded dashboard tests are restricted to the isolated QA app." }
+        val today = LocalDate.now()
+        val transaction = transactionFor(today, 12_000L, "FOOD", 91L)
+        val expandedConfiguration = Configuration().apply {
+            screenWidthDp = 690
+            screenHeightDp = 900
+        }
+
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ) {
+                    androidx.compose.runtime.CompositionLocalProvider(LocalConfiguration provides expandedConfiguration) {
+                        Box(Modifier.requiredWidth(690.dp).fillMaxHeight()) {
+                            HomeScreen(
+                                uiState = LedgerUiState(YearMonth.now(), listOf(transaction), budgetAmount = 250_000),
+                                aiAnalysisState = SpendingAnalysisState.Idle,
+                                onGenerateAiAnalysis = {},
+                                aiQuestionState = SpendingQuestionState.Idle,
+                                onAskAiQuestion = {},
+                                categoryBudgets = emptyMap(),
+                                onExportCsv = {},
+                                onExportPdf = {},
+                                onSelectMonth = {},
+                                onAdd = {},
+                                onOpenManage = {},
+                                onOpenHistory = {},
+                                onOpenTransaction = {},
+                                onOpenHelp = {},
+                                onOpenNotifications = {},
+                                onStartVoiceInput = {},
+                                onPickReceipt = {},
+                                onTakeReceipt = {},
+                                displayName = "모아씀 QA",
+                                homeDashboardCards = HomeDashboardCards.available,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("home_summary_secondary_cards_wide").performScrollTo().assertExists()
+        composeRule.onNodeWithTag("home_category_spending_card").assertExists()
+        composeRule.onNodeWithTag("home_recent_transactions_card").assertExists()
+        val categoryBounds = composeRule.onNodeWithTag("home_category_spending_card").getUnclippedBoundsInRoot()
+        val recentBounds = composeRule.onNodeWithTag("home_recent_transactions_card").getUnclippedBoundsInRoot()
+        val categoryWidth = categoryBounds.right - categoryBounds.left
+        val recentWidth = recentBounds.right - recentBounds.left
+        assertTrue("Both inner-fold dashboard columns must have usable width.", categoryWidth > 300.dp && recentWidth > 300.dp)
+        assertTrue(
+            "Category and recent cards should share the available width evenly.",
+            kotlin.math.abs((categoryWidth - recentWidth).value) < 12f,
+        )
     }
 
     @Test fun calendarMonthCategoryTotalsAreClearlySeparateFromPaydayBudgetCycle() {
