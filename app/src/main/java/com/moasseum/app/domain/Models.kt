@@ -284,6 +284,11 @@ data class LedgerUiState(
             it.type == TransactionType.EXPENSE && it.occurredDate in budgetCycle.startDate..budgetCycle.endDate
         }
 
+    val budgetPeriodIncomeTotal: Long
+        get() = transactions.asSequence()
+            .filter { it.type == TransactionType.INCOME && it.occurredDate in budgetCycle.startDate..budgetCycle.endDate }
+            .sumOf(Transaction::amount)
+
     val previousBudgetPeriodExpenseTotal: Long
         get() {
             val previous = budgetCycle(budgetCycle.startMonth.minusMonths(1), budgetPayday)

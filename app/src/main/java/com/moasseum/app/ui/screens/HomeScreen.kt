@@ -72,7 +72,9 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
@@ -167,6 +169,7 @@ fun HomeScreen(
         }
     }
     val selectedTab = HomeTab.valueOf(selectedTabName).takeIf { it in availableTabs } ?: HomeTab.SUMMARY
+    val isCurrentMonth = uiState.month == YearMonth.now()
     val listState = rememberLazyGridState()
     // The Fold4 inner display is about 690dp wide in portrait. Keep the cover
     // screen unchanged and use two dashboard columns only when the usable
@@ -216,12 +219,14 @@ fun HomeScreen(
         }
         when (selectedTab) {
             HomeTab.SUMMARY -> {
-                item(span = { GridItemSpan(maxLineSpan) }) { MonthlySummaryCard(uiState, onOpenManage, onSelectMonth) }
-                if (noSpendChallenge.enabled && HomeDashboardCards.NO_SPEND_CHALLENGE in homeDashboardCards) {
+                item(span = { GridItemSpan(maxLineSpan) }) { MonthlySummaryCard(uiState, onOpenManageFeature, onSelectMonth) }
+                // These cards describe live, current-day state. Do not leave
+                // them beside a historical month's budget and transactions.
+                if (isCurrentMonth && noSpendChallenge.enabled && HomeDashboardCards.NO_SPEND_CHALLENGE in homeDashboardCards) {
                     item(span = { GridItemSpan(maxLineSpan) }) { NoSpendChallengeCard(uiState, noSpendChallenge) }
                 }
-                if (HomeDashboardCards.TODAY_WEEK in homeDashboardCards) item(span = { GridItemSpan(maxLineSpan) }) { TodayAndWeekCard(uiState) }
-                if (HomeDashboardCards.TODAY_INSIGHT in homeDashboardCards) item(span = { GridItemSpan(maxLineSpan) }) { TodayInsightCard(uiState) }
+                if (isCurrentMonth && HomeDashboardCards.TODAY_WEEK in homeDashboardCards) item(span = { GridItemSpan(maxLineSpan) }) { TodayAndWeekCard(uiState) }
+                if (isCurrentMonth && HomeDashboardCards.TODAY_INSIGHT in homeDashboardCards) item(span = { GridItemSpan(maxLineSpan) }) { TodayInsightCard(uiState) }
                 if (HomeDashboardCards.CATEGORIES in homeDashboardCards) {
                     item { CategorySpendingCard(uiState, categoryBudgets, onOpenHistory = onOpenHistory) }
                 }
@@ -234,7 +239,6 @@ fun HomeScreen(
                 InsightsContent(
                     uiState = uiState,
                     noSpendChallenge = noSpendChallenge,
-                    onOpenManage = onOpenManage,
                     onOpenManageFeature = onOpenManageFeature,
                     activeFixedCostCount = activeFixedCostCount,
                     activeFixedCostMonthlyAmount = activeFixedCostMonthlyAmount,
@@ -482,12 +486,15 @@ private fun HomeTabs(
 @Composable
 private fun MonthlySummaryCard(
     uiState: LedgerUiState,
-    onOpenManage: () -> Unit,
+    onOpenManageFeature: (String) -> Unit,
     onSelectMonth: (YearMonth) -> Unit,
 ) {
     val colors = LocalFinanceColors.current
     val change = uiState.budgetPeriodExpenseTotal - uiState.previousBudgetPeriodExpenseTotal
     val budget = uiState.budgetAmount
+    val budgetCycle = uiState.budgetCycle
+    val isCurrentBudgetCycle = LocalDate.now() in budgetCycle.startDate..budgetCycle.endDate
+    val budgetCycleLabel = budgetCycle.label
     val progress = if (budget != null && budget > 0) {
         (uiState.budgetPeriodExpenseTotal.toFloat() / budget.toFloat()).coerceIn(0f, 1f)
     } else {
@@ -503,15 +510,36 @@ private fun MonthlySummaryCard(
                 onClick = { onSelectMonth(uiState.month.minusMonths(1)) },
                 modifier = Modifier.size(32.dp),
             ) { Icon(Icons.Rounded.ChevronLeft, contentDescription = "지난달") }
-            TextButton(onClick = { onSelectMonth(YearMonth.now()) }) {
-                Text("예산 기간 · ${uiState.budgetCycle.label}", color = colors.textSecondary,
-                    style = MaterialTheme.typography.labelMedium, maxLines = 1)
+            TextButton(
+                onClick = { onSelectMonth(YearMonth.now()) },
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("home_month_period_selector")
+                    .semantics {
+                        contentDescription = "${formatMonth(uiState.month)}. 예산 기간 $budgetCycleLabel. 누르면 이번 달로 이동"
+                    },
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        formatMonth(uiState.month),
+                        color = colors.textPrimary,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                    )
+                    Text(
+                        "예산 기간 · $budgetCycleLabel",
+                        color = colors.textSecondary,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             androidx.compose.material3.IconButton(
                 onClick = { onSelectMonth(uiState.month.plusMonths(1)) },
                 modifier = Modifier.size(32.dp),
             ) { Icon(Icons.Rounded.ChevronRight, contentDescription = "다음달") }
-            Spacer(Modifier.weight(1f))
             Text("${uiState.budgetPeriodExpenseCount}건", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         }
         FittedAmountText(
@@ -520,7 +548,8 @@ private fun MonthlySummaryCard(
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
             Surface(
-                onClick = onOpenManage,
+                onClick = { onOpenManageFeature("budget") },
+                modifier = Modifier.testTag("home_budget_target_action"),
                 color = Color.Transparent,
                 contentColor = colors.accent,
                 shape = RoundedCornerShape(8.dp),
@@ -534,20 +563,15 @@ private fun MonthlySummaryCard(
             }
         }
         if (budget != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .background(colors.surfaceOverlay, RoundedCornerShape(8.dp)),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(animatedProgress)
-                        .height(6.dp)
-                        .background(if (progress > 0.9f) colors.expense else colors.accent, RoundedCornerShape(9.dp)),
-                )
-            }
+            FinanceProgressBar(
+                progress = animatedProgress,
+                modifier = Modifier.fillMaxWidth().testTag("home_budget_progress"),
+                color = if (progress > 0.9f) colors.expense else colors.accent,
+                trackColor = colors.surfaceOverlay,
+                height = 6.dp,
+            )
             Row(verticalAlignment = Alignment.CenterVertically) {
+                val remaining = budget - uiState.budgetPeriodExpenseTotal
                 Text(
                     text = "${(uiState.budgetPeriodExpenseTotal.toDouble() / budget.coerceAtLeast(1L) * 100).toInt()}% 사용",
                     color = if (progress > 0.9f) colors.expense else colors.accent,
@@ -555,24 +579,32 @@ private fun MonthlySummaryCard(
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = "남은 금액 ${formatDisplayWon((budget - uiState.budgetPeriodExpenseTotal).coerceAtLeast(0))}",
-                    color = colors.textSecondary,
+                    text = when {
+                        remaining < 0 -> "예산 초과 ${formatDisplayWon(-remaining)}"
+                        remaining == 0L -> "예산 한도 도달"
+                        else -> "남은 예산 ${formatDisplayWon(remaining)}"
+                    },
+                    color = if (remaining < 0) colors.expense else colors.textSecondary,
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.weight(1f).padding(start = 8.dp),
                     textAlign = TextAlign.End,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
             val pace = com.moasseum.app.domain.budgetPace(uiState)
             if (uiState.carriedBudgetAmount > 0) Text("지난 예산 기간 이월 ${formatDisplayWon(uiState.carriedBudgetAmount)} 포함", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-            if (budget != null && pace.remainingDays > 0) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("남은 ${pace.remainingDays}일 · 하루 ${formatDisplayWon(pace.dailyAllowance)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                    pace.projectedExpense?.let { Text("예상 ${formatDisplayWon(it)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium) }
-                }
-            } else pace.projectedExpense?.let { Text("현재 속도 기간 종료 예상 ${formatDisplayWon(it)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium) }
-            if (pace.previousSamePeriodExpense > 0 && uiState.month == java.time.YearMonth.now()) Text("지난 예산 기간 같은 시점 ${formatDisplayWon(pace.previousSamePeriodExpense)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            if (isCurrentBudgetCycle) {
+                if (budget != null && pace.remainingDays > 0) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("남은 ${pace.remainingDays}일 · 하루 ${formatDisplayWon(pace.dailyAllowance)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                        pace.projectedExpense?.let { Text("예상 ${formatDisplayWon(it)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium) }
+                    }
+                } else pace.projectedExpense?.let { Text("현재 속도 기간 종료 예상 ${formatDisplayWon(it)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium) }
+            }
+            if (pace.previousSamePeriodExpense > 0 && isCurrentBudgetCycle) Text("지난 예산 기간 같은 시점 ${formatDisplayWon(pace.previousSamePeriodExpense)}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             if (uiState.previousBudgetPeriodExpenseTotal > 0L) {
                 Text(
                     text = if (change >= 0) "지난 예산 기간보다 ${formatDisplayWon(change)} 더 썼어요" else "지난 예산 기간보다 ${formatDisplayWon(-change)} 아꼈어요",
@@ -580,8 +612,8 @@ private fun MonthlySummaryCard(
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
-            if (uiState.incomeTotal > 0) {
-                Text("수입 ${formatDisplayWon(uiState.incomeTotal)}", color = colors.income, style = MaterialTheme.typography.labelMedium)
+            if (uiState.budgetPeriodIncomeTotal > 0) {
+                Text("기간 수입 ${formatDisplayWon(uiState.budgetPeriodIncomeTotal)}", color = colors.income, style = MaterialTheme.typography.labelMedium)
             }
         }
     }
@@ -698,7 +730,8 @@ private fun CategorySpendingCard(uiState: LedgerUiState, categoryBudgets: Map<St
     Column(modifier = Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Text("카테고리 TOP", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("${formatMonth(uiState.month)} 카테고리 TOP", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("달력 월 기준", color = colors.textSecondary, style = MaterialTheme.typography.labelSmall)
             }
             Surface(onClick = onOpenHistory, color = Color.Transparent, contentColor = colors.accent) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -716,7 +749,7 @@ private fun CategorySpendingCard(uiState: LedgerUiState, categoryBudgets: Map<St
                 categoryBudgets[total.key]?.let { budget ->
                     val used = (total.total * 100L / budget.coerceAtLeast(1L)).coerceAtMost(999L)
                     Text(
-                        "${categoryLabel(total.key)} 예산 ${formatDisplayWon(budget)} 중 ${used}% 사용",
+                        "${categoryLabel(total.key)} 월 한도 ${formatDisplayWon(budget)} 중 ${used}% 사용",
                         color = if (used > 90L) colors.expense else colors.textSecondary,
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(start = 24.dp),
@@ -768,7 +801,6 @@ private fun CategoryBar(key: String, total: Long, maxValue: Long, allTotal: Long
 private fun InsightsContent(
     uiState: LedgerUiState,
     noSpendChallenge: NoSpendChallengeSettings,
-    onOpenManage: () -> Unit,
     onOpenManageFeature: (String) -> Unit,
     activeFixedCostCount: Int,
     activeFixedCostMonthlyAmount: Long,
@@ -778,6 +810,13 @@ private fun InsightsContent(
     val change = uiState.expenseTotal - previousExpense
     val budgetPeriodSpent = uiState.budgetPeriodExpenseTotal
     val pace = com.moasseum.app.domain.budgetPace(uiState)
+    val cycle = uiState.budgetCycle
+    val today = LocalDate.now()
+    val paceMetric = when {
+        today.isBefore(cycle.startDate) -> "예산 주기 시작 전" to "시작 전"
+        today.isAfter(cycle.endDate) -> "예산 기간 지출" to formatDisplayWon(budgetPeriodSpent)
+        else -> "예산 주기 종료 예상" to (pace.projectedExpense?.let { formatDisplayWon(it) } ?: "아직 계산 전")
+    }
     val savingsRate = if (uiState.incomeTotal > 0L) {
         (((uiState.incomeTotal - uiState.expenseTotal).toDouble() / uiState.incomeTotal) * 100.0)
             .roundToInt().coerceIn(-999, 999).toString() + "%"
@@ -787,15 +826,15 @@ private fun InsightsContent(
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent, modifier = Modifier.size(18.dp))
-                    Text("숫자로 보는 이번 달", color = colors.accent, style = MaterialTheme.typography.labelLarge)
+                    Text("예산 주기 요약", color = colors.accent, style = MaterialTheme.typography.labelLarge)
                 }
                 val message = when {
-                    budgetPeriodSpent == 0L -> "기록된 지출 없음"
+                    budgetPeriodSpent == 0L -> "예산 기간 지출 없음"
                     uiState.budgetAmount != null && budgetPeriodSpent > uiState.budgetAmount -> "예산 ${formatDisplayWon(budgetPeriodSpent - uiState.budgetAmount)} 초과"
-                    uiState.categoryTotals.isNotEmpty() -> "최다 지출 · ${categoryLabel(uiState.categoryTotals.first().key)}"
-                    else -> "기록된 지출 없음"
+                    else -> "예산 기간 지출 ${formatDisplayWon(budgetPeriodSpent)}"
                 }
                 Text(message, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("${cycle.label} 기준", color = colors.textSecondary, style = MaterialTheme.typography.labelSmall)
             }
         }
         Text("바로 쓰는 도구", color = colors.textSecondary, style = MaterialTheme.typography.labelLarge)
@@ -805,7 +844,7 @@ private fun InsightsContent(
             icon = Icons.Rounded.AutoAwesome,
             title = "무지출 챌린지",
             subtitle = if (noSpendChallenge.enabled) {
-                "${challengeStreak.coerceAtMost(noSpendChallenge.goalDays)} / ${noSpendChallenge.goalDays}일 기록 · 목표 관리"
+                "현재 ${challengeStreak.coerceAtMost(noSpendChallenge.goalDays)} / ${noSpendChallenge.goalDays}일 기록 · 목표 관리"
             } else "기간을 정하고 무지출 기록 시작",
             onClick = { onOpenManageFeature("no-spend") },
         )
@@ -813,7 +852,7 @@ private fun InsightsContent(
             tag = "insight_fixed_costs_shortcut",
             icon = Icons.Rounded.Repeat,
             title = "구독·고정비 레이더",
-            subtitle = if (activeFixedCostCount == 0) "반복 결제와 월 예정액 확인" else "${activeFixedCostCount}개 활성 · 월 ${formatDisplayWon(activeFixedCostMonthlyAmount)}",
+            subtitle = if (activeFixedCostCount == 0) "반복 결제와 월 예정액 확인" else "현재 ${activeFixedCostCount}개 활성 · 월 ${formatDisplayWon(activeFixedCostMonthlyAmount)}",
             onClick = { onOpenManageFeature("fixed-costs") },
         )
         InsightsShortcutCard(
@@ -825,25 +864,16 @@ private fun InsightsContent(
         )
         FinanceCard {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                Text("이번 달 체크 포인트", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("${formatMonth(uiState.month)} 체크 포인트", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 InsightRow("기록한 거래", "${uiState.monthTransactions.size}건")
-                InsightRow("가장 많이 쓴 곳", uiState.categoryTotals.firstOrNull()?.let { categoryLabel(it.key) } ?: "아직 없음")
+                InsightRow("달력 월 최다 지출", uiState.categoryTotals.firstOrNull()?.let { categoryLabel(it.key) } ?: "아직 없음")
                 InsightRow("예산 기간 사용률", uiState.budgetAmount?.let { "${(budgetPeriodSpent * 100 / it.coerceAtLeast(1)).coerceAtMost(999)}%" } ?: "예산 없음")
                 InsightRow(
                     "지난달 대비",
                     if (previousExpense == 0L) "비교 기록 없음" else "${if (change > 0L) "+" else "−"}${formatDisplayWon(kotlin.math.abs(change))}",
                 )
-                InsightRow("월말 예상 지출", pace.projectedExpense?.let { formatDisplayWon(it) } ?: "아직 계산 전")
-                InsightRow("저축률", savingsRate)
-            }
-        }
-        FinanceCard {
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("챌린지 · 구독·고정비 · 연말정산", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                    Text("목표와 분석 도구", color = colors.textSecondary, style = MaterialTheme.typography.labelSmall)
-                }
-                TextButton(onClick = onOpenManage) { Text("관리") }
+                InsightRow(paceMetric.first, paceMetric.second)
+                InsightRow("달력 월 저축률", savingsRate)
             }
         }
     }
@@ -968,12 +998,12 @@ private fun ReportContent(
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ReportMetric("지출", formatDisplayWon(uiState.expenseTotal), colors.expense, Modifier.weight(1f))
-                    ReportMetric("수입", formatDisplayWon(uiState.incomeTotal), colors.income, Modifier.weight(1f))
+                    ReportMetric("달력 월 지출", formatDisplayWon(uiState.expenseTotal), colors.expense, Modifier.weight(1f))
+                    ReportMetric("달력 월 수입", formatDisplayWon(uiState.incomeTotal), colors.income, Modifier.weight(1f))
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ReportMetric("목표 잔액", remainingBudget?.let { formatDisplayWon(it) } ?: "목표 없음", if ((remainingBudget ?: 0L) >= 0L) colors.income else colors.expense, Modifier.weight(1f))
-                    ReportMetric("저축률", savingsRate?.let { "$it%" } ?: "수입 기록 없음", colors.accent, Modifier.weight(1f))
+                    ReportMetric("예산 주기 잔액", remainingBudget?.let { formatDisplayWon(it) } ?: "목표 없음", if ((remainingBudget ?: 0L) >= 0L) colors.income else colors.expense, Modifier.weight(1f))
+                    ReportMetric("달력 월 저축률", savingsRate?.let { "$it%" } ?: "수입 기록 없음", colors.accent, Modifier.weight(1f))
                 }
             }
         }

@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.moasseum.app.ui.screens.WhatsNewDialog
+import com.moasseum.app.ui.screens.ReleaseNotesCatalog
 import com.moasseum.app.ui.theme.MoasseumTheme
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import org.junit.Assert.assertTrue
@@ -214,5 +215,57 @@ class WhatsNewDialogInteractionTest {
         composeRule.onNodeWithText("1 / 1").assertExists()
         composeRule.onNodeWithText("확인").performScrollTo().performClick()
         assertTrue(dismissed)
+    }
+
+    @Test fun cumulativeUpdatePopupKeepsReleaseVersionsAndSkipsAlreadySeenVersion() {
+        var dismissed = false
+        val slides = ReleaseNotesCatalog.slidesSince("0.1.47", "0.1.49")
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Box(Modifier.fillMaxSize().background(LocalFinanceColors.current.surfaceBase)) {
+                    WhatsNewDialog(versionName = "0.1.49", slides = slides, onDismiss = { dismissed = true })
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("업데이트 소식").assertExists()
+        composeRule.onNodeWithText("v0.1.48 신기능").assertExists()
+        composeRule.onNodeWithText("커플 대표 사진을 직접 골라요").assertExists()
+        composeRule.onNodeWithText("1 / 3").assertExists()
+        composeRule.onNodeWithText("다음").performScrollTo().performClick()
+
+        composeRule.onNodeWithText("v0.1.48 신기능").assertExists()
+        composeRule.onNodeWithText("달력에서 주말·공휴일을 구분").assertExists()
+        composeRule.onNodeWithText("2 / 3").assertExists()
+        composeRule.onNodeWithText("다음").performScrollTo().performClick()
+
+        composeRule.onNodeWithText("v0.1.49 신기능").assertExists()
+        composeRule.onNodeWithText("예산 기간과 달력 월을 명확하게").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Fold4 QA 앱에서 합성 데이터 없이 촬영한 홈 화면. 급여일 예산 기간과 달력 월 카테고리 기준이 따로 표시됩니다.",
+        ).assertExists()
+        composeRule.onNodeWithText("3 / 3").assertExists()
+        composeRule.onNodeWithText("확인").performScrollTo().performClick()
+        assertTrue(dismissed)
+    }
+
+    @Test fun oldReleaseWithoutAnAuthenticCaptureUsesAReadableSummaryCard() {
+        val slides = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.2")
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Box(Modifier.fillMaxSize().background(LocalFinanceColors.current.surfaceBase)) {
+                    WhatsNewDialog(versionName = "0.1.2", slides = slides, onDismiss = {})
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("v0.1.1 신기능").assertExists()
+        composeRule.onNodeWithText("지난 업데이트 요약").assertExists()
+        composeRule.onNodeWithText("모아씀 첫 개인용 앱").assertExists()
+        composeRule.onNodeWithText("1 / 2").assertExists()
+        composeRule.onNodeWithText("다음").performScrollTo().performClick()
+        composeRule.onNodeWithText("v0.1.2 신기능").assertExists()
+        composeRule.onNodeWithText("설치 보호와 업데이트 안내").assertExists()
+        composeRule.onNodeWithText("2 / 2").assertExists()
     }
 }

@@ -47,6 +47,31 @@ class ActivityNoticesTest {
     }
 
     @Test
+    fun paydayBudgetNoticeUsesOnlyTheActiveCycleThroughToday() {
+        val month = YearMonth.of(2026, 10)
+        val beforeCycle = transaction(1, LocalDate.of(2026, 9, 24), 5_000)
+        val firstInCycle = transaction(2, LocalDate.of(2026, 9, 25), 300)
+        val crossesHalf = transaction(3, LocalDate.of(2026, 10, 8), 300)
+        val afterToday = transaction(4, LocalDate.of(2026, 10, 20), 9_000)
+
+        val notices = buildActivityNotices(
+            state = LedgerUiState(
+                month = month,
+                transactions = listOf(beforeCycle, firstInCycle, crossesHalf, afterToday),
+                budgetAmount = 1_000,
+                budgetPayday = 25,
+            ),
+            challenge = NoSpendChallengeSettings(),
+            today = LocalDate.of(2026, 10, 13),
+        )
+
+        assertEquals(listOf("budget:2026-09:half"), notices.map { it.id })
+        assertEquals(crossesHalf.occurredAt, notices.single().createdAt)
+        assertTrue(notices.single().title.contains("예산 기간"))
+        assertTrue(notices.single().message.contains("현재 ₩600 사용"))
+    }
+
+    @Test
     fun historicalMonthDoesNotCreateCurrentInboxBudgetAlerts() {
         val month = YearMonth.of(2026, 9)
         val notices = buildActivityNotices(

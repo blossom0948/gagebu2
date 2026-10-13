@@ -22,11 +22,17 @@ import com.moasseum.app.domain.LedgerUiState
 import com.moasseum.app.domain.NoSpendChallengeSettings
 import com.moasseum.app.domain.SpendingAnalysisState
 import com.moasseum.app.domain.SpendingQuestionState
+import com.moasseum.app.domain.Transaction
+import com.moasseum.app.domain.TransactionType
+import com.moasseum.app.domain.formatMonth
+import com.moasseum.app.domain.formatWon
 import com.moasseum.app.ui.screens.HomeScreen
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import com.moasseum.app.ui.theme.MoasseumTheme
 import java.io.ByteArrayOutputStream
+import java.time.LocalDate
 import java.time.YearMonth
+import java.time.ZoneId
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -83,8 +89,9 @@ class HomeInsightsNavigationTest {
         composeRule.onNodeWithText("인사이트").performClick()
         composeRule.onNodeWithText("바로 쓰는 도구").assertExists()
         composeRule.onNodeWithText("구독·고정비 레이더").assertExists()
-        composeRule.onNodeWithText("2개 활성 · 월 ₩19,800").assertExists()
+        composeRule.onNodeWithText("현재 2개 활성 · 월 ₩19,800").assertExists()
         composeRule.onNodeWithText("연말정산 도우미").assertExists()
+        composeRule.onNodeWithText("챌린지 · 구독·고정비 · 연말정산").assertDoesNotExist()
 
         composeRule.waitForIdle()
         val full = composeRule.onRoot().captureToImage().asAndroidBitmap()
@@ -108,5 +115,64 @@ class HomeInsightsNavigationTest {
             composeRule.onNodeWithTag(tag).performScrollTo().performClick()
             composeRule.runOnIdle { assertEquals(expectedAction, openedFeature.get()) }
         }
+    }
+
+    @Test fun historicalInsightsSeparateCalendarMonthFromCompletedBudgetCycle() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        check(context.packageName.endsWith(".qa")) { "Home insight tests are restricted to the isolated QA app." }
+        val month = YearMonth.now().minusMonths(2)
+        val occurredAt = month.atDay(26).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val state = LedgerUiState(
+            month = month,
+            transactions = listOf(
+                Transaction(501L, TransactionType.EXPENSE, 12_000L, occurredAt, "FOOD", "QA 식사", "", "카드", "QA"),
+            ),
+            budgetAmount = 50_000L,
+            budgetPayday = 25,
+        )
+
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ) {
+                    HomeScreen(
+                        uiState = state,
+                        aiAnalysisState = SpendingAnalysisState.Idle,
+                        onGenerateAiAnalysis = {},
+                        aiQuestionState = SpendingQuestionState.Idle,
+                        onAskAiQuestion = {},
+                        categoryBudgets = emptyMap(),
+                        onExportCsv = {},
+                        onExportPdf = {},
+                        onSelectMonth = {},
+                        onAdd = {},
+                        onOpenManage = {},
+                        onOpenHistory = {},
+                        onOpenTransaction = {},
+                        onOpenHelp = {},
+                        onOpenNotifications = {},
+                        onStartVoiceInput = {},
+                        onPickReceipt = {},
+                        onTakeReceipt = {},
+                        displayName = "모아씀 QA",
+                        homeDashboardCards = HomeDashboardCards.defaults,
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("인사이트").performClick()
+        composeRule.onNodeWithText("예산 주기 요약").assertExists()
+        composeRule.onNodeWithText("${state.budgetCycle.label} 기준").assertExists()
+        composeRule.onNodeWithText("${formatMonth(month)} 체크 포인트").assertExists()
+        composeRule.onNodeWithText("달력 월 최다 지출").assertExists()
+        composeRule.onNodeWithText("예산 기간 지출").assertExists()
+        composeRule.onNodeWithText(formatWon(12_000L)).assertExists()
+        composeRule.onNodeWithText("달력 월 저축률").assertExists()
+        composeRule.onNodeWithText("월말 예상 지출").assertDoesNotExist()
+        composeRule.onNodeWithText("이번 달 체크 포인트").assertDoesNotExist()
     }
 }

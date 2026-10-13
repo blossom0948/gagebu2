@@ -79,6 +79,44 @@ class AccountsAndBudgetTest {
         assertEquals(14_000L, effectiveBudget(YearMonth.of(2026, 10), plans, rows, payday = 15)!!.total)
     }
 
+    @Test fun paydayBudgetSummaryIncomeUsesTheSameCycleAsBudgetSpending() {
+        val rows = listOf(
+            tx(TransactionType.INCOME, 20_000, "2026-08-24"),
+            tx(TransactionType.INCOME, 30_000, "2026-08-25"),
+            tx(TransactionType.INCOME, 15_000, "2026-09-24"),
+            tx(TransactionType.INCOME, 50_000, "2026-09-25"),
+        )
+        val state = LedgerUiState(YearMonth.of(2026, 8), rows, budgetPayday = 25)
+
+        assertEquals(45_000L, state.budgetPeriodIncomeTotal)
+        assertEquals(50_000L, state.incomeTotal)
+    }
+
+    @Test fun calendarMonthCategoriesStaySeparateFromThePaydayBudgetCycle() {
+        val month = YearMonth.now().minusMonths(2)
+        fun expense(date: LocalDate, amount: Long, category: String) = Transaction(
+            id = amount,
+            type = TransactionType.EXPENSE,
+            amount = amount,
+            occurredAt = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+            categoryKey = category,
+            merchant = "테스트",
+            memo = "",
+            paymentMethod = "카드",
+            source = "MANUAL",
+        )
+        val rows = listOf(
+            expense(month.minusMonths(1).atDay(28), 4_000L, "FOOD"),
+            expense(month.atDay(5), 9_000L, "FOOD"),
+            expense(month.atDay(26), 8_000L, "CAFE"),
+            expense(month.plusMonths(1).atDay(5), 4_000L, "FOOD"),
+        )
+        val state = LedgerUiState(month, rows, budgetPayday = 25)
+
+        assertEquals(12_000L, state.budgetPeriodExpenseTotal)
+        assertEquals(listOf("FOOD" to 9_000L, "CAFE" to 8_000L), state.categoryTotals.map { it.key to it.total })
+    }
+
     @Test fun paydayBudgetPaceUsesCurrentCycleRatherThanCalendarMonth() {
         val rows = listOf(
             tx(TransactionType.EXPENSE, 4_000, "2026-10-14"),

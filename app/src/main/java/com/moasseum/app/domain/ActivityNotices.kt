@@ -24,11 +24,18 @@ fun buildActivityNotices(
     today: LocalDate = LocalDate.now(),
 ): List<ActivityNotice> {
     val notices = mutableListOf<ActivityNotice>()
+    val budgetCycle = budgetCycleForDate(today, state.budgetPayday)
     val budget = state.budgetAmount?.takeIf { it > 0L && state.month == java.time.YearMonth.from(today) }
     if (budget != null) {
-        val expenses = state.monthTransactions
-            .filter { it.type == TransactionType.EXPENSE }
+        val expenses = state.transactions
+            .filter {
+                it.type == TransactionType.EXPENSE &&
+                    it.occurredDate in budgetCycle.startDate..minOf(today, budgetCycle.endDate)
+            }
             .sortedWith(compareBy<Transaction> { it.occurredAt }.thenBy { it.id })
+        var periodExpenseTotal = 0L
+        expenses.forEach { periodExpenseTotal = (periodExpenseTotal + it.amount).coerceAtMost(Long.MAX_VALUE) }
+        val periodId = budgetCycle.startMonth
         val halfway = budget / 2 + budget % 2
         fun crossingAt(threshold: Long): Long? {
             var total = 0L
@@ -40,20 +47,20 @@ fun buildActivityNotices(
         }
         crossingAt(halfway)?.let { at ->
             notices += ActivityNotice(
-                id = "budget:${state.month}:half",
+                id = "budget:$periodId:half",
                 category = ActivityNoticeCategory.BUDGET,
-                title = "이번 달 예산의 절반을 사용했어요",
-                message = "현재 ${formatWon(state.expenseTotal)} 사용 · 목표 ${formatWon(budget)}",
+                title = "이번 예산 기간의 절반을 사용했어요",
+                message = "${budgetCycle.label} · 현재 ${formatWon(periodExpenseTotal)} 사용 · 목표 ${formatWon(budget)}",
                 createdAt = at,
             )
         }
-        if (state.expenseTotal > budget) {
+        if (budget < Long.MAX_VALUE && periodExpenseTotal > budget) {
             crossingAt(budget + 1L)?.let { at ->
                 notices += ActivityNotice(
-                    id = "budget:${state.month}:over",
+                    id = "budget:$periodId:over",
                     category = ActivityNoticeCategory.BUDGET,
-                    title = "이번 달 목표 지출을 넘었어요",
-                    message = "목표보다 ${formatWon(state.expenseTotal - budget)} 더 사용했어요",
+                    title = "이번 예산 기간의 목표 지출을 넘었어요",
+                    message = "${budgetCycle.label} · 목표보다 ${formatWon(periodExpenseTotal - budget)} 더 사용했어요",
                     createdAt = at,
                 )
             }

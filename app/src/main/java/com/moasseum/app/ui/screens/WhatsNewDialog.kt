@@ -11,6 +11,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -49,15 +50,174 @@ import com.moasseum.app.ui.theme.LocalFinanceColors
 import com.moasseum.app.ui.theme.LocalFinanceMotion
 
 data class ReleaseNoteSlide(
-    val imageResId: Int,
-    val imageAspectRatio: Float,
+    val imageResId: Int? = null,
+    val imageAspectRatio: Float = 1.55f,
     val title: String,
     val description: String,
-    val imageDescription: String,
+    val imageDescription: String = "",
+    val releaseVersion: String? = null,
 )
 
 object ReleaseNotesCatalog {
+    private val supportedVersions = listOf("0.1.1", "0.1.2") + (4..49).map { "0.1.$it" }
+
+    /** Returns only releases newer than [lastSeenVersion], in chronological order. */
+    fun slidesSince(lastSeenVersion: String?, currentVersion: String): List<ReleaseNoteSlide> {
+        require(currentVersion.matches(Regex("\\d+\\.\\d+\\.\\d+")))
+        if (lastSeenVersion != null) require(lastSeenVersion.matches(Regex("\\d+\\.\\d+\\.\\d+")))
+        return supportedVersions
+            .asSequence()
+            .filter { com.moasseum.app.update.ReleaseNotesPolicy.compareVersions(it, currentVersion) <= 0 }
+            .filter { version ->
+                lastSeenVersion == null ||
+                    com.moasseum.app.update.ReleaseNotesPolicy.compareVersions(version, lastSeenVersion) > 0
+            }
+            .flatMap { version -> slides(version).asSequence().map { it.copy(releaseVersion = version) } }
+            .toList()
+    }
+
     fun slides(versionName: String): List<ReleaseNoteSlide> = when (versionName) {
+        "0.1.1" -> listOf(
+            ReleaseNoteSlide(
+                title = "모아씀 첫 개인용 앱",
+                description = "Galaxy에 APK로 설치해 기존 기록을 유지하며 쓸 수 있게 배포했어요. 관리 화면에서 이후 앱 업데이트도 확인할 수 있어요.",
+            ),
+        )
+        "0.1.2" -> listOf(
+            ReleaseNoteSlide(
+                title = "설치 보호와 업데이트 안내",
+                description = "개인용 APK의 설치 호환성을 다듬었어요. 업데이트 확인 후에는 GitHub에서 APK를 받고 Android 설치 화면에서 직접 확인하는 방식이었어요.",
+            ),
+        )
+        "0.1.4" -> listOf(
+            ReleaseNoteSlide(
+                title = "업데이트 버전 확인 안정화",
+                description = "설치 보호 호환성을 보완하고 새 버전 비교를 안정화했어요. APK 설치는 계속 Android 시스템이 처리해요.",
+            ),
+        )
+        "0.1.5" -> listOf(
+            ReleaseNoteSlide(
+                title = "기존 앱과 데이터 호환 유지",
+                description = "Galaxy에 설치된 개인용 앱과 같은 서명을 유지해 기록을 지우지 않고 업데이트할 수 있도록 정리했어요.",
+            ),
+        )
+        "0.1.6" -> listOf(
+            ReleaseNoteSlide(
+                title = "작은 화면에 맞춰 화면을 간결하게",
+                description = "홈 요약·목표 지출 막대·기록 입력·내역·함께·관리 화면의 간격과 배열을 더 컴팩트하게 다듬었어요.",
+            ),
+        )
+        "0.1.7" -> listOf(
+            ReleaseNoteSlide(
+                title = "거래 편집·CSV·음성 기록",
+                description = "거래 수정과 삭제 취소, CSV 가져오기/내보내기, 월 반복 거래와 이름 관리, 음성 입력, 기기 안 한국어 영수증 인식, 월간 AI 소비 분석을 추가했어요.",
+            ),
+        )
+        "0.1.8" -> listOf(
+            ReleaseNoteSlide(
+                title = "알림 후보와 카테고리 직접 관리",
+                description = "숫자만 있는 알림과 광고·취소 등을 걸러내고, 금융 거래로 보이는 알림만 후보로 안내해요. AI 오탐 분류는 선택 기능이며, 카테고리 추가·수정·삭제와 반복 거래 보충도 지원해요.",
+            ),
+        )
+        "0.1.9" -> listOf(
+            ReleaseNoteSlide(
+                title = "처음 실행할 때 알림 권한 안내",
+                description = "알림 접근·모아씀 알림 권한과 AI 오탐 줄이기 설정을 단계별로 확인해요. 광고·인증번호·예정·취소 알림은 제외하고 거래는 확인 뒤 추가해요.",
+            ),
+        )
+        "0.1.10" -> listOf(
+            ReleaseNoteSlide(
+                title = "알림 권한 상태를 더 정확히 확인",
+                description = "Android 알림 권한까지 실제 상태를 확인하고 필요한 설정을 안내해요. AI 오탐 줄이기가 꺼져 있을 때 켜는 방법도 알려줘요.",
+            ),
+        )
+        "0.1.11" -> listOf(
+            ReleaseNoteSlide(
+                title = "카드·카테고리 예산과 소비 Q&A",
+                description = "알림 본문 판별과 AI 장애 복구를 다듬고 카드·결제일 관리, 카테고리별 예산, 월간 소비 질문, 전체 JSON 백업을 추가했어요.",
+            ),
+        )
+        "0.1.12" -> listOf(
+            ReleaseNoteSlide(
+                title = "Galaxy 알림 감지 재연결 보강",
+                description = "알림 접근 권한을 켠 뒤 서비스 연결을 다시 시도하고, 시스템이 연결을 끊으면 복구를 재시도해요. 설정 화면을 열 수 없는 기기용 대체 경로도 추가했어요.",
+            ),
+        )
+        "0.1.13" -> listOf(
+            ReleaseNoteSlide(
+                title = "AI 서버가 응답하지 않아도 알림 감지 유지",
+                description = "AI 서버 오류 복구와 알림 서비스 생명주기를 보완했어요. 숫자만 있는 메신저·운세 알림이 후보로 오인되지 않도록 방어를 추가했어요.",
+            ),
+        )
+        "0.1.14" -> listOf(
+            ReleaseNoteSlide(
+                title = "대화 알림은 제외하고 거래만 확인",
+                description = "카카오톡 대화와 송금 메시지는 금융 후보에서 제외하고 별도 금융앱 알림은 유지해요. 감지 직후 추가 확인창과 알림 후보함을 제공하고, 입력창·팝업·애니메이션도 정리했어요.",
+            ),
+        )
+        "0.1.15" -> listOf(
+            ReleaseNoteSlide(
+                title = "예산과 거래 입력 흐름 다듬기",
+                description = "월 경계에서 날짜 필터가 초기화되던 문제를 고치고 목표 지출 카드를 눌러 바로 수정할 수 있게 했어요. 거래 날짜 수정·키보드·상세 화면도 보완했어요.",
+            ),
+        )
+        "0.1.16" -> listOf(
+            ReleaseNoteSlide(
+                title = "카드 결제주기와 고정비 관리",
+                description = "카드별 결제월·이용기간·수단 집계, 구독·고정비 예정액과 30일 일정, 반복 거래 편집, 내역 필터·정렬을 추가했어요. 테마의 창 구분은 선명하게, 글꼴 크기는 그대로 유지했어요.",
+            ),
+        )
+        "0.1.49" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_49_home_dashboard,
+                imageAspectRatio = 904f / 1458f,
+                title = "예산 기간과 달력 월을 명확하게",
+                description = "홈·인사이트·리포트에서 급여일 기준 예산 주기와 달력 월 기록을 구분해 보여줘요. 지난 예산 기간은 실제 지출로, 현재 기간만 예상 지출로 표시하고 초과 금액도 바로 확인할 수 있어요. 업데이트 안내도 마지막으로 확인한 버전 이후의 변경을 버전별로 모아 보여줘요.",
+                imageDescription = "Fold4 QA 앱에서 합성 데이터 없이 촬영한 홈 화면. 급여일 예산 기간과 달력 월 카테고리 기준이 따로 표시됩니다.",
+            ),
+        )
+        "0.1.17" -> listOf(
+            ReleaseNoteSlide(
+                title = "계좌·예산·백업을 한곳에",
+                description = "계좌 잔액과 계좌 간 이체, 예산 이월·하루 사용액·월말 예상, 전체 JSON 백업/복원을 추가했어요. 월간 PDF와 카메라 영수증 기록도 지원해요. 이체는 은행 송금이 아닌 장부 기록입니다.",
+            ),
+        )
+        "0.1.18" -> listOf(
+            ReleaseNoteSlide(
+                title = "이메일 로그인과 계정 복구",
+                description = "모아씀 전용 서버로 이메일 가입·로그인과 비밀번호 재설정을 연결했어요. 인증 메일 링크로 앱에 안전하게 돌아오는 흐름도 추가했어요.",
+            ),
+        )
+        "0.1.19" -> listOf(
+            ReleaseNoteSlide(
+                title = "Google 계정으로 로그인",
+                description = "Google 계정을 선택해 로그인하고 앱으로 돌아올 수 있어요. Gmail·Drive 접근은 요청하지 않아요.",
+            ),
+        )
+        "0.1.20" -> listOf(
+            ReleaseNoteSlide(
+                title = "기록 날짜와 저장 흐름을 더 안전하게",
+                description = "기기 시간대가 바뀌어도 거래 날짜를 보존하고, 저장이 끝난 뒤에만 완료로 처리해요. 오늘·이번 주 집계와 금액 입력 검증도 다듬었어요.",
+            ),
+        )
+        "0.1.21" -> listOf(
+            ReleaseNoteSlide(
+                title = "카테고리·할부·함께 장부 확장",
+                description = "기본 카테고리와 월 예산, 할부·반복 지출, 앱 잠금, 연간 자료를 보강했어요. 함께 장부에는 선택 거래 공유와 공동 목표·재정 및 AI 요약을 추가했어요.",
+            ),
+        )
+        "0.1.22" -> listOf(
+            ReleaseNoteSlide(
+                title = "처음 쓰는 분을 위한 무료 사용 안내",
+                description = "첫 실행에서 목표 지출·빠른 기록·결제 알림·AI 기능을 안내해요. 알림 권한 상태와 시스템 화면 여백도 확인하기 쉽게 정리했어요.",
+            ),
+        )
+        "0.1.23" -> listOf(
+            ReleaseNoteSlide(
+                title = "한 문장으로 여러 거래 관리",
+                description = "여러 거래 추가나 내 거래 수정·삭제 대상을 문장으로 찾을 수 있어요. 추가·수정·삭제는 내용을 확인하고 직접 승인해야 반영돼요.",
+            ),
+        )
         "0.1.48" -> listOf(
             ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_48_photo_picker,
@@ -238,11 +398,8 @@ object ReleaseNotesCatalog {
         )
         "0.1.36" -> listOf(
             ReleaseNoteSlide(
-                imageResId = R.drawable.whats_new_0_1_28_photo_import,
-                imageAspectRatio = 904f / 950f,
                 title = "다른 앱에서 여러 장 바로 공유",
                 description = "금융앱 캡처를 여러 장 선택해 모아씀으로 공유하면 한 번에 분석해요. 기존 내역과 겹치는 거래는 걸러내고, 새 거래만 확인한 뒤 기록할 수 있어요.",
-                imageDescription = "여러 금융앱 캡처에서 중복 거래를 제외하고 새 거래를 검토하는 모아씀 화면",
             ),
         )
         "0.1.35" -> listOf(
@@ -316,13 +473,16 @@ object ReleaseNotesCatalog {
                 imageDescription = "무료로 시작할 수 있고 공유할 거래를 직접 선택하는 모아씀 함께 화면",
             ),
         )
+        "0.1.31" -> listOf(
+            ReleaseNoteSlide(
+                title = "카카오 로그인과 사진 근거 확인",
+                description = "카카오 계정 로그인을 추가했어요. 금융 사진에서 거래 행마다 해당 부분만 확인하고, 애매한 후보도 수정한 뒤 선택할 수 있어요. 앱 내 업데이트는 다운로드 진행률과 설치 안내를 보여줘요.",
+            ),
+        )
         "0.1.30" -> listOf(
             ReleaseNoteSlide(
-                imageResId = R.drawable.whats_new_0_1_28_photo_import,
-                imageAspectRatio = 904f / 950f,
                 title = "사진 거래를 더 꼼꼼히 확인",
                 description = "달력 합계·요일·취소 내역은 걸러내고, 겹친 거래는 한 건만 남겨요. 송금 상대나 결제처 분류가 애매한 항목은 확인 전 저장할 수 없어요. 사진 분석은 무료 ML Kit로 기기 안에서 처리해요.",
-                imageDescription = "가맹점과 금액을 검토하고 확인한 거래만 추가하는 사진 가져오기 화면",
             ),
         )
         "0.1.29" -> listOf(
@@ -454,7 +614,11 @@ fun WhatsNewDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false,
+        ),
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth().widthIn(max = 480.dp).padding(horizontal = 22.dp).heightIn(max = 680.dp),
@@ -466,7 +630,7 @@ fun WhatsNewDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()).padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("v$versionName 신기능", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("업데이트 소식", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 AnimatedContent(
                     targetState = safePage,
                     transitionSpec = {
@@ -482,13 +646,35 @@ fun WhatsNewDialog(
                 ) { page ->
                     val pageSlide = slides[page]
                     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                        Image(
-                            painter = painterResource(pageSlide.imageResId),
-                            contentDescription = pageSlide.imageDescription,
-                            modifier = Modifier.fillMaxWidth().aspectRatio(pageSlide.imageAspectRatio)
-                                .clip(RoundedCornerShape(18.dp)).background(colors.surfaceBase),
-                            contentScale = ContentScale.Fit,
+                        Text(
+                            "v${pageSlide.releaseVersion ?: versionName} 신기능",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
                         )
+                        val imageResId = pageSlide.imageResId
+                        if (imageResId != null) {
+                            Image(
+                                painter = painterResource(imageResId),
+                                contentDescription = pageSlide.imageDescription,
+                                modifier = Modifier.fillMaxWidth().aspectRatio(pageSlide.imageAspectRatio)
+                                    .clip(RoundedCornerShape(18.dp)).background(colors.surfaceBase),
+                                contentScale = ContentScale.Fit,
+                            )
+                        } else {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().aspectRatio(pageSlide.imageAspectRatio),
+                                shape = RoundedCornerShape(18.dp),
+                                color = colors.surfaceBase,
+                            ) {
+                                Box(contentAlignment = androidx.compose.ui.Alignment.Center) {
+                                    Text(
+                                        "지난 업데이트 요약",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = colors.textSecondary,
+                                    )
+                                }
+                            }
+                        }
                         Text(pageSlide.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Text(pageSlide.description, style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
                     }

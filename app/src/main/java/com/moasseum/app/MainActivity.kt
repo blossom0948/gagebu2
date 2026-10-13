@@ -110,6 +110,7 @@ import com.moasseum.app.ui.screens.NotificationsScreen
 import com.moasseum.app.ui.screens.TogetherScreen
 import com.moasseum.app.ui.screens.QuickHelpDialog
 import com.moasseum.app.ui.screens.ReleaseNotesCatalog
+import com.moasseum.app.ui.screens.ReleaseNoteSlide
 import com.moasseum.app.ui.screens.WhatsNewDialog
 import com.moasseum.app.ui.screens.UpdateAvailableDialog
 import com.moasseum.app.ui.screens.UpdateDownloadDialog
@@ -549,14 +550,20 @@ private fun MoasseumApp(
     val unreadActivityNoticeCount = activityNotices.count { it.id !in readActivityNoticeIds }
     val context = LocalContext.current
     var showWhatsNew by rememberSaveable { mutableStateOf(false) }
+    var releaseNotesSlides by remember { mutableStateOf(emptyList<ReleaseNoteSlide>()) }
     LaunchedEffect(application, BuildConfig.VERSION_NAME) {
         @Suppress("DEPRECATION")
         val installedPackage = context.packageManager.getPackageInfo(context.packageName, 0)
         val upgraded = installedPackage.lastUpdateTime > installedPackage.firstInstallTime
+        val lastSeenVersion = application.preferencesRepository.lastSeenReleaseNotesVersion()
         val shouldShow = application.preferencesRepository.shouldShowReleaseNotes(BuildConfig.VERSION_NAME, upgraded)
-        if (shouldShow && ReleaseNotesCatalog.slides(BuildConfig.VERSION_NAME).isNotEmpty()) {
+        val newSlides = ReleaseNotesCatalog.slidesSince(lastSeenVersion, BuildConfig.VERSION_NAME)
+        if (shouldShow && newSlides.isNotEmpty()) {
+            releaseNotesSlides = newSlides
             showWhatsNew = true
-        } else {
+        } else if (lastSeenVersion == null ||
+            com.moasseum.app.update.ReleaseNotesPolicy.compareVersions(BuildConfig.VERSION_NAME, lastSeenVersion) >= 0
+        ) {
             application.preferencesRepository.markReleaseNotesSeen(BuildConfig.VERSION_NAME)
         }
     }
@@ -2082,7 +2089,7 @@ private fun MoasseumApp(
     if (showWhatsNew && !showFirstRunGuide && !showNotificationAccessPrompt && !addOpen &&
         !showAccounts && !showAuth && notificationPromptIds.isEmpty() && !(appLockEnabled && !appLockReleased)
     ) {
-        WhatsNewDialog(versionName = BuildConfig.VERSION_NAME) {
+        WhatsNewDialog(versionName = BuildConfig.VERSION_NAME, slides = releaseNotesSlides) {
             showWhatsNew = false
             coroutineScope.launch { application.preferencesRepository.markReleaseNotesSeen(BuildConfig.VERSION_NAME) }
         }

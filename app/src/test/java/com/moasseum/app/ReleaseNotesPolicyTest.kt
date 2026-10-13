@@ -4,13 +4,16 @@ import com.moasseum.app.update.ReleaseNotesPolicy
 import com.moasseum.app.ui.screens.ReleaseNotesCatalog
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ReleaseNotesPolicyTest {
     @Test
     fun `every packaged app version has its own illustrated release note`() {
-        assertTrue(ReleaseNotesCatalog.slides(BuildConfig.VERSION_NAME).isNotEmpty())
+        val slides = ReleaseNotesCatalog.slides(BuildConfig.VERSION_NAME)
+        assertTrue(slides.isNotEmpty())
+        assertTrue(slides.any { it.imageResId != null })
     }
 
     @Test
@@ -167,6 +170,13 @@ class ReleaseNotesPolicyTest {
         assertEquals(1, slides.size)
         assertTrue(slides.single().title.contains("여러 장"))
         assertTrue(slides.single().description.contains("기존 내역"))
+        assertNull(slides.single().imageResId)
+    }
+
+    @Test
+    fun `history summaries do not reuse captures from a different version`() {
+        assertNull(ReleaseNotesCatalog.slides("0.1.30").single().imageResId)
+        assertNull(ReleaseNotesCatalog.slides("0.1.36").single().imageResId)
     }
 
     @Test
@@ -203,5 +213,52 @@ class ReleaseNotesPolicyTest {
     fun `older builds with no stored release note state use package install timestamps`() {
         assertTrue(ReleaseNotesPolicy.shouldShow("0.1.24", null, isUpgradeInstall = true))
         assertFalse(ReleaseNotesPolicy.shouldShow("0.1.24", null, isUpgradeInstall = false))
+    }
+
+    @Test
+    fun `cumulative notes include every release after the last acknowledged version`() {
+        val slides = ReleaseNotesCatalog.slidesSince("0.1.45", "0.1.48")
+
+        assertTrue(slides.isNotEmpty())
+        assertTrue(slides.all { it.releaseVersion == "0.1.46" || it.releaseVersion == "0.1.47" || it.releaseVersion == "0.1.48" })
+        assertEquals("0.1.46", slides.first().releaseVersion)
+        assertEquals("0.1.48", slides.last().releaseVersion)
+        assertTrue(slides.none { it.releaseVersion == "0.1.45" })
+    }
+
+    @Test
+    fun `legacy upgraded install gets the complete available history without invented screenshots`() {
+        val slides = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.48")
+
+        assertEquals("0.1.1", slides.first().releaseVersion)
+        assertEquals("0.1.48", slides.last().releaseVersion)
+        assertTrue(slides.any { it.releaseVersion == "0.1.31" && it.title.contains("카카오") })
+        assertTrue(slides.any { it.releaseVersion == "0.1.24" && it.imageResId != null })
+        assertTrue(slides.any { it.releaseVersion == "0.1.1" && it.imageResId == null })
+    }
+
+    @Test
+    fun `release catalog contains a note for every published version in the supported range`() {
+        val versions = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.49")
+            .mapNotNull { it.releaseVersion }
+            .toSet()
+
+        assertEquals((listOf("0.1.1", "0.1.2") + (4..49).map { "0.1.$it" }).toSet(), versions)
+    }
+
+    @Test
+    fun `same version and downgrade do not reopen or rewind release notes`() {
+        assertFalse(ReleaseNotesPolicy.shouldShow("0.1.48", "0.1.48", isUpgradeInstall = true))
+        assertFalse(ReleaseNotesPolicy.shouldShow("0.1.47", "0.1.48", isUpgradeInstall = true))
+        assertEquals(0, ReleaseNotesCatalog.slidesSince("0.1.48", "0.1.47").size)
+    }
+
+    @Test
+    fun `only the new release appears when the user last confirmed the previous version`() {
+        val slides = ReleaseNotesCatalog.slidesSince("0.1.48", "0.1.49")
+
+        assertEquals(1, slides.size)
+        assertEquals("0.1.49", slides.single().releaseVersion)
+        assertTrue(slides.single().description.contains("예산 주기"))
     }
 }

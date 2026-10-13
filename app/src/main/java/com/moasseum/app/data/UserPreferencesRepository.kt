@@ -452,13 +452,16 @@ class UserPreferencesRepository(
 
     suspend fun shouldShowReleaseNotes(currentVersion: String, isUpgradeInstall: Boolean): Boolean {
         require(currentVersion.matches(Regex("\\d+\\.\\d+\\.\\d+")))
-        val lastSeenVersion = context.settingsDataStore.data.first()[LAST_SEEN_RELEASE_NOTES_VERSION]
+        val lastSeenVersion = lastSeenReleaseNotesVersion()
         return com.moasseum.app.update.ReleaseNotesPolicy.shouldShow(
             currentVersion = currentVersion,
             lastSeenVersion = lastSeenVersion,
             isUpgradeInstall = isUpgradeInstall,
         )
     }
+
+    suspend fun lastSeenReleaseNotesVersion(): String? = context.settingsDataStore.data.first()[LAST_SEEN_RELEASE_NOTES_VERSION]
+        ?.takeIf { it.matches(Regex("\\d+\\.\\d+\\.\\d+")) }
 
     suspend fun markReleaseNotesSeen(version: String) {
         require(version.matches(Regex("\\d+\\.\\d+\\.\\d+")))
