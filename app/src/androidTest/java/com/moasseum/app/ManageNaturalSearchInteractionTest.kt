@@ -10,6 +10,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -19,6 +22,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onRoot
@@ -45,7 +49,7 @@ class ManageNaturalSearchInteractionTest {
         var aiSearchCount = 0
         composeRule.setContent {
             MoasseumTheme(darkTheme = true) {
-                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).verticalScroll(rememberScrollState())) {
                     ManageNaturalSearch(
                         entries = listOf(
                             ManageSearchEntry(
@@ -101,7 +105,7 @@ class ManageNaturalSearchInteractionTest {
         base64.chunked(2_000).forEachIndexed { index, chunk ->
             Log.i("MOASSEUM_CAPTURE", "MSS_MANAGE_SCREEN|$index|$chunk")
         }
-        composeRule.onNodeWithText("설정 열기").performClick()
+        composeRule.onNodeWithText("설정 열기").performScrollTo().performClick()
         assertEquals(1, openedCount)
     }
 
@@ -183,7 +187,7 @@ class ManageNaturalSearchInteractionTest {
         var openedCount = 0
         composeRule.setContent {
             MoasseumTheme(darkTheme = true) {
-                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).verticalScroll(rememberScrollState())) {
                     ManageNaturalSearch(
                         entries = listOf(ManageSearchEntry("budget", "월 예산 설정", "목표와 사용액", listOf("생활비"), "예산 수정") { openedCount++ }),
                         aiAvailable = false,
@@ -262,7 +266,7 @@ class ManageNaturalSearchInteractionTest {
         }
         composeRule.setContent {
             MoasseumTheme(darkTheme = true) {
-                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).verticalScroll(rememberScrollState())) {
                     ManageNaturalSearch(
                         entries = entries,
                         aiAvailable = false,
@@ -304,7 +308,7 @@ class ManageNaturalSearchInteractionTest {
 
         composeRule.onNodeWithText("결제일 기준 보기").performClick()
         composeRule.onNodeWithText("선택한 기능").assertExists()
-        composeRule.onNodeWithText("카드 사용액 보기").performClick()
+        composeRule.onNodeWithText("카드 사용액 보기").performScrollTo().performClick()
         assertEquals("card-usage", openedId)
     }
 }

@@ -229,33 +229,36 @@ class ReleaseNotesPolicyTest {
 
     @Test
     fun `legacy upgraded install gets the complete available history without invented screenshots`() {
-        val slides = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.54")
+        val slides = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.55")
 
         assertEquals("0.1.1", slides.first().releaseVersion)
-        assertEquals("0.1.54", slides.last().releaseVersion)
+        assertEquals("0.1.55", slides.last().releaseVersion)
         assertTrue(slides.any { it.releaseVersion == "0.1.31" && it.title.contains("카카오") })
         assertTrue(slides.any { it.releaseVersion == "0.1.24" && it.imageResId != null })
         assertTrue(slides.any { it.releaseVersion == "0.1.1" && it.imageResId == null })
         assertTrue(slides.any { it.releaseVersion == "0.1.54" && it.title.contains("반복 버튼") })
+        assertTrue(slides.any { it.releaseVersion == "0.1.55" && it.title.contains("키보드 위") })
     }
 
     @Test
     fun `release catalog contains a note for every published version in the supported range`() {
-        val versions = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.54")
+        val versions = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.55")
             .mapNotNull { it.releaseVersion }
             .toSet()
 
-        assertEquals((listOf("0.1.1", "0.1.2") + (4..54).map { "0.1.$it" }).toSet(), versions)
+        assertEquals((listOf("0.1.1", "0.1.2") + (4..55).map { "0.1.$it" }).toSet(), versions)
     }
 
     @Test
     fun `upgrading from an older install includes every unseen release through the current version`() {
-        val slides = ReleaseNotesCatalog.slidesSince("0.1.50", "0.1.54")
+        val slides = ReleaseNotesCatalog.slidesSince("0.1.50", "0.1.55")
 
-        assertEquals(listOf("0.1.51", "0.1.52", "0.1.53", "0.1.54"), slides.mapNotNull { it.releaseVersion }.distinct())
+        assertEquals(listOf("0.1.51", "0.1.52", "0.1.53", "0.1.54", "0.1.55"), slides.mapNotNull { it.releaseVersion }.distinct())
         assertEquals(6, slides.count { it.releaseVersion == "0.1.54" })
-        assertTrue(slides.any { it.title.contains("위치 정보") })
-        assertTrue(slides.last().title.contains("반복 버튼"))
+        assertEquals(1, slides.count { it.releaseVersion == "0.1.55" })
+        assertTrue(slides.any { it.releaseVersion == "0.1.54" && it.title.contains("위치 정보") })
+        assertTrue(slides.any { it.releaseVersion == "0.1.54" && it.title.contains("반복 버튼") })
+        assertTrue(slides.last().title.contains("키보드 위"))
     }
 
     @Test

@@ -59,7 +59,7 @@ data class ReleaseNoteSlide(
 )
 
 object ReleaseNotesCatalog {
-    private val supportedVersions = listOf("0.1.1", "0.1.2") + (4..54).map { "0.1.$it" }
+    private val supportedVersions = listOf("0.1.1", "0.1.2") + (4..55).map { "0.1.$it" }
 
     /** Returns only releases newer than [lastSeenVersion], in chronological order. */
     fun slidesSince(lastSeenVersion: String?, currentVersion: String): List<ReleaseNoteSlide> {
@@ -694,6 +694,15 @@ object ReleaseNotesCatalog {
                 title = "빈 내역의 반복 버튼을 정리했어요",
                 description = "CSV 가져오기는 상단에 한 번만 보여요. 내역이 없을 때는 선택한 날짜에 추가하는 버튼만 남기고, 내보내기·백업은 다른 아이콘으로 구분했어요.",
                 imageDescription = "Galaxy Z Fold4 격리 .qa 앱에서 촬영한 빈 내역 화면. 상단 CSV 가져오기 1개, 구분된 내보내기 아이콘, 선택 날짜 추가 버튼이 보이며 QA 장부는 비어 있습니다.",
+            ),
+        )
+        "0.1.55" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_55_quick_match,
+                imageAspectRatio = 316f / 294f,
+                title = "거래 추천을 키보드 위에서 바로 선택",
+                description = "가게 이름을 입력하면 예전 내역이 바로 뜨고, 누르면 금액·분류·결제수단이 채워져요. 설정 검색은 결과를 고를 때 키보드를 내려 메뉴가 가려지지 않게 했고, AI 창 전환 중 입력도 안전하게 처리해요.",
+                imageDescription = "Galaxy Z Fold4의 격리 .qa 앱에서 합성 기록으로 캡처한 실제 빠른 거래 추천 메뉴입니다. 공동 생활비 50,000원 후보를 선택할 수 있으며 개인 거래 정보는 포함하지 않습니다.",
             ),
         )
         else -> emptyList()

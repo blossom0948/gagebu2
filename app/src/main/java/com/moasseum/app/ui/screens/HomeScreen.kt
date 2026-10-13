@@ -110,11 +110,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.invisibleToUser
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -646,6 +649,7 @@ private fun HomeAiAssistantButton(
 }
 
 @Composable
+@OptIn(ExperimentalComposeUiApi::class)
 private fun AiAssistantPopup(
     uiState: LedgerUiState,
     analysisState: SpendingAnalysisState,
@@ -663,6 +667,7 @@ private fun AiAssistantPopup(
     val progress = remember { Animatable(if (reduceMotion) 1f else 0f) }
     var dismissing by remember { mutableStateOf(false) }
     var handledDismissRequest by remember { mutableIntStateOf(dismissRequest) }
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
     val dismiss = { if (!dismissing) dismissing = true }
 
     // Keep consuming Back through the closing animation so a repeated system
@@ -674,28 +679,19 @@ private fun AiAssistantPopup(
             dismiss()
         }
     }
-    LaunchedEffect(reduceMotion) {
+    // One coroutine owns the Animatable. Separate open/close effects could race
+    // when Reduce Motion changes during dismissal and leave the popup stranded.
+    LaunchedEffect(dismissing, reduceMotion) {
+        val target = if (dismissing) 0f else 1f
         if (reduceMotion) {
-            progress.snapTo(1f)
-        } else if (!dismissing) {
+            progress.snapTo(target)
+        } else {
             progress.animateTo(
-                targetValue = 1f,
+                targetValue = target,
                 animationSpec = spring(dampingRatio = 0.92f, stiffness = 420f),
             )
         }
-    }
-    LaunchedEffect(dismissing, reduceMotion) {
-        if (dismissing) {
-            if (reduceMotion) {
-                progress.snapTo(0f)
-            } else {
-                progress.animateTo(
-                    targetValue = 0f,
-                    animationSpec = spring(dampingRatio = 0.92f, stiffness = 420f),
-                )
-            }
-            onDismiss()
-        }
+        if (dismissing) currentOnDismiss()
     }
 
     BoxWithConstraints(
@@ -742,6 +738,7 @@ private fun AiAssistantPopup(
         val iconSize = with(density) { 19.dp.toPx() + (39.dp.toPx() - 19.dp.toPx()) * fraction }
         val contentReveal = ((fraction - 0.58f) / 0.34f).coerceIn(0f, 1f)
         val settledOrbReveal = ((fraction - 0.82f) / 0.12f).coerceIn(0f, 1f)
+        val popupInteractive = fraction >= 0.995f && !dismissing
 
         Box(
             modifier = Modifier
@@ -818,6 +815,10 @@ private fun AiAssistantPopup(
                         .navigationBarsPadding()
                         .padding(horizontal = 16.dp)
                         .padding(top = 14.dp, bottom = 18.dp)
+                        .then(
+                            if (popupInteractive) Modifier
+                            else Modifier.clearAndSetSemantics { invisibleToUser() },
+                        )
                         .testTag("home_ai_sheet_content"),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -850,6 +851,21 @@ private fun AiAssistantPopup(
                         showReport = showReport,
                     )
                 }
+            }
+            // The sheet is laid out at its final size and visually clipped
+            // during the morph. Keep emerging/closing controls from receiving
+            // taps until the single-window transition has settled.
+            if (!popupInteractive) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {},
+                        )
+                        .semantics { invisibleToUser() },
+                )
             }
 
             Box(

@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -69,6 +70,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -701,6 +703,7 @@ private fun DirectTransactionForm(
     onSave: (String, TransactionType, String, String, String, String, String?, LocalDate, Int?, CurrencyConversion?) -> Boolean,
 ) {
     val colors = LocalFinanceColors.current
+    val focusManager = LocalFocusManager.current
     var typeName by rememberSaveable(initialType.name) { mutableStateOf(initialType.name) }
     var amount by rememberSaveable { mutableStateOf("") }
     var merchant by rememberSaveable { mutableStateOf("") }
@@ -723,6 +726,8 @@ private fun DirectTransactionForm(
     var rateError by remember { mutableStateOf<String?>(null) }
     var rateReloadKey by rememberSaveable { mutableIntStateOf(0) }
     var manageSuggestions by rememberSaveable { mutableStateOf(false) }
+    var merchantFocused by remember { mutableStateOf(false) }
+    var merchantMatchSelected by remember { mutableStateOf(false) }
     val suggestions = remember(transactions, hiddenSuggestionKeys) {
         quickEntrySuggestions(transactions, hiddenSuggestionKeys)
     }
@@ -880,17 +885,53 @@ private fun DirectTransactionForm(
                 }
             }
         }
-        OutlinedTextField(
-            value = merchant,
-            onValueChange = { merchant = it; showError = false },
-            modifier = Modifier.fillMaxWidth().testTag("quick_add_merchant"),
-            label = { Text("가맹점") },
-            placeholder = { Text("어디에 썼나요?") },
-            singleLine = true,
-            isError = showError && merchant.isBlank(),
-            shape = RoundedCornerShape(15.dp),
-        )
-        if (!manageSuggestions && merchantMatches.isNotEmpty()) {
+        Box(Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = merchant,
+                onValueChange = { merchant = it; merchantMatchSelected = false; showError = false },
+                modifier = Modifier.fillMaxWidth().onFocusChanged { merchantFocused = it.isFocused }.testTag("quick_add_merchant"),
+                label = { Text("가맹점") },
+                placeholder = { Text("어디에 썼나요?") },
+                singleLine = true,
+                isError = showError && merchant.isBlank(),
+                shape = RoundedCornerShape(15.dp),
+            )
+            DropdownMenu(
+                modifier = Modifier.testTag("quick_entry_history_menu"),
+                expanded = !manageSuggestions && merchantFocused && merchantMatches.isNotEmpty(),
+                onDismissRequest = { focusManager.clearFocus() },
+            ) {
+                merchantMatches.forEachIndexed { index, match ->
+                    DropdownMenuItem(
+                        modifier = Modifier.testTag("quick_entry_history_match_$index"),
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(match.merchant, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "${if (match.currency == "KRW") formatWon(match.amount) else "${match.currency} ${match.originalAmount.orEmpty()}"} · ${categoryLabel(match.categoryKey)} · ${match.paymentMethod}",
+                                    color = colors.textSecondary,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
+                                )
+                            }
+                        },
+                        onClick = {
+                            merchantMatchSelected = true
+                            focusManager.clearFocus()
+                            typeName = match.type.name
+                            amount = match.originalAmount ?: match.amount.toString()
+                            merchant = match.merchant
+                            categoryKey = match.categoryKey
+                            paymentMethod = match.paymentMethod
+                            currencyCode = match.currency
+                            isInstallment = false
+                            showError = false
+                        },
+                    )
+                }
+            }
+        }
+        if (!manageSuggestions && !merchantFocused && !merchantMatchSelected && merchantMatches.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text("이전에 입력한 내역", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                 Row(
@@ -902,6 +943,8 @@ private fun DirectTransactionForm(
                             modifier = Modifier
                                 .testTag("quick_entry_history_match_$index")
                                 .clickable {
+                                    merchantMatchSelected = true
+                                    focusManager.clearFocus()
                                     typeName = match.type.name
                                     amount = match.originalAmount ?: match.amount.toString()
                                     merchant = match.merchant

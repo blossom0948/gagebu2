@@ -97,6 +97,19 @@ class QuickAddSheetInteractionTest {
             Log.i("MOASSEUM_CAPTURE", "MSS_QUICK_ADD_HISTORY|$index|$chunk")
         }
 
+        composeRule.onNodeWithTag("quick_entry_history_menu").assertExists()
+        val suggestionMenu = composeRule.onNodeWithTag("quick_entry_history_menu").captureToImage().asAndroidBitmap()
+        val suggestionCapture = ByteArrayOutputStream().use { output ->
+            assertTrue(suggestionMenu.compress(Bitmap.CompressFormat.JPEG, 92, output))
+            output.toByteArray()
+        }
+        if (InstrumentationRegistry.getArguments().getString("captureImage") == "true") {
+            Base64.encodeToString(suggestionCapture, Base64.NO_WRAP).chunked(1_800).forEachIndexed { index, chunk ->
+                Log.i("MOASSEUM_CAPTURE", "MSS_QUICK_ENTRY_HISTORY_MENU|$index|$chunk")
+            }
+        }
+        suggestionMenu.recycle()
+
         composeRule.onNodeWithTag("quick_entry_history_match_0").performClick()
         composeRule.onNodeWithTag("quick_add_merchant").assertTextContains("공동 생활비")
         composeRule.onNodeWithTag("quick_add_amount").assertTextContains("50000")

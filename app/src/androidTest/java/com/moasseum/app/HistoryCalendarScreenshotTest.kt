@@ -16,6 +16,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.moasseum.app.domain.LedgerUiState
@@ -64,7 +65,7 @@ class HistoryCalendarScreenshotTest {
         composeRule.onNodeWithText("2026.10 지출 기록이 없어요").assertExists()
         composeRule.onNodeWithText("10월 14일에 추가").assertExists()
         composeRule.onNodeWithContentDescription("내보내기·백업").assertExists()
-        composeRule.onNodeWithTag("history_csv_import").performClick()
+        composeRule.onNodeWithTag("history_csv_import").performScrollTo().performClick()
         check(importedCsv == 1) { "The single CSV import action should invoke its callback once." }
         composeRule.onNodeWithContentDescription("내보내기·백업").performClick()
         composeRule.onNodeWithText("JSON 전체 백업").performClick()

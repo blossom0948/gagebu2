@@ -24,6 +24,26 @@ import org.junit.runner.RunWith
 class WhatsNewDialogInteractionTest {
     @get:Rule val composeRule = createComposeRule()
 
+    @Test fun v0155ReleasePopupShowsTheActualFoldQuickEntrySuggestionCapture() {
+        var dismissed = false
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Box(Modifier.fillMaxSize().background(LocalFinanceColors.current.surfaceBase)) {
+                    WhatsNewDialog(versionName = "0.1.55", onDismiss = { dismissed = true })
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("v0.1.55 신기능").assertExists()
+        composeRule.onNodeWithText("거래 추천을 키보드 위에서 바로 선택").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4의 격리 .qa 앱에서 합성 기록으로 캡처한 실제 빠른 거래 추천 메뉴입니다. 공동 생활비 50,000원 후보를 선택할 수 있으며 개인 거래 정보는 포함하지 않습니다.",
+        ).assertExists()
+        composeRule.onNodeWithText("1 / 1").assertExists()
+        composeRule.onNodeWithText("확인").performScrollTo().performClick()
+        assertTrue(dismissed)
+    }
+
     @Test fun v0148ReleasePopupShowsBothActualFoldCapturesAndAdvances() {
         var dismissed = false
         composeRule.setContent {

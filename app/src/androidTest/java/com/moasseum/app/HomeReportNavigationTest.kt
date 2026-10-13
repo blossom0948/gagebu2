@@ -16,6 +16,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.moasseum.app.domain.HomeDashboardCards
@@ -94,7 +95,7 @@ class HomeReportNavigationTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("2026년 10월").assertExists()
 
-        composeRule.onNodeWithTag("report_set_budget").performClick()
+        composeRule.onNodeWithTag("report_set_budget").performScrollTo().performClick()
         composeRule.runOnIdle { assertEquals("budget", requestedFeature.get()) }
     }
 

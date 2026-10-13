@@ -187,6 +187,7 @@ fun ManageNaturalSearch(
                 recentEntries.forEach { entry ->
                     AssistChip(
                         onClick = {
+                            keyboardController?.hide()
                             updateQuery(entry.title)
                             selectedId = entry.id
                             aiQuery = ""
@@ -210,6 +211,7 @@ fun ManageNaturalSearch(
                 ManageSearchCatalog.shortcuts.forEach { shortcut ->
                     AssistChip(
                         onClick = {
+                            keyboardController?.hide()
                             updateQuery(shortcut.query)
                             selectedId = null
                             aiQuery = ""
@@ -312,7 +314,10 @@ fun ManageNaturalSearch(
                             )
                             Row(
                                 modifier = Modifier.fillMaxWidth()
-                                    .clickable(role = Role.Button) { selectedId = if (selectedId == entry.id) null else entry.id }
+                                    .clickable(role = Role.Button) {
+                                        keyboardController?.hide()
+                                        selectedId = if (selectedId == entry.id) null else entry.id
+                                    }
                                     .padding(horizontal = 14.dp, vertical = 11.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {

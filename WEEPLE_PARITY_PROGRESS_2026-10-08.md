@@ -1,5 +1,28 @@
 # Weeple 기능 대조 진행 보고서 — 2026-10-08
 
+# v0.1.55 최종 검증 — 빠른 거래 추천·검색 키보드·AI 모션 안전성 (2026-10-14)
+
+- **빠른 입력 사용성 결함**: Fold4 `.qa`에서 거래처를 입력할 때 과거 내역 추천이 입력창 아래에 배치되어 삼성 키보드가 열린 상태에서는 후보가 가려졌습니다. 거래처에 포커스된 동안 후보를 입력창에 고정된 선택 메뉴로 보여 주고, 선택 한 번으로 가맹점·금액·분류·결제수단을 채우게 했습니다. 키보드가 내려간 뒤에도 후보가 남아 중복 노출되지 않게 했습니다. 실제 기기에서 합성 `공동 생활비` 후보를 캡처하고 선택 후 각 입력값을 확인했습니다.
+- **관리 기능 검색**: 최근 메뉴, 추천 검색어, 검색 결과를 누르면 키보드를 내려 선택한 기능과 명시적 실행 버튼을 바로 볼 수 있게 했습니다. 검색 결과 선택과 기능 실행은 분리된 채 유지합니다.
+- **AI 팝업 입력·접근성**: 열기/닫기 애니메이션을 하나의 effect가 소유합니다. Reduce Motion이 닫힘 중 켜져도 애니메이션이 경합하지 않고 즉시 닫히며, 보이는 전환 전에는 하위 버튼의 semantics와 터치를 막고 최신 dismiss 콜백을 사용합니다.
+- **Fold 적응형 UI 회귀 검사**: 전체 기기 실행에서 기존 UI 검사는 Fold의 2-pane/LazyColumn 화면에서 아직 화면 밖인 요소를 스크롤 없이 누르고 있었습니다. 실제 가시성 및 사용자 스크롤과 같은 흐름으로 CSV 가져오기, 리포트 예산, 함께 화면의 공유 요약·사진 섹션을 검사하도록 계측을 고쳤습니다. 이 과정에서 빠른 거래 추천의 실제 키보드 가림도 발견해 제품 코드로 수정했습니다.
+- **검증**: 단위 테스트 289건 통과, Galaxy Z Fold4 / Android 16 `.qa` 계측 72건 중 71건 통과·실패 0·운영 Supabase 로그인 E2E 1건 건너뜀, `lintDebug` 및 `lintVitalRelease` 통과. 실제 기기에서 거래 추천 선택, 관리 검색, 리포트/내역/공유 화면 스크롤 상태, AI 열기·닫기 및 모션 변경을 검증했습니다. 계측 데이터는 합성 거래만 사용했습니다.
+- **설계 참고**: 의도적이고 되돌릴 수 있는 Reduce Motion 대응은 [Apple HIG Motion](https://developer.apple.com/design/human-interface-guidelines/motion), [Material 3 Motion](https://m3.material.io/styles/motion), [Samsung One UI Motion basics](https://developer.samsung.com/one-ui/motion/basic.html) 및 [One UI Motion introduction](https://developer.samsung.com/one-ui/motion/intro.html)을 참고했습니다.
+- **남은 차이**: 이 릴리스는 Weeple과 전체 기능·화면·애니메이션이 완전히 같음을 의미하지 않습니다. 다국어 전체 번역, 파트너 실계정 전이 전체, 모든 Weeple 화면 상태의 전수 비교는 이번 검증 범위 밖입니다. 합성 QA 외 실제 계정, 개인 앱/Weeple 데이터, 운영 DB/Worker 설정, 사진·비밀 값은 읽거나 변경하지 않았습니다. 사진은 계속 로컬 처리만 합니다.
+- **배포 정보**: `com.moasseum.app`, versionCode `55` / versionName `0.1.55`, APK `63,814,636 bytes`, SHA-256 `f7465981adc3f0f2693f64277b329ce3c93f42f56f7b1deb28b88c5b1aaa331f`. 서명 인증서 SHA-256 `669674a2114fb59d85c56bba774b89fec9ce7f7ee79825769826130362a091c9`로 v0.1.54와 같습니다. [GitHub Release v0.1.55](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.55).
+
+> 아래 v0.1.55 후보 메모는 첫 전체 검사에서 발견한 실패를 기록한 중간 상태입니다. 이후 위의 스크롤 가시성·키보드 가림 문제를 수정하고 전체 검사를 통과했습니다.
+
+# v0.1.55 후보 검증 — AI 팝업 모션 도중 입력·접근성 안전성 (2026-10-14, 미배포)
+
+- **새로 확인한 차이/오류**: 실제 AI 창은 버튼 자리에서 최종 메뉴 크기로 모핑하지만, 본문은 시작부터 최종 위치 크기로 배치된 채 모양만 클립됩니다. 그 때문에 전환 중 아직 보이지 않는 분석 컨트롤이 트리 안에 먼저 노출될 수 있었고, 입력이 시각적 준비 상태와 맞지 않았습니다. 또한 열기와 닫기 `LaunchedEffect`가 하나의 `Animatable`을 동시에 기록해 시스템/앱 모션 설정을 닫힘 도중 바꾸면 두 애니메이션이 경합할 여지가 있었습니다. 닫힘 콜백도 최초 컴포지션의 값을 캡처할 수 있었습니다.
+- **수정**: 열기·닫기를 단일 effect가 소유하며 Reduce Motion이 바뀌면 현재 목표로 즉시 정착합니다. 전환이 완전히 끝나기 전에는 내부 메뉴 semantics를 감추고 투명 입력막으로 터치를 차단합니다. 애니메이션 이후 최신 dismiss 콜백을 호출합니다.
+- **여러 동작 회귀**: AI 팝업 단독 Fold4 계측 1건은 통과했습니다(열기 중 의미 노드 비노출, 분석 액션, 닫기·바깥 누르기·dismiss 요청·연속 뒤로가기·닫힘 도중 모션 설정 변경). 전체 계측 재실행은 71건 중 62건 통과, 8건 실패, 인증 E2E 1건 건너뜀으로 끝났습니다. 실패는 History CSV 콜백, 홈 리포트 예산 이동, 관리 검색 3건, 빠른 입력 후보, 함께 화면 2건입니다. 범위를 넘어 원인을 해결·재검증하지 못했습니다.
+- **설계 근거**: Apple은 짧고 목적 있는 피드백, 취소 가능한 모션과 Reduce Motion 지원을 권합니다. Material 3 모션 스킴은 표준/표현형 물리 기반 전환을 제공합니다. Samsung One UI는 즉각적인 터치 피드백, 부드럽고 끊김 없는 전환, 100–500ms 범위의 모션 길이를 안내합니다. [Apple HIG Motion](https://developer.apple.com/design/human-interface-guidelines/motion), [Material 3 Motion](https://m3.material.io/styles/motion), [Samsung One UI Motion basics](https://developer.samsung.com/one-ui/motion/basic.html), [Samsung One UI Motion introduction](https://developer.samsung.com/one-ui/motion/intro.html).
+- **범위/차이**: 이번은 AI 모달 모션과 접근성·터치 상호작용 및 이를 받치는 모션 설정에 대한 검증이지 전체 앱 애니메이션 또는 Weeple 전 화면·기능의 완전한 전수 비교가 아닙니다. 전체 동등을 주장하지 않습니다. 기존 Weeple 대조에서 확인한 한국어 외 3개 언어, 모든 파트너 전이의 실계정 E2E 등은 여전히 별도 차이입니다.
+- **개인정보 범위**: Fold4 `.qa`만 사용합니다. 합성 거래 외 개인 데이터 접근/수정, 프로덕션·Weeple 실행 데이터, 사진 전송, 인증/운영 서버 설정 변경은 하지 않습니다.
+- **배포 판단**: 전체 Fold4 회귀가 실패해 v0.1.55를 공개하지 않았습니다. 공개 최신 버전은 v0.1.54입니다. `lintVitalRelease`, 최종 APK 서명/해시 검증도 완료하지 않았습니다. 전체 기기 실패의 원인을 고친 뒤 다시 검증해야 합니다.
+
 # v0.1.54 최종 검증 — AI 모달·빠른 입력·사진 처리·예산 요약 (2026-10-14)
 
 - **비교 근거·중복 확인**: [최신 Weeple App Store 기능·업데이트](https://apps.apple.com/kr/app/weeple-%EA%B0%9C%EC%9D%B8-%EC%BB%A4%ED%94%8C-%EA%B0%80%EA%B3%84%EB%B6%80/id6768306021)는 공동/개인 지출, 예산, 음성·OCR 입력, AI 분석, 공동 지출 요약·인사이트·D-day, 백업 복원과 오프라인 복귀 새로고침 등을 안내합니다. 코드에서 홈 카드 선택, 예산 알림, 무지출, 카드·할부, 공동 목표·재정 방식, 외부 공유, 입력 복구, 전체 고정비 목록과 백업·재연결을 다시 확인했습니다. 기존 Weeple Money [App Store 기능 소개](https://apps.apple.com/kr/app/%EC%9C%84%ED%94%8C-%EA%B0%80%EA%B3%84%EB%B6%80-weple-money/id467936485)의 월·주·일 내역·통계·예산·자산·카드 기능도 중복 구현하지 않았습니다. 구독 결제·광고·크레딧은 무료 우선 원칙에 따라 추가하지 않았습니다.

@@ -16,6 +16,8 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.Modifier
@@ -219,8 +221,6 @@ class SharedMemoryAlbumScreenshotTest {
 
         composeRule.onNodeWithText("공유 장부 연결됨").assertExists()
         composeRule.onNodeWithText("D+128").assertExists()
-        composeRule.onNodeWithText("우리 지출").assertExists()
-        composeRule.onNodeWithText("공유 거래").assertExists()
         val relationshipHero = composeRule.onNodeWithTag("shared_relationship_hero_card").captureToImage().asAndroidBitmap()
         val relationshipBytes = ByteArrayOutputStream().use { output ->
             relationshipHero.compress(Bitmap.CompressFormat.JPEG, 90, output)
@@ -237,6 +237,10 @@ class SharedMemoryAlbumScreenshotTest {
         Base64.encodeToString(preview, Base64.NO_WRAP).chunked(2_000).forEachIndexed { index, chunk ->
             Log.i("MOASSEUM_CAPTURE", "MSS_TOGETHER_CONNECTED|$index|$chunk")
         }
+        composeRule.onNodeWithTag("together_screen_list").performScrollToNode(hasText("우리 지출"))
+        composeRule.onNodeWithText("우리 지출").assertExists()
+        composeRule.onNodeWithText("공유 거래").assertExists()
+        composeRule.onNodeWithTag("together_screen_list").performScrollToNode(hasTestTag("relationship_photo_edit"))
         composeRule.onNodeWithTag("relationship_photo_edit").performClick()
         composeRule.onNodeWithText("대표 사진").assertExists()
         val photoPicker = composeRule.onNodeWithTag("relationship_photo_picker_dialog").captureToImage().asAndroidBitmap()
@@ -255,6 +259,7 @@ class SharedMemoryAlbumScreenshotTest {
         composeRule.onNodeWithTag("relationship_date_edit").performClick()
         composeRule.onNodeWithText("삭제").performClick()
         assertNull(savedSettings?.relationshipStartDate)
+        composeRule.onNodeWithTag("together_screen_list").performScrollToNode(hasContentDescription("최근 공유 사진 주말 여행"))
         composeRule.onNodeWithContentDescription("최근 공유 사진 주말 여행").performClick()
         assertEquals(coverPhoto.id, viewedMemoryId)
         composeRule.onNodeWithTag("together_screen_list").performScrollToNode(hasText("폴드 여행 자금"))
@@ -320,7 +325,7 @@ class SharedMemoryAlbumScreenshotTest {
                 }
             }
         }
-        composeRule.onNodeWithTag("shared_memory_album_header").performScrollTo()
+        composeRule.onNodeWithTag("together_screen_list").performScrollToNode(hasTestTag("shared_memory_album_header"))
         composeRule.onNodeWithText("함께한 사진").assertExists()
         composeRule.onNodeWithText("사진 추가").assertExists()
         composeRule.onNodeWithText("가을 산책").assertExists()

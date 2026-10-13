@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -246,9 +247,10 @@ class HomeDashboardScreenshotTest {
         check(context.packageName.endsWith(".qa")) { "Home tab interaction tests are restricted to the isolated QA app." }
         val aiAnalysisClicks = AtomicInteger()
         val aiPopupDismissRequest = mutableIntStateOf(0)
+        val reduceMotion = mutableStateOf(false)
 
         composeRule.setContent {
-            MoasseumTheme(darkTheme = true) {
+            MoasseumTheme(darkTheme = true, reduceMotion = reduceMotion.value) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.surface,
@@ -299,6 +301,7 @@ class HomeDashboardScreenshotTest {
         composeRule.mainClock.advanceTimeBy(120)
         composeRule.onNodeWithTag("home_ai_launch_transition").assertExists()
         composeRule.onAllNodesWithTag("home_ai_assistant_sheet").assertCountEquals(1)
+        composeRule.onNodeWithText("AI 분석 만들기").assertDoesNotExist()
         val morphBytes = composeRule.onRoot().captureToImage().asAndroidBitmap().let { bitmap ->
             ByteArrayOutputStream().use { output ->
                 assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output))
@@ -341,6 +344,19 @@ class HomeDashboardScreenshotTest {
         composeRule.onNodeWithTag("home_ai_assistant_sheet").assertExists()
         captureAndLogRoot("MSS_HOME_AI_COLLAPSE")
         composeRule.mainClock.advanceTimeBy(600)
+        composeRule.mainClock.autoAdvance = true
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("home_ai_assistant_sheet").assertDoesNotExist()
+
+        // Switching Reduce Motion while the popup is closing must settle the
+        // same transition once, without racing a still-running opening effect.
+        composeRule.onNodeWithTag("home_ai_assistant_button").performClick()
+        composeRule.waitForIdle()
+        composeRule.mainClock.autoAdvance = false
+        composeRule.runOnIdle { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
+        composeRule.mainClock.advanceTimeBy(32)
+        composeRule.runOnIdle { reduceMotion.value = true }
+        composeRule.mainClock.advanceTimeBy(32)
         composeRule.mainClock.autoAdvance = true
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("home_ai_assistant_sheet").assertDoesNotExist()
