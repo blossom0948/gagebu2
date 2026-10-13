@@ -72,4 +72,19 @@ class QuickEntrySuggestionsTest {
         assertEquals(2, matches.size)
         assertEquals(listOf(6000L, 5000L), matches.map { it.amount })
     }
+
+    @Test fun partialKoreanMerchantSearchRanksNamePrefixBeforeNewerIncidentalMatches() {
+        val matches = matchingQuickEntrySuggestions(
+            listOf(
+                transaction(30, "생활비 공동 모임", 2_000),
+                transaction(20, "공동 생활비", 50_000, category = "LIVING"),
+                transaction(10, "공동 생활비", 40_000, category = "LIVING"),
+            ),
+            merchantQuery = "공동",
+            type = TransactionType.EXPENSE,
+        )
+
+        assertEquals(listOf("공동 생활비", "공동 생활비", "생활비 공동 모임"), matches.map { it.merchant })
+        assertEquals(listOf(50_000L, 40_000L, 2_000L), matches.map { it.amount })
+    }
 }

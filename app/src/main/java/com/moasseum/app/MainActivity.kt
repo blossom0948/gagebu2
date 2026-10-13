@@ -121,6 +121,7 @@ import com.moasseum.app.data.SharedLedgerSnapshot
 import com.moasseum.app.data.SharedMemoryPhoto
 import com.moasseum.app.data.SharedMemoryPhotoCodec
 import com.moasseum.app.ui.theme.MoasseumTheme
+import com.moasseum.app.ui.theme.LocalFinanceMotion
 import com.moasseum.app.data.AiClient
 import com.moasseum.app.data.CsvBackup
 import com.moasseum.app.data.DEFAULT_CATEGORY_LABELS
@@ -407,8 +408,14 @@ class MainActivity : FragmentActivity() {
 
     private fun consumeWidgetEntryType(incoming: Intent?): com.moasseum.app.domain.TransactionType? {
         if (incoming?.action != ACTION_WIDGET_QUICK_ADD) return null
-        val type = widgetEntryType(incoming.getStringExtra(EXTRA_WIDGET_ENTRY_TYPE))
+        val type = quickEntryTypeFromIntent(
+            action = incoming.action,
+            explicitType = incoming.getStringExtra(EXTRA_WIDGET_ENTRY_TYPE),
+            dataString = incoming.dataString,
+        )
         incoming.removeExtra(EXTRA_WIDGET_ENTRY_TYPE)
+        incoming.action = null
+        incoming.data = null
         return type
     }
 
@@ -540,6 +547,8 @@ private fun MoasseumApp(
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: ROUTE_HOME
+    var aiAssistantVisible by remember { mutableStateOf(false) }
+    var aiAssistantDismissRequest by remember { mutableIntStateOf(0) }
     var homeScrollToTopRequest by rememberSaveable { mutableIntStateOf(0) }
     var historyScrollToTopRequest by rememberSaveable { mutableIntStateOf(0) }
     var togetherScrollToTopRequest by rememberSaveable { mutableIntStateOf(0) }
@@ -1319,7 +1328,7 @@ private fun MoasseumApp(
     BackHandler(enabled = addOpen) { closeAdd() }
     // Short, low-distance transitions keep tab changes soft without making
     // the finance screens feel slow. The accessibility toggle removes motion.
-    val transitionDuration = if (reduceMotion) 0 else 200
+    val transitionDuration = if (LocalFinanceMotion.current.reduceMotion) 0 else 200
 
     Scaffold(
         containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background,
@@ -1328,6 +1337,8 @@ private fun MoasseumApp(
             if (currentRoute != ROUTE_MANAGE || !manageSearchPageOpen) {
                 BottomNavBar(
                     currentRoute = currentRoute,
+                    interactionBlocked = aiAssistantVisible,
+                    onModalOutsideTap = { aiAssistantDismissRequest++ },
                     onNavigate = { route ->
                         if (route == currentRoute) {
                             when (route) {
@@ -1424,6 +1435,8 @@ private fun MoasseumApp(
                         aiAdviceCards = aiAdviceCards,
                         noSpendChallenge = noSpendChallenge,
                         scrollToTopRequest = homeScrollToTopRequest,
+                        aiPopupDismissRequest = aiAssistantDismissRequest,
+                        onAiAssistantVisibilityChanged = { aiAssistantVisible = it },
                     )
                 }
                 composable(ROUTE_HISTORY) {

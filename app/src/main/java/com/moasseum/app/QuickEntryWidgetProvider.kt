@@ -9,6 +9,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.RemoteViews
 import com.moasseum.app.domain.TransactionType
+import java.util.Locale
 
 const val ACTION_WIDGET_QUICK_ADD = "com.moasseum.app.action.QUICK_ADD"
 const val EXTRA_WIDGET_ENTRY_TYPE = "com.moasseum.app.extra.WIDGET_ENTRY_TYPE"
@@ -17,6 +18,16 @@ fun widgetEntryType(value: String?): TransactionType? = when (value) {
     TransactionType.EXPENSE.name -> TransactionType.EXPENSE
     TransactionType.INCOME.name -> TransactionType.INCOME
     else -> null
+}
+
+fun quickEntryTypeFromIntent(action: String?, explicitType: String?, dataString: String?): TransactionType? {
+    if (action != ACTION_WIDGET_QUICK_ADD) return null
+    val routeType = when (dataString?.lowercase(Locale.ROOT)) {
+        "moasseum://widget/quick-add/expense", "moasseum://shortcut/quick-add/expense" -> TransactionType.EXPENSE.name
+        "moasseum://widget/quick-add/income", "moasseum://shortcut/quick-add/income" -> TransactionType.INCOME.name
+        else -> null
+    }
+    return widgetEntryType(explicitType?.uppercase(Locale.ROOT) ?: routeType)
 }
 
 class QuickEntryWidgetProvider : AppWidgetProvider() {

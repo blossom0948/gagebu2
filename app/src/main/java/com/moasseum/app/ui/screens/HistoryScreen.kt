@@ -36,6 +36,7 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.FileDownload
+import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -91,6 +92,7 @@ import com.moasseum.app.ui.components.TransactionRow
 import com.moasseum.app.ui.components.categoryColor
 import com.moasseum.app.ui.components.categoryLabel
 import com.moasseum.app.ui.theme.LocalFinanceColors
+import com.moasseum.app.ui.theme.LocalFinanceMotion
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
@@ -156,8 +158,11 @@ fun HistoryScreen(
     val detailTransaction = detailId?.let { id -> uiState.transactions.firstOrNull { it.id == id } }
     val listState = rememberLazyListState()
 
-    LaunchedEffect(scrollToTopRequest) {
-        if (scrollToTopRequest > 0) listState.animateScrollToItem(0)
+    val reduceMotion = LocalFinanceMotion.current.reduceMotion
+    LaunchedEffect(scrollToTopRequest, reduceMotion) {
+        if (scrollToTopRequest > 0) {
+            if (reduceMotion) listState.scrollToItem(0) else listState.animateScrollToItem(0)
+        }
     }
 
     LaunchedEffect(initialTransactionId, uiState.transactions) {
@@ -289,15 +294,10 @@ fun HistoryScreen(
                             style = MaterialTheme.typography.titleMedium,
                             color = LocalFinanceColors.current.textSecondary,
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedButton(onClick = { onAddForDate(selectedDate) }) {
-                                Icon(Icons.Rounded.AddCircleOutline, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(5.dp))
-                                Text("${selectedDate.monthValue}월 ${selectedDate.dayOfMonth}일에 추가", maxLines = 1)
-                            }
-                            OutlinedButton(onClick = onImportCsv) {
-                                Text("CSV 가져오기", maxLines = 1)
-                            }
+                        OutlinedButton(onClick = { onAddForDate(selectedDate) }) {
+                            Icon(Icons.Rounded.AddCircleOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text("${selectedDate.monthValue}월 ${selectedDate.dayOfMonth}일에 추가", maxLines = 1)
                         }
                     }
                 } else {
@@ -410,14 +410,14 @@ private fun HistoryBackupActions(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        OutlinedButton(onClick = onImportCsv, modifier = Modifier.weight(1f)) {
+        OutlinedButton(onClick = onImportCsv, modifier = Modifier.weight(1f).testTag("history_csv_import")) {
             Icon(Icons.Rounded.FileDownload, contentDescription = null, modifier = Modifier.size(17.dp))
             Spacer(Modifier.width(6.dp))
             Text("CSV 가져오기", maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Box {
             IconButton(onClick = { onExpandedChange(true) }) {
-                Icon(Icons.Rounded.FileDownload, contentDescription = "내보내기·백업")
+                Icon(Icons.Rounded.FileUpload, contentDescription = "내보내기·백업", modifier = Modifier.testTag("history_export_backup_menu"))
             }
             DropdownMenu(expanded = expanded, onDismissRequest = { onExpandedChange(false) }) {
                 DropdownMenuItem(text = { Text("CSV 내보내기") }, onClick = { onExpandedChange(false); onExportCsv() })
@@ -461,11 +461,11 @@ private fun CalendarCard(
     month: YearMonth,
     selectedDate: LocalDate,
     transactions: List<Transaction>,
-    expandedByDefault: Boolean = false,
     onSelectDate: (LocalDate) -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     modifier: Modifier = Modifier,
+    expandedByDefault: Boolean = false,
 ) {
     val colors = LocalFinanceColors.current
     var expanded by rememberSaveable(expandedByDefault) { mutableStateOf(expandedByDefault) }
@@ -480,7 +480,11 @@ private fun CalendarCard(
     }
     val datesWithTransactions = transactions.groupingBy { it.occurredDate }.eachCount()
     FinanceCard(modifier = modifier) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp).animateContentSize(tween(180)), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)
+                .animateContentSize(tween(LocalFinanceMotion.current.fast)),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onPrevious, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Rounded.ChevronLeft, contentDescription = "이전 달", tint = colors.accent)

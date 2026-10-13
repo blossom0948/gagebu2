@@ -25,7 +25,6 @@ object PaymentNotificationNotifier {
     const val FINANCE_CHANNEL_ID = "finance_reminders"
 
     fun createChannel(context: Context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             CHANNEL_ID,
             "결제 알림 감지",
@@ -35,13 +34,11 @@ object PaymentNotificationNotifier {
             enableVibration(true)
         }
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.getSystemService(NotificationManager::class.java).createNotificationChannel(
-                NotificationChannel(FINANCE_CHANNEL_ID, "예산·고정비·기념일 알림", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                    description = "예산 흐름, 다가오는 고정 결제일과 공동 기념일을 알려드려요."
-                },
-            )
-        }
+        context.getSystemService(NotificationManager::class.java).createNotificationChannel(
+            NotificationChannel(FINANCE_CHANNEL_ID, "예산·고정비·기념일 알림", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "예산 흐름, 다가오는 고정 결제일과 공동 기념일을 알려드려요."
+            },
+        )
     }
 
     fun areAppNotificationsEnabled(context: Context): Boolean {
@@ -49,10 +46,8 @@ object PaymentNotificationNotifier {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return false
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = context.getSystemService(NotificationManager::class.java).getNotificationChannel(CHANNEL_ID)
-            if (channel != null && channel.importance == NotificationManager.IMPORTANCE_NONE) return false
-        }
+        val channel = context.getSystemService(NotificationManager::class.java).getNotificationChannel(CHANNEL_ID)
+        if (channel != null && channel.importance == NotificationManager.IMPORTANCE_NONE) return false
         return true
     }
 
@@ -61,10 +56,8 @@ object PaymentNotificationNotifier {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return false
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = context.getSystemService(NotificationManager::class.java).getNotificationChannel(FINANCE_CHANNEL_ID)
-            if (channel != null && channel.importance == NotificationManager.IMPORTANCE_NONE) return false
-        }
+        val channel = context.getSystemService(NotificationManager::class.java).getNotificationChannel(FINANCE_CHANNEL_ID)
+        if (channel != null && channel.importance == NotificationManager.IMPORTANCE_NONE) return false
         return true
     }
 

@@ -54,7 +54,7 @@ object NotificationAccess {
         PaymentNotificationNotifier.areAppNotificationsEnabled(context)
 
     fun requestRebind(context: Context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !isEnabled(context)) return
+        if (!isEnabled(context)) return
         runCatching {
             NotificationListenerService.requestRebind(
                 listenerComponent(context),

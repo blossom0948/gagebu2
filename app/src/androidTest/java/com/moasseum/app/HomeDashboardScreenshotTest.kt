@@ -4,6 +4,7 @@ import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.util.Base64
 import android.util.Log
+import androidx.activity.ComponentActivity
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Box
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -20,7 +22,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.getBoundsInRoot
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -57,7 +59,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class HomeDashboardScreenshotTest {
-    @get:Rule val composeRule = createComposeRule()
+    @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test fun defaultDashboardAvoidsDuplicatingTheDailySpendSummary() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -231,6 +233,7 @@ class HomeDashboardScreenshotTest {
             }
         }
 
+        composeRule.onNodeWithText("예산 기간 지출").assertExists()
         composeRule.onNodeWithTag("home_budget_progress").assertExists()
         composeRule.onNodeWithText("예산 초과 ${formatWon(5_000L)}").assertExists()
         composeRule.onNodeWithText("남은 예산 ${formatWon(0L)}").assertDoesNotExist()
@@ -242,6 +245,7 @@ class HomeDashboardScreenshotTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         check(context.packageName.endsWith(".qa")) { "Home tab interaction tests are restricted to the isolated QA app." }
         val aiAnalysisClicks = AtomicInteger()
+        val aiPopupDismissRequest = mutableIntStateOf(0)
 
         composeRule.setContent {
             MoasseumTheme(darkTheme = true) {
@@ -274,6 +278,7 @@ class HomeDashboardScreenshotTest {
                         onPickReceipt = {},
                         onTakeReceipt = {},
                         displayName = "모아씀 QA",
+                        aiPopupDismissRequest = aiPopupDismissRequest.intValue,
                     )
                 }
             }
@@ -346,6 +351,26 @@ class HomeDashboardScreenshotTest {
         composeRule.onNodeWithTag("home_ai_popup_scrim").performTouchInput {
             click(Offset(2f, 2f))
         }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("home_ai_assistant_sheet").assertDoesNotExist()
+
+        composeRule.onNodeWithTag("home_ai_assistant_button").performClick()
+        composeRule.waitForIdle()
+        composeRule.mainClock.autoAdvance = false
+        composeRule.runOnIdle { aiPopupDismissRequest.intValue++ }
+        composeRule.mainClock.advanceTimeBy(500)
+        composeRule.mainClock.autoAdvance = true
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("home_ai_assistant_sheet").assertDoesNotExist()
+
+        composeRule.onNodeWithTag("home_ai_assistant_button").performClick()
+        composeRule.waitForIdle()
+        composeRule.mainClock.autoAdvance = false
+        composeRule.runOnIdle { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
+        composeRule.mainClock.advanceTimeBy(32)
+        composeRule.runOnIdle { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
+        composeRule.mainClock.advanceTimeBy(600)
+        composeRule.mainClock.autoAdvance = true
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("home_ai_assistant_sheet").assertDoesNotExist()
     }

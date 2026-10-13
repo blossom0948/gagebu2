@@ -146,8 +146,9 @@ class ReleaseNotesPolicyTest {
     @Test
     fun `v0138 release note uses actual app screenshots for the new free features`() {
         val slides = ReleaseNotesCatalog.slides("0.1.38")
-        assertEquals(4, slides.size)
+        assertEquals(5, slides.size)
         assertTrue(slides.any { it.title.contains("사진") })
+        assertTrue(slides.any { it.title.contains("연결 전에 미리보기") })
         assertTrue(slides.any { it.title.contains("예산 기간") })
         assertTrue(slides.any { it.title.contains("AI 조언") })
         assertTrue(slides.any { it.title.contains("연말정산") })
@@ -228,22 +229,33 @@ class ReleaseNotesPolicyTest {
 
     @Test
     fun `legacy upgraded install gets the complete available history without invented screenshots`() {
-        val slides = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.48")
+        val slides = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.54")
 
         assertEquals("0.1.1", slides.first().releaseVersion)
-        assertEquals("0.1.48", slides.last().releaseVersion)
+        assertEquals("0.1.54", slides.last().releaseVersion)
         assertTrue(slides.any { it.releaseVersion == "0.1.31" && it.title.contains("카카오") })
         assertTrue(slides.any { it.releaseVersion == "0.1.24" && it.imageResId != null })
         assertTrue(slides.any { it.releaseVersion == "0.1.1" && it.imageResId == null })
+        assertTrue(slides.any { it.releaseVersion == "0.1.54" && it.title.contains("반복 버튼") })
     }
 
     @Test
     fun `release catalog contains a note for every published version in the supported range`() {
-        val versions = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.53")
+        val versions = ReleaseNotesCatalog.slidesSince(lastSeenVersion = null, currentVersion = "0.1.54")
             .mapNotNull { it.releaseVersion }
             .toSet()
 
-        assertEquals((listOf("0.1.1", "0.1.2") + (4..53).map { "0.1.$it" }).toSet(), versions)
+        assertEquals((listOf("0.1.1", "0.1.2") + (4..54).map { "0.1.$it" }).toSet(), versions)
+    }
+
+    @Test
+    fun `upgrading from an older install includes every unseen release through the current version`() {
+        val slides = ReleaseNotesCatalog.slidesSince("0.1.50", "0.1.54")
+
+        assertEquals(listOf("0.1.51", "0.1.52", "0.1.53", "0.1.54"), slides.mapNotNull { it.releaseVersion }.distinct())
+        assertEquals(6, slides.count { it.releaseVersion == "0.1.54" })
+        assertTrue(slides.any { it.title.contains("위치 정보") })
+        assertTrue(slides.last().title.contains("반복 버튼"))
     }
 
     @Test
@@ -308,5 +320,28 @@ class ReleaseNotesPolicyTest {
         assertTrue(slides.single().description.contains("두 번째 창은 없고"))
         assertTrue(slides.single().imageResId != null)
         assertEquals(904f / 2038f, slides.single().imageAspectRatio, 0.001f)
+    }
+
+    @Test
+    fun `v0 1 54 documents modal navigation blocking budget label history reuse and launcher shortcuts`() {
+        val slides = ReleaseNotesCatalog.slidesSince("0.1.53", "0.1.54")
+
+        assertEquals(6, slides.size)
+        assertTrue(slides.all { it.releaseVersion == "0.1.54" && it.imageResId != null })
+        assertTrue(slides.first().title.contains("하단 메뉴"))
+        assertTrue(slides.first().description.contains("메뉴로 이동하지 않고"))
+        assertTrue(slides[1].title.contains("지출 합계"))
+        assertTrue(slides[1].description.contains("예산 기간 지출"))
+        assertTrue(slides[2].title.contains("이전 거래"))
+        assertTrue(slides[2].description.contains("앞부분"))
+        assertTrue(slides[3].title.contains("앱 아이콘"))
+        assertTrue(slides[3].description.contains("지출·수입 추가"))
+        assertTrue(slides[4].title.contains("위치 정보"))
+        assertTrue(slides[4].description.contains("EXIF"))
+        assertTrue(slides[5].title.contains("반복 버튼"))
+        assertTrue(slides[5].description.contains("CSV 가져오기는 상단에 한 번만"))
+        assertTrue(slides.take(4).all { it.imageAspectRatio in 0.35f..0.45f })
+        assertEquals(830f / 325f, slides[4].imageAspectRatio, 0.001f)
+        assertEquals(904f / 2316f, slides[5].imageAspectRatio, 0.001f)
     }
 }

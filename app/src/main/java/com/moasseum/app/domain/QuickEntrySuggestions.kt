@@ -53,7 +53,11 @@ fun matchingQuickEntrySuggestions(
                 it.merchant.isNotBlank() && it.sharingScope != "SHARED" &&
                 it.merchant.trim().lowercase(Locale.ROOT).contains(query)
         }
-        .sortedWith(compareByDescending<Transaction> { it.occurredAt }.thenByDescending { it.id })
+        .sortedWith(
+            compareByDescending<Transaction> { it.merchant.trim().lowercase(Locale.ROOT).startsWith(query) }
+                .thenByDescending { it.occurredAt }
+                .thenByDescending { it.id },
+        )
         .map(::toQuickEntrySuggestion)
         .distinctBy(QuickEntrySuggestion::key)
         .take(limit)

@@ -59,7 +59,7 @@ data class ReleaseNoteSlide(
 )
 
 object ReleaseNotesCatalog {
-    private val supportedVersions = listOf("0.1.1", "0.1.2") + (4..53).map { "0.1.$it" }
+    private val supportedVersions = listOf("0.1.1", "0.1.2") + (4..54).map { "0.1.$it" }
 
     /** Returns only releases newer than [lastSeenVersion], in chronological order. */
     fun slidesSince(lastSeenVersion: String?, currentVersion: String): List<ReleaseNoteSlide> {
@@ -366,6 +366,13 @@ object ReleaseNotesCatalog {
                 imageDescription = "모아씀 함께 화면의 선택 사진 앨범과 공동 응원 카드. 화면 QA용 가상 항목이 표시된 실제 앱 캡처",
             ),
             ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_38_together,
+                imageAspectRatio = 904f / 1260f,
+                title = "함께 장부 연결 전에 미리보기",
+                description = "파트너를 연결하기 전에 합산 대시보드·공동 목표·AI 분석·월간 리포트를 살펴봐요. 개인 기록은 자동 공유되지 않고 공유할 항목은 직접 고릅니다.",
+                imageDescription = "모아씀 함께 시작 미리보기의 합산 대시보드, 공동 목표, AI 분석, 월간 리포트 안내 실제 앱 캡처",
+            ),
+            ReleaseNoteSlide(
                 imageResId = R.drawable.whats_new_0_1_38_tax,
                 imageAspectRatio = 840f / 1647f,
                 title = "연말정산 기준과 기록을 한눈에",
@@ -643,6 +650,50 @@ object ReleaseNotesCatalog {
                 title = "AI 버튼이 메뉴로 한 번에 펼쳐져요",
                 description = "버튼 자리에서 AI 창 하나가 커지며 메뉴가 함께 나타나요. 닫기·뒤로가기·바깥 탭을 누르면 같은 경로로 버튼까지 접혀요. 겹쳐 뜨는 두 번째 창은 없고, 모션 줄이기도 그대로 적용돼요.",
                 imageDescription = "Galaxy Z Fold4 격리 QA에서 촬영한 단일 AI 팝업 화면. 실제 UI와 합성 QA 거래만 표시되며 개인 장부·사진은 포함되지 않았습니다.",
+            ),
+        )
+        "0.1.54" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_54_ai_modal,
+                imageAspectRatio = 904f / 2316f,
+                title = "AI 창을 열면 하단 메뉴도 함께 잠겨요",
+                description = "AI 팝업 뒤로 하단 탭과 거래 추가 버튼까지 어둡게 가려요. 그 영역을 눌러도 메뉴로 이동하지 않고 AI 창이 부드럽게 닫혀요. 모션 줄이기는 Android에서 애니메이션을 끈 상태도 따라요.",
+                imageDescription = "Galaxy Z Fold4 격리 .qa 앱에서 캡처한 실제 AI 팝업. 빈 QA 장부와 어두워진 하단 메뉴만 보여요.",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_54_budget_label,
+                imageAspectRatio = 904f / 2316f,
+                title = "홈 지출 합계의 기간을 바로 확인",
+                description = "큰 금액에 ‘예산 기간 지출’ 라벨을 붙여 월 달력 기준과 급여일 예산 기준을 헷갈리지 않게 했어요.",
+                imageDescription = "Galaxy Z Fold4 격리 .qa 앱에서 캡처한 실제 홈. 개인 내역 없이 예산 기간 지출 라벨과 빈 요약 화면이 보여요.",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_54_history_suggestions,
+                imageAspectRatio = 904f / 2189f,
+                title = "이름 일부로 이전 거래를 빠르게 재사용",
+                description = "가맹점 이름의 앞부분이 맞는 기록을 먼저 보여줘요. 선택하면 금액·분류·결제수단을 채우고 거래일은 오늘 입력값 그대로 둬요.",
+                imageDescription = "Galaxy Z Fold4 격리 .qa에서 촬영한 거래 입력 화면. ‘공동’ 검색에 합성 내역만 사용하고 이전 거래 후보가 앞부분 일치 순으로 보여요.",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_54_quick_shortcut,
+                imageAspectRatio = 904f / 2316f,
+                title = "앱 아이콘을 길게 눌러 바로 기록",
+                description = "홈 화면에서 모아씀 아이콘을 길게 누르고 지출·수입 추가를 고르면 해당 입력창이 바로 열려요. 위젯을 놓지 않아도 빠르게 기록할 수 있어요.",
+                imageDescription = "Galaxy Z Fold4 격리 .qa에 지출 빠른 실행 주소로 들어온 빈 거래 입력 화면. 저장은 하지 않았고 개인 기록은 없습니다.",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_54_photo,
+                imageAspectRatio = 830f / 325f,
+                title = "함께 사진 방향을 바로잡고 위치 정보는 빼요",
+                description = "함께 앨범에서 직접 고른 사진은 회전 방향을 보정하고 GPS 같은 EXIF를 제거해 압축해요. 이번 QA에서는 합성 앨범 화면과 로컬 변환만 검사했고 사진을 서버로 보내지 않았어요.",
+                imageDescription = "Galaxy Z Fold4 격리 .qa의 함께한 사진 카드. 합성 QA 상태 1/30·280KB와 사진 추가 버튼만 표시되고 실제 사진이나 원격 업로드는 없습니다.",
+            ),
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_54_history_empty,
+                imageAspectRatio = 904f / 2316f,
+                title = "빈 내역의 반복 버튼을 정리했어요",
+                description = "CSV 가져오기는 상단에 한 번만 보여요. 내역이 없을 때는 선택한 날짜에 추가하는 버튼만 남기고, 내보내기·백업은 다른 아이콘으로 구분했어요.",
+                imageDescription = "Galaxy Z Fold4 격리 .qa 앱에서 촬영한 빈 내역 화면. 상단 CSV 가져오기 1개, 구분된 내보내기 아이콘, 선택 날짜 추가 버튼이 보이며 QA 장부는 비어 있습니다.",
             ),
         )
         else -> emptyList()

@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.moasseum.app.ui.screens.WhatsNewDialog
 import com.moasseum.app.ui.screens.ReleaseNotesCatalog
 import com.moasseum.app.ui.theme.MoasseumTheme
@@ -321,6 +322,59 @@ class WhatsNewDialogInteractionTest {
         composeRule.onNodeWithContentDescription(
             "Galaxy Z Fold4 격리 QA에서 촬영한 AI 소비 코치 팝업 화면. AI 비주얼은 실제 앱 UI이며, 합성 QA 거래만 표시되고 개인 기록은 없습니다.",
         ).assertExists()
+        composeRule.onNodeWithText("확인").performScrollTo().performClick()
+        assertTrue(dismissed)
+    }
+
+    @Test fun v0154PopupShowsAllSixChangedScreens() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        check(context.packageName.endsWith(".qa")) { "Release-note screen checks are restricted to the isolated QA app." }
+        val slides = ReleaseNotesCatalog.slidesSince("0.1.53", "0.1.54")
+        var dismissed = false
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Box(Modifier.fillMaxSize().background(LocalFinanceColors.current.surfaceBase)) {
+                    WhatsNewDialog(versionName = "0.1.54", slides = slides, onDismiss = { dismissed = true })
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("v0.1.54 신기능").assertExists()
+        composeRule.onNodeWithText("AI 창을 열면 하단 메뉴도 함께 잠겨요").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4 격리 .qa 앱에서 캡처한 실제 AI 팝업. 빈 QA 장부와 어두워진 하단 메뉴만 보여요.",
+        ).assertExists()
+        composeRule.onNodeWithText("1 / 6").assertExists()
+        composeRule.onNodeWithText("다음").performScrollTo().performClick()
+        composeRule.onNodeWithText("홈 지출 합계의 기간을 바로 확인").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4 격리 .qa 앱에서 캡처한 실제 홈. 개인 내역 없이 예산 기간 지출 라벨과 빈 요약 화면이 보여요.",
+        ).assertExists()
+        composeRule.onNodeWithText("2 / 6").assertExists()
+        composeRule.onNodeWithText("다음").performScrollTo().performClick()
+        composeRule.onNodeWithText("이름 일부로 이전 거래를 빠르게 재사용").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4 격리 .qa에서 촬영한 거래 입력 화면. ‘공동’ 검색에 합성 내역만 사용하고 이전 거래 후보가 앞부분 일치 순으로 보여요.",
+        ).assertExists()
+        composeRule.onNodeWithText("3 / 6").assertExists()
+        composeRule.onNodeWithText("다음").performScrollTo().performClick()
+        composeRule.onNodeWithText("앱 아이콘을 길게 눌러 바로 기록").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4 격리 .qa에 지출 빠른 실행 주소로 들어온 빈 거래 입력 화면. 저장은 하지 않았고 개인 기록은 없습니다.",
+        ).assertExists()
+        composeRule.onNodeWithText("4 / 6").assertExists()
+        composeRule.onNodeWithText("다음").performScrollTo().performClick()
+        composeRule.onNodeWithText("함께 사진 방향을 바로잡고 위치 정보는 빼요").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4 격리 .qa의 함께한 사진 카드. 합성 QA 상태 1/30·280KB와 사진 추가 버튼만 표시되고 실제 사진이나 원격 업로드는 없습니다.",
+        ).assertExists()
+        composeRule.onNodeWithText("5 / 6").assertExists()
+        composeRule.onNodeWithText("다음").performScrollTo().performClick()
+        composeRule.onNodeWithText("빈 내역의 반복 버튼을 정리했어요").assertExists()
+        composeRule.onNodeWithContentDescription(
+            "Galaxy Z Fold4 격리 .qa 앱에서 촬영한 빈 내역 화면. 상단 CSV 가져오기 1개, 구분된 내보내기 아이콘, 선택 날짜 추가 버튼이 보이며 QA 장부는 비어 있습니다.",
+        ).assertExists()
+        composeRule.onNodeWithText("6 / 6").assertExists()
         composeRule.onNodeWithText("확인").performScrollTo().performClick()
         assertTrue(dismissed)
     }

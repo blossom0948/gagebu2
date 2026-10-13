@@ -6,4 +6,8 @@
     <string name="quick_entry_widget_title">모아씀 · 빠른 기록</string>
     <string name="quick_entry_widget_expense">− 지출</string>
     <string name="quick_entry_widget_income">＋ 수입</string>
+    <string name="quick_add_expense_shortcut">지출 추가</string>
+    <string name="quick_add_expense_shortcut_long">새 지출 기록</string>
+    <string name="quick_add_income_shortcut">수입 추가</string>
+    <string name="quick_add_income_shortcut_long">새 수입 기록</string>
 </resources>

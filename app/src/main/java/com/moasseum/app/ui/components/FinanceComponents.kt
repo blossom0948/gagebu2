@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -48,8 +49,8 @@ import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.ShoppingBag
 import androidx.compose.material.icons.rounded.Subscriptions
 import androidx.compose.material.icons.rounded.TheaterComedy
-import androidx.compose.material.icons.rounded.TrendingDown
-import androidx.compose.material.icons.rounded.TrendingUp
+import androidx.compose.material.icons.automirrored.rounded.TrendingDown
+import androidx.compose.material.icons.automirrored.rounded.TrendingUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -63,15 +64,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.platform.LocalDensity
@@ -321,9 +328,18 @@ fun BottomNavBar(
     currentRoute: String,
     onNavigate: (String) -> Unit,
     addExpanded: Boolean = false,
+    interactionBlocked: Boolean = false,
+    onModalOutsideTap: () -> Unit = {},
     onAdd: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
+    val motion = LocalFinanceMotion.current
+    val currentOnModalOutsideTap by rememberUpdatedState(onModalOutsideTap)
+    val blockerAlpha by animateFloatAsState(
+        targetValue = if (interactionBlocked) 0.52f else 0f,
+        animationSpec = tween(motion.fast),
+        label = "bottomNavModalScrim",
+    )
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -350,6 +366,7 @@ fun BottomNavBar(
                     selected = currentRoute == ROUTE_HOME,
                     onClick = { onNavigate(ROUTE_HOME) },
                     modifier = Modifier.weight(1f),
+                    enabled = !interactionBlocked,
                 )
                 BottomNavItem(
                     label = "소비내역",
@@ -357,6 +374,7 @@ fun BottomNavBar(
                     selected = currentRoute == ROUTE_HISTORY,
                     onClick = { onNavigate(ROUTE_HISTORY) },
                     modifier = Modifier.weight(1f),
+                    enabled = !interactionBlocked,
                 )
                 Spacer(Modifier.width(58.dp))
                 BottomNavItem(
@@ -365,6 +383,7 @@ fun BottomNavBar(
                     selected = currentRoute == ROUTE_TOGETHER,
                     onClick = { onNavigate(ROUTE_TOGETHER) },
                     modifier = Modifier.weight(1f),
+                    enabled = !interactionBlocked,
                 )
                 BottomNavItem(
                     label = "관리",
@@ -372,11 +391,31 @@ fun BottomNavBar(
                     selected = currentRoute == ROUTE_MANAGE,
                     onClick = { onNavigate(ROUTE_MANAGE) },
                     modifier = Modifier.weight(1f),
+                    enabled = !interactionBlocked,
                 )
             }
         }
         Box(Modifier.align(Alignment.TopCenter)) {
-            AddFloatingActionButton(expanded = addExpanded, onClick = onAdd)
+            AddFloatingActionButton(
+                expanded = addExpanded,
+                enabled = !interactionBlocked,
+                onClick = onAdd,
+            )
+        }
+        if (interactionBlocked || blockerAlpha > 0f) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .graphicsLayer { alpha = blockerAlpha }
+                    .background(Color.Black)
+                    .pointerInput(interactionBlocked) {
+                        if (interactionBlocked) detectTapGestures(onTap = { currentOnModalOutsideTap() })
+                    }
+                    .semantics {
+                        contentDescription = "AI 소비 코치가 열려 있어 하단 메뉴를 사용할 수 없습니다."
+                    }
+                    .testTag("bottom_nav_modal_scrim"),
+            )
         }
     }
 }
@@ -389,6 +428,7 @@ private fun BottomNavItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     badgeCount: Int = 0,
+    enabled: Boolean = true,
 ) {
     val colors = LocalFinanceColors.current
     val motion = LocalFinanceMotion.current
@@ -411,7 +451,7 @@ private fun BottomNavItem(
         modifier = modifier
             .heightIn(min = 64.dp)
             .semantics { this.selected = selected }
-            .clickable(role = Role.Tab, onClick = onClick)
+            .clickable(enabled = enabled, role = Role.Tab, onClick = onClick)
             .padding(vertical = 5.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -438,6 +478,7 @@ private fun BottomNavItem(
 @Composable
 fun AddFloatingActionButton(
     expanded: Boolean,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     val motion = LocalFinanceMotion.current
@@ -447,8 +488,10 @@ fun AddFloatingActionButton(
         label = "addFabRotation",
     )
     FloatingActionButton(
+        modifier = Modifier.size(64.dp).semantics { if (!enabled) disabled() },
         onClick = onClick,
-        modifier = Modifier.size(64.dp),
+        // The bottom-bar modal scrim consumes physical touches while this
+        // disabled semantic state prevents TalkBack from activating the FAB.
         shape = CircleShape,
         containerColor = LocalFinanceColors.current.accent,
         contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -467,9 +510,9 @@ fun AddFloatingActionButton(
 fun EmptyState(
     title: String,
     message: String,
+    modifier: Modifier = Modifier,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
-    modifier: Modifier = Modifier,
 ) {
     val colors = LocalFinanceColors.current
     Column(
@@ -513,7 +556,7 @@ fun TrendLabel(
         isPositive -> colors.expense
         else -> colors.success
     }
-    val icon = if (isPositive) Icons.Rounded.TrendingUp else Icons.Rounded.TrendingDown
+    val icon = if (isPositive) Icons.AutoMirrored.Rounded.TrendingUp else Icons.AutoMirrored.Rounded.TrendingDown
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(15.dp))
         Text(

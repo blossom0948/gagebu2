@@ -242,8 +242,10 @@ fun ManageScreen(
     DisposableEffect(Unit) {
         onDispose { onManageSearchPageOpenChanged(false) }
     }
-    LaunchedEffect(scrollToTopRequest) {
-        if (scrollToTopRequest > 0) listState.animateScrollToItem(0)
+    LaunchedEffect(scrollToTopRequest, motion.reduceMotion) {
+        if (scrollToTopRequest > 0) {
+            if (motion.reduceMotion) listState.scrollToItem(0) else listState.animateScrollToItem(0)
+        }
     }
     val searchActions = mapOf<String, () -> Unit>(
         "budget" to { showBudgetDialog = true },
@@ -473,7 +475,7 @@ fun ManageScreen(
                 ManageExpandableSection(
                     expanded = appDataSettingsExpanded,
                     onToggle = { appDataSettingsExpanded = !appDataSettingsExpanded },
-                    reduceMotion = reduceMotion,
+                    reduceMotion = motion.reduceMotion,
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         FinanceCard {

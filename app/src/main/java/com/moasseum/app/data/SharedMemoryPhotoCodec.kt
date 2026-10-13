@@ -4,24 +4,31 @@ import android.content.ContentResolver
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
-import android.media.ExifInterface
 import android.net.Uri
+import androidx.exifinterface.media.ExifInterface
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /** Re-encodes user-picked photos as small JPEGs, stripping metadata/EXIF before upload. */
 object SharedMemoryPhotoCodec {
-    suspend fun encode(resolver: ContentResolver, uri: Uri): ByteArray = withContext(Dispatchers.IO) {
+    suspend fun encode(resolver: ContentResolver, uri: Uri): ByteArray =
+        encode { resolver.openInputStream(uri) }
+
+    internal suspend fun encode(openInputStream: () -> InputStream?): ByteArray = withContext(Dispatchers.IO) {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            ?: error("선택한 사진을 열 수 없어요.")
+        val boundsStreamOpened = openInputStream()?.use {
+            BitmapFactory.decodeStream(it, null, bounds)
+            true
+        } ?: false
+        check(boundsStreamOpened) { "선택한 사진을 열 수 없어요." }
         require(bounds.outWidth > 0 && bounds.outHeight > 0) { "이미지 파일을 읽을 수 없어요." }
 
         val maxDimension = 1800
         var sample = 1
         while (bounds.outWidth / sample > maxDimension || bounds.outHeight / sample > maxDimension) sample *= 2
-        var bitmap = resolver.openInputStream(uri)?.use {
+        var bitmap = openInputStream()?.use {
             BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply {
                 inSampleSize = sample
                 inPreferredConfig = Bitmap.Config.RGB_565
@@ -29,20 +36,20 @@ object SharedMemoryPhotoCodec {
         } ?: error("선택한 사진을 열 수 없어요.")
 
         try {
-            val orientation = resolver.openInputStream(uri)?.use { stream ->
+            val orientation = openInputStream()?.use { stream ->
                 ExifInterface(stream).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
             } ?: ExifInterface.ORIENTATION_NORMAL
-            val matrix = Matrix().apply {
-                when (orientation) {
-                    ExifInterface.ORIENTATION_ROTATE_90 -> postRotate(90f)
-                    ExifInterface.ORIENTATION_ROTATE_180 -> postRotate(180f)
-                    ExifInterface.ORIENTATION_ROTATE_270 -> postRotate(270f)
-                    ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> postScale(-1f, 1f)
-                    ExifInterface.ORIENTATION_FLIP_VERTICAL -> postScale(1f, -1f)
-                    ExifInterface.ORIENTATION_TRANSPOSE -> { postScale(-1f, 1f); postRotate(90f) }
-                    ExifInterface.ORIENTATION_TRANSVERSE -> { postScale(-1f, 1f); postRotate(270f) }
-                }
+            val matrixValues = when (orientation) {
+                ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> floatArrayOf(-1f, 0f, bitmap.width - 1f, 0f, 1f, 0f, 0f, 0f, 1f)
+                ExifInterface.ORIENTATION_ROTATE_180 -> floatArrayOf(-1f, 0f, bitmap.width - 1f, 0f, -1f, bitmap.height - 1f, 0f, 0f, 1f)
+                ExifInterface.ORIENTATION_FLIP_VERTICAL -> floatArrayOf(1f, 0f, 0f, 0f, -1f, bitmap.height - 1f, 0f, 0f, 1f)
+                ExifInterface.ORIENTATION_TRANSPOSE -> floatArrayOf(0f, 1f, 0f, 1f, 0f, 0f, 0f, 0f, 1f)
+                ExifInterface.ORIENTATION_ROTATE_90 -> floatArrayOf(0f, -1f, bitmap.height - 1f, 1f, 0f, 0f, 0f, 0f, 1f)
+                ExifInterface.ORIENTATION_TRANSVERSE -> floatArrayOf(0f, -1f, bitmap.height - 1f, -1f, 0f, bitmap.width - 1f, 0f, 0f, 1f)
+                ExifInterface.ORIENTATION_ROTATE_270 -> floatArrayOf(0f, 1f, 0f, -1f, 0f, bitmap.width - 1f, 0f, 0f, 1f)
+                else -> null
             }
+            val matrix = Matrix().apply { matrixValues?.let(::setValues) }
             if (!matrix.isIdentity) {
                 val oriented = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
                 if (oriented !== bitmap) {

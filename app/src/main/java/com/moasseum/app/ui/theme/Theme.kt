@@ -1,5 +1,6 @@
 package com.moasseum.app.ui.theme
 
+import android.animation.ValueAnimator
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
@@ -8,8 +9,14 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -30,12 +37,27 @@ data class FinanceMotionSettings(
 
 val LocalFinanceMotion = staticCompositionLocalOf { FinanceMotionSettings() }
 
+internal fun shouldReduceMotion(userPreference: Boolean, systemAnimationsEnabled: Boolean): Boolean =
+    userPreference || !systemAnimationsEnabled
+
 @Composable
 fun MoasseumTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     reduceMotion: Boolean = false,
     content: @Composable () -> Unit,
 ) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val systemAnimationsEnabled = remember { mutableStateOf(ValueAnimator.areAnimatorsEnabled()) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                systemAnimationsEnabled.value = ValueAnimator.areAnimatorsEnabled()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val effectiveReduceMotion = shouldReduceMotion(reduceMotion, systemAnimationsEnabled.value)
     val financeColors = if (darkTheme) DarkFinanceColors else LightFinanceColors
     val colorScheme = if (darkTheme) {
         darkColorScheme(
@@ -91,7 +113,7 @@ fun MoasseumTheme(
 
     CompositionLocalProvider(
         LocalFinanceColors provides financeColors,
-        LocalFinanceMotion provides FinanceMotionSettings(reduceMotion),
+        LocalFinanceMotion provides FinanceMotionSettings(effectiveReduceMotion),
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

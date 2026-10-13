@@ -14,14 +14,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsNotFocused
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.assertTextContains
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.moasseum.app.domain.Transaction
+import com.moasseum.app.domain.TransactionType
 import com.moasseum.app.ui.components.AddMode
 import com.moasseum.app.ui.components.AddTransactionSheet
 import com.moasseum.app.ui.theme.MoasseumTheme
@@ -36,6 +41,68 @@ import org.junit.runner.RunWith
 @OptIn(ExperimentalMaterial3Api::class)
 class QuickAddSheetInteractionTest {
     @get:Rule val composeRule = createComposeRule()
+
+    @Test fun partialMerchantEntryPrioritizesAndReusesMatchingPersonalHistory() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        check(context.packageName.endsWith(".qa")) { "Quick-add history checks are restricted to the isolated QA app." }
+        val now = System.currentTimeMillis()
+        val history = listOf(
+            Transaction(
+                id = 20, type = TransactionType.EXPENSE, amount = 2_000L, occurredAt = now,
+                categoryKey = "FOOD", merchant = "회식 공동 모임", memo = "", paymentMethod = "체크카드", source = "MANUAL",
+            ),
+            Transaction(
+                id = 10, type = TransactionType.EXPENSE, amount = 50_000L, occurredAt = now - 86_400_000L,
+                categoryKey = "LIVING", merchant = "공동 생활비", memo = "", paymentMethod = "계좌", source = "MANUAL",
+            ),
+        )
+
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    ModalBottomSheet(
+                        onDismissRequest = {},
+                        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                    ) {
+                        Surface(
+                            modifier = Modifier.testTag("quick_add_history_capture_root"),
+                            color = MaterialTheme.colorScheme.surface,
+                        ) {
+                            AddTransactionSheet(
+                                mode = AddMode.DIRECT,
+                                paymentMethods = listOf("체크카드", "계좌"),
+                                accounts = emptyList(),
+                                transactions = history,
+                                onModeChange = {},
+                                onDismiss = {},
+                                onSave = { _, _, _, _, _, _, _, _, _, _ -> false },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("quick_add_merchant").performTextInput("공동")
+        composeRule.onNodeWithTag("quick_entry_history_match_0").assertExists()
+        composeRule.onNodeWithTag("quick_entry_history_match_1").assertExists()
+
+        val screenshot = composeRule.onNodeWithTag("quick_add_history_capture_root").captureToImage().asAndroidBitmap()
+        val previewBytes = ByteArrayOutputStream().use { output ->
+            assertTrue(screenshot.compress(Bitmap.CompressFormat.JPEG, 88, output))
+            output.toByteArray().also { screenshot.recycle() }
+        }
+        assertTrue("The isolated quick-add history screenshot was not captured.", previewBytes.size > 10_000)
+        Base64.encodeToString(previewBytes, Base64.NO_WRAP).chunked(1_800).forEachIndexed { index, chunk ->
+            Log.i("MOASSEUM_CAPTURE", "MSS_QUICK_ADD_HISTORY|$index|$chunk")
+        }
+
+        composeRule.onNodeWithTag("quick_entry_history_match_0").performClick()
+        composeRule.onNodeWithTag("quick_add_merchant").assertTextContains("공동 생활비")
+        composeRule.onNodeWithTag("quick_add_amount").assertTextContains("50000")
+        composeRule.onNodeWithText("생활").assertIsSelected()
+        composeRule.onNodeWithText("계좌").assertIsSelected()
+    }
 
     @Test fun quickAddOpensWithoutKeyboardAndModeChangesReachTheRequestedForm() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext

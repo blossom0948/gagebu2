@@ -9,10 +9,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.moasseum.app.domain.LedgerUiState
@@ -29,6 +32,44 @@ import java.time.YearMonth
 @RunWith(AndroidJUnit4::class)
 class HistoryCalendarScreenshotTest {
     @get:Rule val composeRule = createComposeRule()
+
+    @Test
+    fun emptyHistoryShowsOneImportActionAndOneSelectedDayAddAction() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        check(context.packageName.endsWith(".qa")) { "History interaction checks are restricted to the isolated QA app." }
+        var importedCsv = 0
+        var exportedJson = 0
+
+        composeRule.setContent {
+            MoasseumTheme(darkTheme = true) {
+                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    HistoryScreen(
+                        uiState = LedgerUiState(month = YearMonth.of(2026, 10)),
+                        paymentMethods = emptyList(),
+                        selectedDate = LocalDate.parse("2026-10-14"),
+                        onSelectDate = {},
+                        onSelectMonth = {},
+                        onDeleteTransaction = {},
+                        onUpdateTransaction = { _, _, _, _, _, _, _, _ -> },
+                        onExportCsv = {},
+                        onExportJson = { exportedJson++ },
+                        onImportCsv = { importedCsv++ },
+                        onAddForDate = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onAllNodesWithText("CSV 가져오기").assertCountEquals(1)
+        composeRule.onNodeWithText("2026.10 지출 기록이 없어요").assertExists()
+        composeRule.onNodeWithText("10월 14일에 추가").assertExists()
+        composeRule.onNodeWithContentDescription("내보내기·백업").assertExists()
+        composeRule.onNodeWithTag("history_csv_import").performClick()
+        check(importedCsv == 1) { "The single CSV import action should invoke its callback once." }
+        composeRule.onNodeWithContentDescription("내보내기·백업").performClick()
+        composeRule.onNodeWithText("JSON 전체 백업").performClick()
+        check(exportedJson == 1) { "The export icon should open the backup menu and invoke JSON export." }
+    }
 
     @Test
     fun holidayLabelIsVisibleAccessibleAndFitsInsideTheCalendarCard() {

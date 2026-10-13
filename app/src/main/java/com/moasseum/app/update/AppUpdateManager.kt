@@ -167,7 +167,7 @@ object AppUpdateManager {
     }
 
     fun canInstallFromThisApp(context: Context): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.O || context.packageManager.canRequestPackageInstalls()
+        context.packageManager.canRequestPackageInstalls()
 
     fun openInstallPermissionSettings(context: Context) {
         val intent = Intent(

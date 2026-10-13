@@ -87,10 +87,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -184,10 +188,17 @@ fun HomeScreen(
     activeFixedCostCount: Int = 0,
     activeFixedCostMonthlyAmount: Long = 0L,
     scrollToTopRequest: Int = 0,
+    aiPopupDismissRequest: Int = 0,
+    onAiAssistantVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     var selectedTabName by rememberSaveable { mutableStateOf(HomeTab.SUMMARY.name) }
     var showProfileEditor by rememberSaveable { mutableStateOf(false) }
     var showAiAssistant by remember { mutableStateOf(false) }
+    val currentOnAiAssistantVisibilityChanged by rememberUpdatedState(onAiAssistantVisibilityChanged)
+    SideEffect { currentOnAiAssistantVisibilityChanged(showAiAssistant) }
+    DisposableEffect(Unit) {
+        onDispose { currentOnAiAssistantVisibilityChanged(false) }
+    }
     var aiButtonBounds by remember { mutableStateOf(Rect.Zero) }
     var homeRootBounds by remember { mutableStateOf(Rect.Zero) }
     val context = LocalContext.current
@@ -216,8 +227,11 @@ fun HomeScreen(
     // window is genuinely wide enough for them.
     val expandedLayout = LocalConfiguration.current.screenWidthDp >= 640
 
-    LaunchedEffect(scrollToTopRequest) {
-        if (scrollToTopRequest > 0) listState.animateScrollToItem(0)
+    val reduceMotion = LocalFinanceMotion.current.reduceMotion
+    LaunchedEffect(scrollToTopRequest, reduceMotion) {
+        if (scrollToTopRequest > 0) {
+            if (reduceMotion) listState.scrollToItem(0) else listState.animateScrollToItem(0)
+        }
     }
     LaunchedEffect(selectedTab, availableTabs) {
         val savedTab = runCatching { HomeTab.valueOf(selectedTabName) }.getOrNull()
@@ -371,6 +385,7 @@ fun HomeScreen(
             showSummary = AiAdviceCards.HOME_SUMMARY in aiAdviceCards,
             showReport = AiAdviceCards.HOME_REPORT in aiAdviceCards,
             originBounds = aiButtonBounds,
+            dismissRequest = aiPopupDismissRequest,
             onDismiss = { showAiAssistant = false },
         )
     }
@@ -640,15 +655,25 @@ private fun AiAssistantPopup(
     showSummary: Boolean,
     showReport: Boolean,
     originBounds: Rect,
+    dismissRequest: Int,
     onDismiss: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
     val reduceMotion = LocalFinanceMotion.current.reduceMotion
     val progress = remember { Animatable(if (reduceMotion) 1f else 0f) }
     var dismissing by remember { mutableStateOf(false) }
+    var handledDismissRequest by remember { mutableIntStateOf(dismissRequest) }
     val dismiss = { if (!dismissing) dismissing = true }
 
-    BackHandler(enabled = !dismissing, onBack = dismiss)
+    // Keep consuming Back through the closing animation so a repeated system
+    // Back press cannot escape the modal and navigate the screen underneath.
+    BackHandler(onBack = dismiss)
+    LaunchedEffect(dismissRequest) {
+        if (dismissRequest != handledDismissRequest) {
+            handledDismissRequest = dismissRequest
+            dismiss()
+        }
+    }
     LaunchedEffect(reduceMotion) {
         if (reduceMotion) {
             progress.snapTo(1f)
@@ -955,10 +980,17 @@ private fun MonthlySummaryCard(
             ) { Icon(Icons.Rounded.ChevronRight, contentDescription = "다음달") }
             Text("${uiState.budgetPeriodExpenseCount}건", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         }
-        FittedAmountText(
-            formatDisplayWon(uiState.budgetPeriodExpenseTotal),
-            MaterialTheme.typography.displaySmall.copy(fontSize = 30.sp, lineHeight = 36.sp, letterSpacing = (-0.5).sp),
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(
+                "예산 기간 지출",
+                color = colors.textSecondary,
+                style = MaterialTheme.typography.labelSmall,
+            )
+            FittedAmountText(
+                formatDisplayWon(uiState.budgetPeriodExpenseTotal),
+                MaterialTheme.typography.displaySmall.copy(fontSize = 30.sp, lineHeight = 36.sp, letterSpacing = (-0.5).sp),
+            )
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Surface(
                 onClick = { onOpenManageFeature("budget") },

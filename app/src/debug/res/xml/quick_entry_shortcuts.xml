@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="quick_expense"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_expense"
+        android:shortcutShortLabel="@string/quick_add_expense_shortcut"
+        android:shortcutLongLabel="@string/quick_add_expense_shortcut_long">
+        <intent
+            android:action="com.moasseum.app.action.QUICK_ADD"
+            android:targetPackage="com.moasseum.app.qa"
+            android:targetClass="com.moasseum.app.MainActivity"
+            android:data="moasseum://shortcut/quick-add/expense" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="quick_income"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_income"
+        android:shortcutShortLabel="@string/quick_add_income_shortcut"
+        android:shortcutLongLabel="@string/quick_add_income_shortcut_long">
+        <intent
+            android:action="com.moasseum.app.action.QUICK_ADD"
+            android:targetPackage="com.moasseum.app.qa"
+            android:targetClass="com.moasseum.app.MainActivity"
+            android:data="moasseum://shortcut/quick-add/income" />
+    </shortcut>
+</shortcuts>

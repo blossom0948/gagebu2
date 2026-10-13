@@ -846,7 +846,7 @@ private fun DirectTransactionForm(
                     if (allowed) amount = input.take(24)
                     showError = false
                 },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).testTag("quick_add_amount"),
                 label = { Text("금액") },
                 placeholder = { Text(if (currencyCode == "KRW") "0" else "0.${"0".repeat(currencyFractionDigits(currencyCode))}") },
                 suffix = { Text(currencyCode) },
@@ -883,7 +883,7 @@ private fun DirectTransactionForm(
         OutlinedTextField(
             value = merchant,
             onValueChange = { merchant = it; showError = false },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().testTag("quick_add_merchant"),
             label = { Text("가맹점") },
             placeholder = { Text("어디에 썼나요?") },
             singleLine = true,
@@ -897,18 +897,20 @@ private fun DirectTransactionForm(
                     modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
-                    merchantMatches.forEach { match ->
+                    merchantMatches.forEachIndexed { index, match ->
                         Surface(
-                            modifier = Modifier.clickable {
-                                typeName = match.type.name
-                                amount = match.originalAmount ?: match.amount.toString()
-                                merchant = match.merchant
-                                categoryKey = match.categoryKey
-                                paymentMethod = match.paymentMethod
-                                currencyCode = match.currency
-                                isInstallment = false
-                                showError = false
-                            },
+                            modifier = Modifier
+                                .testTag("quick_entry_history_match_$index")
+                                .clickable {
+                                    typeName = match.type.name
+                                    amount = match.originalAmount ?: match.amount.toString()
+                                    merchant = match.merchant
+                                    categoryKey = match.categoryKey
+                                    paymentMethod = match.paymentMethod
+                                    currencyCode = match.currency
+                                    isInstallment = false
+                                    showError = false
+                                },
                             color = colors.surfaceOverlay,
                             shape = RoundedCornerShape(12.dp),
                         ) {

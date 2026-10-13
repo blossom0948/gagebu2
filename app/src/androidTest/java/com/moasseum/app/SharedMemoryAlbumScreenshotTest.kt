@@ -285,6 +285,7 @@ class SharedMemoryAlbumScreenshotTest {
                     snapshot = SharedLedgerSnapshot(
                         ledgerId = "qa-shared-ledger",
                         memberCount = 2,
+                        memorySyncAvailable = true,
                         memories = listOf(photo),
                     ),
                     personalTransactions = emptyList(),
@@ -319,12 +320,24 @@ class SharedMemoryAlbumScreenshotTest {
                 }
             }
         }
-        composeRule.onNodeWithText("함께한 사진").performScrollTo()
+        composeRule.onNodeWithTag("shared_memory_album_header").performScrollTo()
+        composeRule.onNodeWithText("함께한 사진").assertExists()
+        composeRule.onNodeWithText("사진 추가").assertExists()
+        composeRule.onNodeWithText("가을 산책").assertExists()
         composeRule.waitForIdle()
-        val bitmap = composeRule.onRoot().captureToImage().asAndroidBitmap()
+        val bitmap = composeRule.onNodeWithTag("shared_memory_album_header").captureToImage().asAndroidBitmap()
         val file = File(context.getExternalFilesDir(null), "moasseum-shared-album-qa.png")
         file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         check(file.length() > 10_000) { "The Compose screenshot was not written." }
+        if (InstrumentationRegistry.getArguments().getString("captureImage") == "true") {
+            val previewBytes = ByteArrayOutputStream().use { output ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 88, output)
+                output.toByteArray()
+            }
+            Base64.encodeToString(previewBytes, Base64.NO_WRAP).chunked(2_000).forEachIndexed { index, chunk ->
+                Log.i("MOASSEUM_CAPTURE", "MSS_SHARED_ALBUM|$index|$chunk")
+            }
+        }
         if (InstrumentationRegistry.getArguments().getString("captureHold") == "true") {
             Thread.sleep(30_000)
         }

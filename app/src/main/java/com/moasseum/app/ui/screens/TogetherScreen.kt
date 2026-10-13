@@ -106,6 +106,7 @@ import com.moasseum.app.ui.components.FinanceTextField
 import com.moasseum.app.ui.components.formatDisplaySignedWon
 import com.moasseum.app.ui.components.formatDisplayWon
 import com.moasseum.app.ui.theme.LocalFinanceColors
+import com.moasseum.app.ui.theme.LocalFinanceMotion
 import java.time.YearMonth
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -152,6 +153,7 @@ fun TogetherScreen(
     featuredMemoryLoading: Boolean = false,
 ) {
     val colors = LocalFinanceColors.current
+    val reduceMotion = LocalFinanceMotion.current.reduceMotion
     var code by rememberSaveable { mutableStateOf("") }
     var selectedMonthKey by rememberSaveable { mutableStateOf(YearMonth.now().toString()) }
     var showFeaturePreview by rememberSaveable { mutableStateOf(false) }
@@ -199,8 +201,10 @@ fun TogetherScreen(
         }
     }
     val listState = rememberLazyListState()
-    LaunchedEffect(scrollToTopRequest) {
-        if (scrollToTopRequest > 0) listState.animateScrollToItem(0)
+    LaunchedEffect(scrollToTopRequest, reduceMotion) {
+        if (scrollToTopRequest > 0) {
+            if (reduceMotion) listState.scrollToItem(0) else listState.animateScrollToItem(0)
+        }
     }
     LazyColumn(
         state = listState,
@@ -820,7 +824,7 @@ private fun SharedMemoryAlbumHeader(
     onPick: () -> Unit,
 ) {
     val colors = LocalFinanceColors.current
-    FinanceCard {
+    FinanceCard(modifier = Modifier.testTag("shared_memory_album_header")) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.PhotoLibrary, contentDescription = null, tint = colors.accent, modifier = Modifier.size(19.dp))
