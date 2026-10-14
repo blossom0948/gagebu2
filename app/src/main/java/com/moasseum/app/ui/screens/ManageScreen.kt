@@ -46,7 +46,6 @@ import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.CreditCard
-import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Palette
@@ -95,6 +94,8 @@ import androidx.activity.compose.BackHandler
 import com.moasseum.app.domain.LedgerUiState
 import com.moasseum.app.domain.HomeDashboardCards
 import com.moasseum.app.domain.AiAdviceCards
+import com.moasseum.app.domain.AppearanceMode
+import com.moasseum.app.domain.AppPalette
 import com.moasseum.app.domain.DisplayCurrencies
 import com.moasseum.app.domain.DisplayCurrencySetting
 import com.moasseum.app.domain.NoSpendChallengeSettings
@@ -115,6 +116,9 @@ import com.moasseum.app.ui.components.allCategorySpecs
 import com.moasseum.app.ui.components.categoryLabel
 import com.moasseum.app.ui.theme.LocalFinanceColors
 import com.moasseum.app.ui.theme.LocalFinanceMotion
+import com.moasseum.app.ui.theme.financeColorsForPalette
+import com.moasseum.app.ui.theme.paletteSwatches
+import com.moasseum.app.ui.theme.rememberSystemAccent
 import com.moasseum.app.update.AppRelease
 import com.moasseum.app.update.UpdateCheckState
 import com.moasseum.app.data.ManageSettingSearchOption
@@ -161,7 +165,11 @@ fun ManageScreen(
     onConvertInstallmentToSinglePayment: suspend (String) -> Unit,
     darkTheme: Boolean,
     reduceMotion: Boolean,
-    onDarkThemeChanged: (Boolean) -> Unit,
+    appearanceMode: AppearanceMode,
+    appPalette: AppPalette,
+    onSaveAppearance: (AppearanceMode, AppPalette) -> Unit,
+    playStoreDistribution: Boolean,
+    onOpenPlayStore: () -> Unit,
     onReduceMotionChanged: (Boolean) -> Unit,
     onUpdateBudget: suspend (String) -> Unit,
     notificationAccessEnabled: Boolean,
@@ -226,6 +234,7 @@ fun ManageScreen(
     var showYearEndDialog by rememberSaveable { mutableStateOf(false) }
     var showBudgetPaydayDialog by rememberSaveable { mutableStateOf(false) }
     var showDisplayCurrencyDialog by rememberSaveable { mutableStateOf(false) }
+    var showAppearanceDialog by rememberSaveable { mutableStateOf(false) }
     var appDataSettingsExpanded by rememberSaveable { mutableStateOf(false) }
     var selectedReportYear by rememberSaveable { mutableStateOf(java.time.LocalDate.now().year) }
     var searchPageOpen by rememberSaveable { mutableStateOf(false) }
@@ -281,7 +290,7 @@ fun ManageScreen(
         "home-cards" to { showHomeCardsDialog = true },
         "ai-cards" to { showAiAdviceDialog = true },
         "currency" to { showDisplayCurrencyDialog = true },
-        "theme" to { onDarkThemeChanged(!darkTheme) },
+        "theme" to { showAppearanceDialog = true },
         "motion" to { onReduceMotionChanged(!reduceMotion) },
         "app-lock" to { onSetAppLockEnabled(!appLockEnabled) },
         "privacy" to { showPrivacyDialog = true },
@@ -298,7 +307,7 @@ fun ManageScreen(
             "reminders" -> if (financeRemindersEnabled) "현재 켜짐" else "현재 꺼짐"
             "ai-notifications" -> if (aiNotificationClassificationEnabled) "현재 켜짐" else "현재 꺼짐 · 로그인 후 사용할 수 있어요"
             "account" -> accountStatus
-            "theme" -> if (darkTheme) "현재 켜짐" else "현재 꺼짐"
+            "theme" -> appearanceSummary(appearanceMode, appPalette, darkTheme)
             "motion" -> if (reduceMotion) "현재 켜짐" else "현재 꺼짐"
             "app-lock" -> if (appLockEnabled) "현재 켜짐" else "생체 인증 또는 기기 잠금 설정"
             else -> descriptor.description
@@ -307,7 +316,7 @@ fun ManageScreen(
             "rollover" -> if (uiState.budgetRollover) "이월 끄기" else "이월 켜기"
             "reminders" -> if (financeRemindersEnabled) "알림 끄기" else "알림 켜기"
             "ai-notifications" -> if (aiNotificationClassificationEnabled) "AI 판별 끄기" else "AI 설정 열기"
-            "theme" -> if (darkTheme) "밝은 테마로 변경" else "다크 모드 켜기"
+            "theme" -> "테마 선택"
             "motion" -> if (reduceMotion) "모션 다시 켜기" else "모션 줄이기"
             "app-lock" -> if (appLockEnabled) "앱 잠금 끄기" else "앱 잠금 켜기"
             else -> descriptor.actionLabel
@@ -497,7 +506,12 @@ fun ManageScreen(
                             HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                             ManageRow(Icons.Rounded.Wallet, "표시 통화", displayCurrencySummary(displayCurrency), onClick = { showDisplayCurrencyDialog = true })
                             HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
-                            SettingSwitchRow(Icons.Rounded.DarkMode, "다크 모드", "", darkTheme, onDarkThemeChanged)
+                            ManageRow(
+                                Icons.Rounded.Palette,
+                                "테마 설정",
+                                appearanceSummary(appearanceMode, appPalette, darkTheme),
+                                onClick = { showAppearanceDialog = true },
+                            )
                             HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
                             SettingSwitchRow(Icons.Rounded.Palette, "모션 줄이기", "", reduceMotion, onReduceMotionChanged)
                             HorizontalDivider(color = colors.divider.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 14.dp))
@@ -507,7 +521,13 @@ fun ManageScreen(
                         }
                     }
                 }
-                AppUpdateCard(updateState, onCheckForUpdate, onInstallUpdate, onContinueInstall)
+                if (playStoreDistribution) {
+                    FinanceCard {
+                        ManageRow(Icons.Rounded.SystemUpdate, "앱 업데이트", "Play 스토어에서 관리", onOpenPlayStore)
+                    }
+                } else {
+                    AppUpdateCard(updateState, onCheckForUpdate, onInstallUpdate, onContinueInstall)
+                }
                 Text("모아씀 ${com.moasseum.app.BuildConfig.VERSION_NAME}", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 4.dp, vertical = 5.dp))
             }
         }
@@ -533,6 +553,17 @@ fun ManageScreen(
             currentDay = budgetPayday,
             onDismiss = { showBudgetPaydayDialog = false },
             onSave = { day -> onSaveBudgetPayday(day); showBudgetPaydayDialog = false },
+        )
+    }
+    if (showAppearanceDialog) {
+        AppearanceSettingsDialog(
+            currentMode = appearanceMode,
+            currentPalette = appPalette,
+            onDismiss = { showAppearanceDialog = false },
+            onSave = { mode, palette ->
+                onSaveAppearance(mode, palette)
+                showAppearanceDialog = false
+            },
         )
     }
     if (showDisplayCurrencyDialog) {
@@ -1940,6 +1971,140 @@ internal fun ManageExpandableSection(
 @Composable
 private fun ManageSectionTitle(title: String) {
     Text(title, color = LocalFinanceColors.current.textSecondary, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 4.dp, start = 4.dp))
+}
+
+private fun appearanceSummary(mode: AppearanceMode, palette: AppPalette, darkTheme: Boolean): String {
+    val modeLabel = when (mode) {
+        AppearanceMode.SYSTEM -> if (darkTheme) "기기 설정 · 다크" else "기기 설정 · 라이트"
+        AppearanceMode.LIGHT -> "라이트"
+        AppearanceMode.DARK -> "다크"
+    }
+    return "$modeLabel · ${appPaletteLabel(palette)}"
+}
+
+private fun appPaletteLabel(palette: AppPalette): String = when (palette) {
+    AppPalette.SYSTEM -> "기기 색상"
+    AppPalette.MINT -> "모아씀 민트"
+    AppPalette.OCEAN -> "오션 블루"
+    AppPalette.LAVENDER -> "라벤더"
+    AppPalette.SAND -> "웜 샌드"
+}
+
+@Composable
+internal fun AppearanceSettingsDialog(
+    currentMode: AppearanceMode,
+    currentPalette: AppPalette,
+    onDismiss: () -> Unit,
+    onSave: (AppearanceMode, AppPalette) -> Unit,
+) {
+    var selectedMode by rememberSaveable(currentMode.storageKey, currentPalette.storageKey) {
+        mutableStateOf(currentMode)
+    }
+    var selectedPalette by rememberSaveable(currentMode.storageKey, currentPalette.storageKey) {
+        mutableStateOf(currentPalette)
+    }
+    val colors = LocalFinanceColors.current
+    val previewIsDark = when (selectedMode) {
+        AppearanceMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
+        AppearanceMode.LIGHT -> false
+        AppearanceMode.DARK -> true
+    }
+    val systemAccent = rememberSystemAccent(AppPalette.SYSTEM, previewIsDark)
+
+    AlertDialog(
+        modifier = Modifier.testTag("appearance_settings_dialog"),
+        onDismissRequest = onDismiss,
+        title = { Text("테마 설정", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier.heightIn(max = 540.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(11.dp),
+            ) {
+                Text("화면 모드", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    AppearanceMode.entries.forEach { mode ->
+                        FilterChip(
+                            selected = selectedMode == mode,
+                            onClick = { selectedMode = mode },
+                            modifier = Modifier.testTag("appearance_mode_${mode.storageKey}"),
+                            label = {
+                                Text(when (mode) {
+                                    AppearanceMode.SYSTEM -> "기기"
+                                    AppearanceMode.LIGHT -> "라이트"
+                                    AppearanceMode.DARK -> "다크"
+                                })
+                            },
+                        )
+                    }
+                }
+                Text("색 테마", color = colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                AppPalette.entries.forEach { palette ->
+                    val selected = selectedPalette == palette
+                    Surface(
+                        color = if (selected) colors.accentSoft else colors.surfaceRaised,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("appearance_palette_${palette.storageKey}")
+                            .clickable(role = Role.RadioButton) { selectedPalette = palette },
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 9.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = selected, onClick = { selectedPalette = palette })
+                            Text(
+                                appPaletteLabel(palette),
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            )
+                            paletteSwatches(palette, systemAccent.takeIf { palette == selectedPalette }).forEach { swatch ->
+                                Box(Modifier.padding(start = 5.dp).size(17.dp).clip(CircleShape).background(swatch))
+                            }
+                        }
+                    }
+                }
+                if (selectedPalette == AppPalette.SYSTEM) {
+                    Text(
+                        "Android 12 이상은 배경화면 강조색을 사용하고, 이전 버전은 민트로 표시돼요.",
+                        color = colors.textSecondary,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                Text(
+                    "수입·지출 색과 거래 기록은 바뀌지 않아요.",
+                    color = colors.textSecondary,
+                    style = MaterialTheme.typography.labelSmall,
+                )
+                val preview = financeColorsForPalette(
+                    selectedPalette,
+                    previewIsDark,
+                    systemAccent.takeIf { selectedPalette == AppPalette.SYSTEM },
+                )
+                Surface(
+                    color = preview.surfaceRaised,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(9.dp),
+                    ) {
+                        Box(Modifier.size(12.dp).clip(CircleShape).background(preview.accent))
+                        Text("이번 테마 미리보기", color = preview.textPrimary, style = MaterialTheme.typography.labelMedium)
+                        Spacer(Modifier.weight(1f))
+                        Text("₩12,000", color = preview.accent, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(selectedMode, selectedPalette) }) { Text("적용", color = colors.accent) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("취소", color = colors.textSecondary) } },
+    )
 }
 
 @Composable

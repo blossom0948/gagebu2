@@ -24,9 +24,11 @@ app/build/outputs/apk/debug/app-debug.apk
 
 v0.1.17은 계좌·지갑 잔액과 이체 기록, 예산 이월/하루 사용 가능 금액/지난달 비교, JSON 전체 복원과 복원 전 안전 백업, 월간 PDF 및 카메라 영수증 입력을 추가합니다. 이체는 지출·수입 통계에서 제외하고 실제 은행 송금은 하지 않습니다. 계좌를 연결하지 않은 기존 거래는 그대로 유지됩니다.
 
-현재 공개 배포 버전은 **v0.1.55**입니다. 빠른 거래 추천이 키보드 위에 표시되어 한 번에 채워지고, 설정 검색·AI 팝업의 키보드·모션 상호작용을 다듬었습니다. [v0.1.55 변경 목록](docs/releases/v0.1.55.md)과 [Weeple 비교 진행 보고서](WEEPLE_PARITY_PROGRESS_2026-10-08.md)를 참고하세요.
+현재 공개 배포 버전은 **v0.1.56**입니다. 테마 설정에서 화면 모드와 브랜드 색 팔레트를 선택할 수 있고, 배경화면 강조색도 지원합니다. [v0.1.56 변경 목록](docs/releases/v0.1.56.md)과 [Weeple 비교 진행 보고서](WEEPLE_PARITY_PROGRESS_2026-10-08.md)를 참고하세요.
 
-[v0.1.55 APK 다운로드](https://github.com/blossom0948/gagebu2/releases/download/v0.1.55/app-release.apk) · [GitHub 릴리스](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.55)
+앱의 화면 모드와 민트·오션·라벤더·샌드 포인트 색상은 `관리 → 앱과 데이터 → 테마 설정`에서 바꿀 수 있습니다. Google Play 등록을 위한 아직 미완료된 기술·정책 준비 항목은 [Play Store 준비 체크리스트](docs/PLAY_STORE_READINESS.md)에 정리했습니다. 현재 Play에는 등록되지 않았습니다.
+
+[v0.1.56 APK 다운로드](https://github.com/blossom0948/gagebu2/releases/download/v0.1.56/app-release.apk) · [GitHub 릴리스](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.56)
 
 공동 장부의 운영 DB migration은 적용됐지만, 별도 두 계정의 초대·수락·RLS 격리를 끝까지 검증하지는 않았습니다. 일괄 처리는 기기 내 제한형 문장 패턴을 사용하며 수정·삭제는 사용자가 행을 골라야 합니다. 홈 화면 위젯은 런처에 직접 추가해야 하며 위젯 배치·터치는 이번에 재검증하지 않았습니다. 앱 아이콘 길게 누르기 빠른 입력은 격리 `.qa`에서 단축 주소와 입력창 진입을 검증했습니다. 비교 범위와 남은 차이는 [Weeple 기능 대조 진행 보고서](WEEPLE_PARITY_PROGRESS_2026-10-08.md)를 참고하세요.
 

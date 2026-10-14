@@ -14,6 +14,8 @@ import com.moasseum.app.domain.NoSpendChallengeSettings
 import com.moasseum.app.domain.DisplayCurrencySetting
 import com.moasseum.app.domain.DisplayCurrencies
 import com.moasseum.app.domain.ExchangeRateQuote
+import com.moasseum.app.domain.AppearanceMode
+import com.moasseum.app.domain.AppPalette
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
@@ -61,6 +63,7 @@ class UserPreferencesRepository(
             categoryLabels.first(), categoryBudgets.first(), categoryOrder.first(), monthlyIncomeTargets.first(),
             homeDashboardCards.first(), challenge.goalDays, challenge.startDate,
             yearEndGrossSalaries.first(), aiAdviceCards.first(), budgetPayday.first(), displayCurrencySetting.first().code,
+            appearanceMode.first(), appPalette.first(),
         )
     }
 
@@ -69,6 +72,8 @@ class UserPreferencesRepository(
         val cards = PaymentCardSettings.encode(settings.paymentCards)
         context.settingsDataStore.edit { preferences ->
             preferences[DARK_THEME] = settings.darkTheme
+            preferences[APPEARANCE_MODE] = settings.appearanceMode.storageKey
+            preferences[APP_PALETTE] = settings.appPalette.storageKey
             preferences[REDUCE_MOTION] = settings.reduceMotion
             preferences[PAYMENT_METHODS] = settings.paymentMethods.joinToString("\n")
             preferences[PAYMENT_CARDS] = cards
@@ -93,6 +98,15 @@ class UserPreferencesRepository(
     }
     val isDarkTheme: Flow<Boolean> =
         context.settingsDataStore.data.map { preferences -> preferences[DARK_THEME] ?: true }
+
+    val appearanceMode: Flow<AppearanceMode> = context.settingsDataStore.data.map { preferences ->
+        preferences[APPEARANCE_MODE]?.let(AppearanceMode::fromStorageKey)
+            ?: if (preferences[DARK_THEME] ?: true) AppearanceMode.DARK else AppearanceMode.LIGHT
+    }
+
+    val appPalette: Flow<AppPalette> = context.settingsDataStore.data.map { preferences ->
+        AppPalette.fromStorageKey(preferences[APP_PALETTE])
+    }
 
     val reduceMotion: Flow<Boolean> =
         context.settingsDataStore.data.map { preferences -> preferences[REDUCE_MOTION] ?: false }
@@ -400,7 +414,15 @@ class UserPreferencesRepository(
     }
 
     suspend fun setDarkTheme(enabled: Boolean) {
-        context.settingsDataStore.edit { preferences -> preferences[DARK_THEME] = enabled }
+        saveAppearance(if (enabled) AppearanceMode.DARK else AppearanceMode.LIGHT, appPalette.first())
+    }
+
+    suspend fun saveAppearance(mode: AppearanceMode, palette: AppPalette) {
+        context.settingsDataStore.edit { preferences ->
+            preferences[APPEARANCE_MODE] = mode.storageKey
+            preferences[APP_PALETTE] = palette.storageKey
+            if (mode != AppearanceMode.SYSTEM) preferences[DARK_THEME] = mode == AppearanceMode.DARK
+        }
     }
 
     suspend fun setReduceMotion(enabled: Boolean) {
@@ -591,6 +613,8 @@ class UserPreferencesRepository(
         const val MAX_RECENT_MANAGE_SEARCHES = 5
         val MANAGE_SEARCH_ID = Regex("[a-z0-9-]{1,64}")
         val DARK_THEME = booleanPreferencesKey("dark_theme")
+        val APPEARANCE_MODE = stringPreferencesKey("appearance_mode")
+        val APP_PALETTE = stringPreferencesKey("app_palette")
         val REDUCE_MOTION = booleanPreferencesKey("reduce_motion")
         val NOTIFICATION_ACCESS_PROMPT_SHOWN = booleanPreferencesKey("notification_access_prompt_shown")
         val NOTIFICATION_POST_PERMISSION_PROMPT_SHOWN = booleanPreferencesKey("notification_post_permission_prompt_shown")

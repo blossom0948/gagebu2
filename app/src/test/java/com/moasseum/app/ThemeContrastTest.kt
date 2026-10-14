@@ -3,6 +3,9 @@ package com.moasseum.app
 import androidx.compose.ui.graphics.Color
 import com.moasseum.app.ui.theme.DarkFinanceColors
 import com.moasseum.app.ui.theme.LightFinanceColors
+import com.moasseum.app.ui.theme.financeColorsForPalette
+import com.moasseum.app.ui.theme.SystemAccentColors
+import com.moasseum.app.domain.AppPalette
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.pow
@@ -34,5 +37,40 @@ class ThemeContrastTest {
     @Test fun `raised surfaces are distinct without a harsh contrast jump`() {
         assertTrue(contrast(DarkFinanceColors.surfaceBase, DarkFinanceColors.surfaceRaised) in 1.2..1.8)
         assertTrue(contrast(LightFinanceColors.surfaceBase, LightFinanceColors.surfaceRaised) in 1.03..1.3)
+    }
+
+    @Test fun `every selectable palette keeps text and filled controls accessible in both modes`() {
+        AppPalette.entries.forEach { palette ->
+            listOf(false, true).forEach { dark ->
+                val colors = financeColorsForPalette(palette, dark)
+                listOf(colors.surfaceBase, colors.surfaceRaised, colors.surfaceOverlay, colors.surfaceInput, colors.accentSoft).forEach { surface ->
+                    assertTrue("${palette.name} primary text on $surface", contrast(colors.textPrimary, surface) >= 4.5)
+                    assertTrue("${palette.name} secondary text on $surface", contrast(colors.textSecondary, surface) >= 4.5)
+                }
+                assertTrue("${palette.name} filled button label", contrast(colors.onAccent, colors.accent) >= 4.5)
+            }
+        }
+    }
+
+    @Test fun `wallpaper accent only changes brand colors and preserves semantic finance colors`() {
+        val systemAccent = SystemAccentColors(
+            accent = Color(0xFF285E9F),
+            onAccent = Color.White,
+            secondary = Color(0xFF526070),
+            tertiary = Color(0xFF76546A),
+        )
+        listOf(false, true).forEach { dark ->
+            val colors = financeColorsForPalette(AppPalette.SYSTEM, dark, systemAccent)
+            val baseline = if (dark) DarkFinanceColors else LightFinanceColors
+            assertTrue(colors.accent == systemAccent.accent)
+            assertTrue(colors.onAccent == systemAccent.onAccent)
+            assertTrue(colors.income == baseline.income)
+            assertTrue(colors.expense == baseline.expense)
+            assertTrue(contrast(colors.onAccent, colors.accent) >= 4.5)
+            listOf(colors.surfaceBase, colors.surfaceRaised, colors.surfaceOverlay, colors.surfaceInput, colors.accentSoft).forEach { surface ->
+                assertTrue("SYSTEM primary text on $surface", contrast(colors.textPrimary, surface) >= 4.5)
+                assertTrue("SYSTEM secondary text on $surface", contrast(colors.textSecondary, surface) >= 4.5)
+            }
+        }
     }
 }

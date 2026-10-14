@@ -6,6 +6,8 @@ import com.moasseum.app.domain.HomeDashboardCards
 import com.moasseum.app.domain.AiAdviceCards
 import com.moasseum.app.domain.TransactionType
 import com.moasseum.app.domain.DisplayCurrencies
+import com.moasseum.app.domain.AppearanceMode
+import com.moasseum.app.domain.AppPalette
 import com.moasseum.app.domain.validateAccount
 import org.json.JSONArray
 import org.json.JSONObject
@@ -30,6 +32,8 @@ data class BackupSettings(
     val aiAdviceCards: Set<String> = AiAdviceCards.defaults,
     val budgetPayday: Int = 1,
     val displayCurrencyCode: String = DisplayCurrencies.KRW,
+    val appearanceMode: AppearanceMode = if (darkTheme) AppearanceMode.DARK else AppearanceMode.LIGHT,
+    val appPalette: AppPalette = AppPalette.MINT,
 )
 
 data class FullBackup(
@@ -98,6 +102,8 @@ object FullBackupCodec {
             put("yearEndGrossSalaries", JSONObject(s.yearEndGrossSalaries.entries.associate { it.key.toString() to it.value }))
             put("budgetPayday", s.budgetPayday)
             put("displayCurrencyCode", s.displayCurrencyCode)
+            put("appearanceMode", s.appearanceMode.storageKey)
+            put("appPalette", s.appPalette.storageKey)
         }) }
     }.toString(2)
 
@@ -215,6 +221,15 @@ object FullBackupCodec {
             val displayCurrencyCode = s.optString("displayCurrencyCode", DisplayCurrencies.KRW)
                 .takeIf(DisplayCurrencies::isSupported)
                 ?: throw IllegalArgumentException("표시 통화 설정이 올바르지 않은 백업이에요.")
+            val legacyDarkTheme = s.optBoolean("darkTheme", true)
+            val appearanceMode = s.optString("appearanceMode")
+                .takeIf { value -> AppearanceMode.entries.any { it.storageKey == value } }
+                ?.let(AppearanceMode::fromStorageKey)
+                ?: if (legacyDarkTheme) AppearanceMode.DARK else AppearanceMode.LIGHT
+            val appPalette = s.optString("appPalette")
+                .takeIf { value -> AppPalette.entries.any { it.storageKey == value } }
+                ?.let(AppPalette::fromStorageKey)
+                ?: AppPalette.MINT
             val noSpendChallengeGoalDays = s.optInt("noSpendChallengeGoalDays", 7)
             require(noSpendChallengeGoalDays in setOf(7, 14, 30)) { "무지출 챌린지 설정이 올바르지 않은 백업이에요." }
             val noSpendChallengeStartDate = if (s.has("noSpendChallengeStartDate") && !s.isNull("noSpendChallengeStartDate")) {
@@ -238,9 +253,10 @@ object FullBackupCodec {
             val cards = PaymentCardSettings.decode(cardText)
             require(PaymentCardSettings.encode(cards) == cardText) { "카드 설정이 손상된 백업이에요." }
             BackupSettings(
-                s.getBoolean("darkTheme"), s.getBoolean("reduceMotion"), methods, cards, labels,
+                legacyDarkTheme, s.getBoolean("reduceMotion"), methods, cards, labels,
                 categoryBudgets, upgradedCategoryOrder, monthlyIncomeTargets, homeDashboardCards,
                 noSpendChallengeGoalDays, noSpendChallengeStartDate, yearEndGrossSalaries, aiAdviceCards, budgetPayday, displayCurrencyCode,
+                appearanceMode, appPalette,
             )
         }
         if (version == 2) require(settings != null) { "앱 설정이 없는 백업이에요." }

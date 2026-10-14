@@ -59,7 +59,7 @@ data class ReleaseNoteSlide(
 )
 
 object ReleaseNotesCatalog {
-    private val supportedVersions = listOf("0.1.1", "0.1.2") + (4..55).map { "0.1.$it" }
+    private val supportedVersions = listOf("0.1.1", "0.1.2") + (4..56).map { "0.1.$it" }
 
     /** Returns only releases newer than [lastSeenVersion], in chronological order. */
     fun slidesSince(lastSeenVersion: String?, currentVersion: String): List<ReleaseNoteSlide> {
@@ -703,6 +703,15 @@ object ReleaseNotesCatalog {
                 title = "거래 추천을 키보드 위에서 바로 선택",
                 description = "가게 이름을 입력하면 예전 내역이 바로 뜨고, 누르면 금액·분류·결제수단이 채워져요. 설정 검색은 결과를 고를 때 키보드를 내려 메뉴가 가려지지 않게 했고, AI 창 전환 중 입력도 안전하게 처리해요.",
                 imageDescription = "Galaxy Z Fold4의 격리 .qa 앱에서 합성 기록으로 캡처한 실제 빠른 거래 추천 메뉴입니다. 공동 생활비 50,000원 후보를 선택할 수 있으며 개인 거래 정보는 포함하지 않습니다.",
+            ),
+        )
+        "0.1.56" -> listOf(
+            ReleaseNoteSlide(
+                imageResId = R.drawable.whats_new_0_1_56_theme,
+                imageAspectRatio = 840f / 1790f,
+                title = "화면 색을 내 취향대로",
+                description = "관리 → 앱과 데이터 → 테마 설정에서 기기·라이트·다크 모드와 모아씀 민트·오션 블루·라벤더·웜 샌드를 고를 수 있어요. Android 12 이상은 배경화면 색도 사용할 수 있고, 수입·지출 색과 기록은 그대로예요.",
+                imageDescription = "Galaxy Z Fold4의 격리 .qa 앱에서 합성 데이터 없이 테마 설정 창을 실제 캡처했습니다. 화면 모드, 색 팔레트와 미리보기가 보입니다.",
             ),
         )
         else -> emptyList()

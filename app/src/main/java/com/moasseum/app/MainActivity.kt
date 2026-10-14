@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.speech.RecognizerIntent
@@ -25,6 +26,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -132,6 +134,8 @@ import com.moasseum.app.data.ReceiptOcr
 import com.moasseum.app.data.PhotoImportState
 import com.moasseum.app.data.PhotoTransactionImport
 import com.moasseum.app.domain.AiParseState
+import com.moasseum.app.domain.AppearanceMode
+import com.moasseum.app.domain.AppPalette
 import com.moasseum.app.domain.buildActivityNotices
 import com.moasseum.app.domain.HomeDashboardCards
 import com.moasseum.app.domain.AiAdviceCards
@@ -238,7 +242,14 @@ class MainActivity : FragmentActivity() {
             val viewModel: LedgerViewModel = viewModel(
                 factory = LedgerViewModel.Factory(application.financeRepository, application.preferencesRepository),
             )
-            val darkTheme by application.preferencesRepository.isDarkTheme.collectAsStateWithLifecycle(initialValue = true)
+            val appearanceMode by application.preferencesRepository.appearanceMode.collectAsStateWithLifecycle(initialValue = AppearanceMode.DARK)
+            val appPalette by application.preferencesRepository.appPalette.collectAsStateWithLifecycle(initialValue = AppPalette.MINT)
+            val systemDarkTheme = isSystemInDarkTheme()
+            val darkTheme = when (appearanceMode) {
+                AppearanceMode.SYSTEM -> systemDarkTheme
+                AppearanceMode.LIGHT -> false
+                AppearanceMode.DARK -> true
+            }
             val reduceMotion by application.preferencesRepository.reduceMotion.collectAsStateWithLifecycle(initialValue = false)
             val categoryLabels by application.preferencesRepository.categoryLabels.collectAsStateWithLifecycle(initialValue = DEFAULT_CATEGORY_LABELS)
             val categoryOrder by application.preferencesRepository.categoryOrder.collectAsStateWithLifecycle(initialValue = DEFAULT_CATEGORY_ORDER)
@@ -282,7 +293,7 @@ class MainActivity : FragmentActivity() {
                 LocalCategoryOrder provides categoryOrder,
                 LocalDisplayCurrency provides displayCurrencySetting,
             ) {
-                MoasseumTheme(darkTheme = darkTheme, reduceMotion = reduceMotion) {
+                MoasseumTheme(darkTheme = darkTheme, palette = appPalette, reduceMotion = reduceMotion) {
                     UpdateSystemBars(darkTheme)
                     MoasseumApp(
                         viewModel = viewModel,
@@ -343,9 +354,15 @@ class MainActivity : FragmentActivity() {
                         notificationLastCandidateAt = notificationLastCandidateAt,
                         darkTheme = darkTheme,
                         reduceMotion = reduceMotion,
-                        onDarkThemeChanged = { enabled ->
-                            viewModel.performOperation("화면 설정을 저장하지 못했어요.") { application.preferencesRepository.setDarkTheme(enabled) }
+                        appearanceMode = appearanceMode,
+                        appPalette = appPalette,
+                        onSaveAppearance = { mode, palette ->
+                            viewModel.performOperation("화면 설정을 저장하지 못했어요.") {
+                                application.preferencesRepository.saveAppearance(mode, palette)
+                            }
                         },
+                        playStoreDistribution = BuildConfig.PLAY_STORE_DISTRIBUTION,
+                        onOpenPlayStore = { openPlayStoreListing() },
                         onReduceMotionChanged = { enabled ->
                             viewModel.performOperation("모션 설정을 저장하지 못했어요.") { application.preferencesRepository.setReduceMotion(enabled) }
                         },
@@ -434,6 +451,13 @@ class MainActivity : FragmentActivity() {
     private fun intentCandidateId(intent: Intent?): Long? =
         intent?.getLongExtra(EXTRA_NOTIFICATION_CANDIDATE_ID, 0L)?.takeIf { it > 0L }
 
+    private fun openPlayStoreListing() {
+        val packageId = packageName
+        val listing = "https://play.google.com/store/apps/details?id=$packageId"
+        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageId"))) }
+            .onFailure { runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(listing))) } }
+    }
+
     private fun extractShare(incoming: Intent?): IncomingShare? {
         val shareIntent = incoming ?: return null
         if (shareIntent.action != Intent.ACTION_SEND && shareIntent.action != Intent.ACTION_SEND_MULTIPLE) return null
@@ -520,7 +544,11 @@ private fun MoasseumApp(
     onSetAiNotificationClassificationEnabled: (Boolean) -> Unit,
     darkTheme: Boolean,
     reduceMotion: Boolean,
-    onDarkThemeChanged: (Boolean) -> Unit,
+    appearanceMode: AppearanceMode,
+    appPalette: AppPalette,
+    onSaveAppearance: (AppearanceMode, AppPalette) -> Unit,
+    playStoreDistribution: Boolean,
+    onOpenPlayStore: () -> Unit,
     onReduceMotionChanged: (Boolean) -> Unit,
     notificationPostPermissionPromptShown: Boolean,
     onMarkNotificationPostPermissionPromptShown: () -> Unit,
@@ -1239,6 +1267,7 @@ private fun MoasseumApp(
     }
 
     fun checkForAppUpdate(automatic: Boolean) {
+        if (BuildConfig.PLAY_STORE_DISTRIBUTION) return
         val now = System.currentTimeMillis()
         if (automatic && now - lastAutomaticUpdateCheckAt < 15 * 60 * 1000L) return
         if (updateState == UpdateCheckState.Checking || updateState is UpdateCheckState.Downloading) return
@@ -1258,12 +1287,14 @@ private fun MoasseumApp(
         }
     }
 
-    LaunchedEffect(lifecycleOwner) {
-        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            checkForAppUpdate(automatic = true)
-            while (true) {
-                kotlinx.coroutines.delay(6 * 60 * 60 * 1000L)
+    if (!BuildConfig.PLAY_STORE_DISTRIBUTION) {
+        LaunchedEffect(lifecycleOwner) {
+            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 checkForAppUpdate(automatic = true)
+                while (true) {
+                    kotlinx.coroutines.delay(6 * 60 * 60 * 1000L)
+                    checkForAppUpdate(automatic = true)
+                }
             }
         }
     }
@@ -1734,7 +1765,11 @@ private fun MoasseumApp(
                         },
                         darkTheme = darkTheme,
                         reduceMotion = reduceMotion,
-                        onDarkThemeChanged = onDarkThemeChanged,
+                        appearanceMode = appearanceMode,
+                        appPalette = appPalette,
+                        onSaveAppearance = onSaveAppearance,
+                        playStoreDistribution = playStoreDistribution,
+                        onOpenPlayStore = onOpenPlayStore,
                         onReduceMotionChanged = onReduceMotionChanged,
                         onUpdateBudget = viewModel::updateBudget,
                         notificationAccessEnabled = notificationAccessEnabled,

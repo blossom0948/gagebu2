@@ -1,11 +1,14 @@
 package com.moasseum.app.ui.theme
 
+import android.os.Build
 import android.animation.ValueAnimator
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -18,11 +21,13 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.moasseum.app.domain.AppPalette
 
 val LocalFinanceColors = staticCompositionLocalOf { DarkFinanceColors }
 
@@ -43,6 +48,7 @@ internal fun shouldReduceMotion(userPreference: Boolean, systemAnimationsEnabled
 @Composable
 fun MoasseumTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    palette: AppPalette = AppPalette.MINT,
     reduceMotion: Boolean = false,
     content: @Composable () -> Unit,
 ) {
@@ -58,11 +64,12 @@ fun MoasseumTheme(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     val effectiveReduceMotion = shouldReduceMotion(reduceMotion, systemAnimationsEnabled.value)
-    val financeColors = if (darkTheme) DarkFinanceColors else LightFinanceColors
+    val systemAccent = rememberSystemAccent(palette, darkTheme)
+    val financeColors = financeColorsForPalette(palette, darkTheme, systemAccent)
     val colorScheme = if (darkTheme) {
         darkColorScheme(
             primary = financeColors.accent,
-            onPrimary = Color(0xFF06332B),
+            onPrimary = financeColors.onAccent,
             primaryContainer = financeColors.accentSoft,
             onPrimaryContainer = financeColors.textPrimary,
             secondary = financeColors.income,
@@ -87,7 +94,7 @@ fun MoasseumTheme(
     } else {
         lightColorScheme(
             primary = financeColors.accent,
-            onPrimary = Color.White,
+            onPrimary = financeColors.onAccent,
             primaryContainer = financeColors.accentSoft,
             onPrimaryContainer = financeColors.textPrimary,
             secondary = financeColors.income,
@@ -120,6 +127,21 @@ fun MoasseumTheme(
             typography = MoasseumTypography,
             shapes = MoasseumShapes,
             content = content,
+        )
+    }
+}
+
+@Composable
+internal fun rememberSystemAccent(palette: AppPalette, darkTheme: Boolean): SystemAccentColors? {
+    val context = LocalContext.current
+    if (palette != AppPalette.SYSTEM || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
+    return remember(context, darkTheme) {
+        val systemScheme = if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        SystemAccentColors(
+            accent = systemScheme.primary,
+            onAccent = systemScheme.onPrimary,
+            secondary = systemScheme.secondary,
+            tertiary = systemScheme.tertiary,
         )
     }
 }

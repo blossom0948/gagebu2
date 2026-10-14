@@ -7,16 +7,32 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
 }
 
+val playUploadKeystorePath = providers.gradleProperty("PLAY_UPLOAD_KEYSTORE_PATH").orNull
+    ?: providers.environmentVariable("PLAY_UPLOAD_KEYSTORE_PATH").orNull
+val playUploadStorePassword = providers.gradleProperty("PLAY_UPLOAD_STORE_PASSWORD").orNull
+    ?: providers.environmentVariable("PLAY_UPLOAD_STORE_PASSWORD").orNull
+val playUploadKeyAlias = providers.gradleProperty("PLAY_UPLOAD_KEY_ALIAS").orNull
+    ?: providers.environmentVariable("PLAY_UPLOAD_KEY_ALIAS").orNull
+val playUploadKeyPassword = providers.gradleProperty("PLAY_UPLOAD_KEY_PASSWORD").orNull
+    ?: providers.environmentVariable("PLAY_UPLOAD_KEY_PASSWORD").orNull
+val hasPlayUploadSigning = listOf(
+    playUploadKeystorePath,
+    playUploadStorePassword,
+    playUploadKeyAlias,
+    playUploadKeyPassword,
+).all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.moasseum.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.moasseum.app"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = providers.gradleProperty("VERSION_CODE").orNull?.toIntOrNull() ?: 1
         versionName = providers.gradleProperty("VERSION_NAME").orNull ?: "0.1.0"
+        buildConfigField("boolean", "PLAY_STORE_DISTRIBUTION", "false")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -50,6 +66,13 @@ android {
                 "proguard-rules.pro",
             )
         }
+        create("playStore") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            buildConfigField("boolean", "PLAY_STORE_DISTRIBUTION", "true")
+            // Never inherit the sideload/debug certificate for a Play upload.
+            signingConfig = null
+        }
     }
 
     val releaseKeystorePath = providers.gradleProperty("RELEASE_KEYSTORE_PATH").orNull
@@ -78,6 +101,20 @@ android {
         buildTypes.getByName("release").signingConfig = signingConfigs.getByName("debug")
     }
 
+    if (hasPlayUploadSigning) {
+        signingConfigs {
+            create("playUpload") {
+                storeFile = file(checkNotNull(playUploadKeystorePath))
+                storePassword = checkNotNull(playUploadStorePassword)
+                keyAlias = checkNotNull(playUploadKeyAlias)
+                keyPassword = checkNotNull(playUploadKeyPassword)
+            }
+        }
+        buildTypes.getByName("playStore").signingConfig = signingConfigs.getByName("playUpload")
+    } else {
+        buildTypes.getByName("playStore").signingConfig = null
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -96,6 +133,35 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+}
+
+tasks.matching { it.name == "bundlePlayStore" || it.name == "assemblePlayStore" }.configureEach {
+    doFirst {
+        check(hasPlayUploadSigning) {
+            "Play distribution needs a dedicated upload keystore. Set PLAY_UPLOAD_KEYSTORE_PATH, PLAY_UPLOAD_STORE_PASSWORD, PLAY_UPLOAD_KEY_ALIAS, and PLAY_UPLOAD_KEY_PASSWORD without committing them."
+        }
+    }
+}
+
+androidComponents {
+    onVariants(selector().withBuildType("playStore")) { variant ->
+        val mergedManifest = variant.artifacts.get(com.android.build.api.artifact.SingleArtifact.MERGED_MANIFEST)
+        val verifyPlayManifest = tasks.register("verifyPlayStoreManifest") {
+            group = "verification"
+            description = "Checks Play target API and excludes sideload-only install permission."
+            inputs.file(mergedManifest)
+            doLast {
+                val manifest = mergedManifest.get().asFile.readText()
+                check(Regex("""android:targetSdkVersion\s*=\s*["']36["']""").containsMatchIn(manifest)) {
+                    "The Play manifest must target Android 16 (API 36) or higher."
+                }
+                check("android.permission.REQUEST_INSTALL_PACKAGES" !in manifest) {
+                    "The Play manifest must not request sideload installation permission."
+                }
+            }
+        }
+        tasks.named("check").configure { dependsOn(verifyPlayManifest) }
     }
 }
 

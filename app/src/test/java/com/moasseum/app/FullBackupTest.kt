@@ -6,6 +6,8 @@ import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import com.moasseum.app.domain.AiAdviceCards
+import com.moasseum.app.domain.AppearanceMode
+import com.moasseum.app.domain.AppPalette
 
 class FullBackupTest {
     private val account = AccountEntity("72a43f9d-00e0-44db-af34-4cf143314bb7", "계좌", 10000, false, 123)
@@ -71,6 +73,8 @@ class FullBackupTest {
         root.getJSONObject("settings").remove("aiAdviceCards")
         root.getJSONObject("settings").remove("budgetPayday")
         root.getJSONObject("settings").remove("displayCurrencyCode")
+        root.getJSONObject("settings").remove("appearanceMode")
+        root.getJSONObject("settings").remove("appPalette")
         val restored = FullBackupCodec.decode(root.toString())
         assertEquals(DEFAULT_CATEGORY_LABELS.keys.toList(), restored.settings?.categoryOrder)
         assertEquals(emptyMap<String, Long>(), restored.settings?.monthlyIncomeTargets)
@@ -81,6 +85,8 @@ class FullBackupTest {
         assertEquals(AiAdviceCards.defaults, restored.settings?.aiAdviceCards)
         assertEquals(1, restored.settings?.budgetPayday)
         assertEquals("KRW", restored.settings?.displayCurrencyCode)
+        assertEquals(AppearanceMode.DARK, restored.settings?.appearanceMode)
+        assertEquals(AppPalette.MINT, restored.settings?.appPalette)
     }
     @Test fun budgetPaydaySurvivesSettingsBackup() {
         assertEquals(15, FullBackupCodec.decode(FullBackupCodec.encode(backup())).settings?.budgetPayday)
@@ -89,6 +95,15 @@ class FullBackupTest {
         val root = JSONObject(FullBackupCodec.encode(backup()))
         assertEquals("USD", root.getJSONObject("settings").getString("displayCurrencyCode"))
         assertEquals("USD", FullBackupCodec.decode(root.toString()).settings?.displayCurrencyCode)
+    }
+    @Test fun selectedAppearanceModeAndPaletteSurviveBackupRoundTrip() {
+        val settings = backup().settings!!.copy(
+            appearanceMode = AppearanceMode.SYSTEM,
+            appPalette = AppPalette.SYSTEM,
+        )
+        val restored = FullBackupCodec.decode(FullBackupCodec.encode(backup().copy(settings = settings)))
+        assertEquals(AppearanceMode.SYSTEM, restored.settings?.appearanceMode)
+        assertEquals(AppPalette.SYSTEM, restored.settings?.appPalette)
     }
     @Test fun legacySevenCategorySettingsUpgradeToNineteenWithoutLosingOrder() {
         val root = JSONObject(FullBackupCodec.encode(backup()))

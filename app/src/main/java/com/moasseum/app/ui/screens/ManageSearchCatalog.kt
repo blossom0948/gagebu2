@@ -55,7 +55,7 @@ object ManageSearchCatalog {
         ManageSearchDescriptor("home-cards", "홈 카드 구성", "대시보드에 보일 카드 선택", listOf("홈 화면", "대시보드", "첫 화면", "요약 카드", "홈 구성"), "홈 카드 선택"),
         ManageSearchDescriptor("ai-cards", "AI 조언 카드", "홈에 표시할 AI 분석 카드 선택", listOf("AI 분석", "소비 분석", "AI 요약", "인사이트 카드"), "AI 카드 선택"),
         ManageSearchDescriptor("currency", "표시 통화", "참고 환율로 화면만 환산 · 거래와 예산은 원화로 저장", listOf("환율", "달러", "엔화", "외화", "원화 말고", "원화로 보기", "통화 변경", "유로"), "통화 선택"),
-        ManageSearchDescriptor("theme", "다크 모드", "앱의 밝고 어두운 화면 전환", listOf("화면 어둡게", "야간 화면", "밝은 테마", "테마", "색상 모드"), "테마 변경"),
+        ManageSearchDescriptor("theme", "테마 설정", "색 테마와 기기·라이트·다크 모드", listOf("화면 어둡게", "야간 화면", "밝은 테마", "테마", "색상 모드", "민트 테마", "오션 테마", "라벤더 테마", "색 바꾸기", "강조 색"), "테마 선택"),
         ManageSearchDescriptor("motion", "모션 줄이기", "화면 전환과 움직임 효과 설정", listOf("애니메이션 끄기", "움직임", "전환 효과", "모션 감소"), "모션 설정 변경"),
         ManageSearchDescriptor("app-lock", "앱 잠금", "생체 인증 또는 기기 잠금으로 앱 보호", listOf("잠금", "지문", "생체 인증", "비밀번호", "앱 보안"), "앱 잠금 변경"),
         ManageSearchDescriptor("privacy", "개인정보와 데이터", "내 정보·거래 기록 관리", listOf("개인 정보", "데이터 삭제", "기록 삭제", "탈퇴", "내 정보 지우기"), "개인정보 설정 열기"),

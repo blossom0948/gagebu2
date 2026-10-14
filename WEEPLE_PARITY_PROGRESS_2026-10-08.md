@@ -1,5 +1,16 @@
 # Weeple 기능 대조 진행 보고서 — 2026-10-08
 
+## 2026-10-15 — v0.1.56 테마 선택·Google Play 사전 준비 및 GitHub APK 배포
+
+- **개성 있는 외관 설정**: 관리 → 앱과 데이터 → 테마 설정에서 기기 설정 따르기/라이트/다크, 모아씀 민트·오션·라벤더·샌드, 그리고 Android 12 이상 배경화면 강조색 테마를 고를 수 있습니다. 구형 Android에서는 기기 색 옵션이 민트로 대체됩니다. 수입·지출 의미색과 원장 데이터는 테마 변경으로 바뀌지 않으며, 선택값은 전체 백업에 포함됩니다.
+- **Play 배포 경로 준비**: 별도 `playStore` 빌드 타입에서 사이드로드 자체 업데이트 확인과 `REQUEST_INSTALL_PACKAGES` 권한을 제외하고, 전용 업로드 키가 없는 상태로 AAB/APK를 실수로 만들지 않도록 빌드 검사를 추가했습니다. 이 빌드 타입은 아직 Play 제출용으로 완성/게시된 것이 아닙니다.
+- **Android 16 / Play API 36 대응**: AGP 8.10.1, Gradle 8.11.1, compileSdk/targetSdk 36으로 정합성을 맞췄습니다. 현재 화면은 Compose edge-to-edge를 사용하고 방향 고정 매니페스트가 없어 Android 16의 상태바/폴더블 정책과 충돌하지 않았습니다. 병합된 Play 매니페스트에서 target 36과 사이드로드 전용 권한 제거를 자동 검사하는 `:app:verifyPlayStoreManifest`를 `:app:check`에 연결했습니다.
+- **사전 체크리스트**: [Google Play 준비 체크리스트](docs/PLAY_STORE_READINESS.md)와 코드 기준 [Data safety 검토 초안](docs/PLAY_STORE_DATA_SAFETY_DRAFT.md)에 target SDK, 전용 업로드 키, 외부 계정 삭제 페이지, 개인정보 흐름, 스토어 자산, 계정 테스트 조건을 정리했습니다. 제출 전 서버·SDK 보존 정책 확인이 남아 있습니다.
+- **비교 범위/남은 차이**: 사용자 테마 팔레트 선택은 모아씀 고유의 시각적 차별점으로 추가한 것이며 Weeple과 같다고 주장하지 않습니다. 다국어 UI, Weeple의 AI 모델/분석 범위, 모든 파트너 계정 화면·전이의 실기기 비교는 여전히 미완료/미검증입니다.
+- **검증**: Debug 단위 테스트 296건 통과(실패·오류 0), Galaxy Z Fold4 / Android 16의 격리 `.qa` 계측 75건 중 74건 통과·실패 0·운영 Supabase 로그인 E2E 1건 skip. 테마 선택/화면 캡처와 설정 상호작용을 포함합니다. `:app:check`, API 36 Play 매니페스트 검사, `lintDebug`, Release 컴파일/서명 APK 빌드가 통과했습니다. Debug lint는 오류 0·경고 34건·힌트 7건입니다. Fold4에서 `.qa`만 대상으로 했고 개인 앱/Weeple 데이터나 운영 DB·Worker는 건드리지 않았습니다.
+- **배포 결과**: `com.moasseum.app`, versionCode `56` / versionName `0.1.56`, APK `63,933,624 bytes`, SHA-256 `6b9aaac8d20c54cbd8d1df5ed816e99649bbf4400cc06dae2ac507d1263e9a3e`. 서명 인증서 SHA-256 `669674a2114fb59d85c56bba774b89fec9ce7f7ee79825769826130362a091c9`가 공개 v0.1.55와 일치합니다. 공개 [GitHub Release v0.1.56](https://github.com/blossom0948/gagebu2/releases/tag/v0.1.56); APK를 관리 → 앱 업데이트에서 받을 수 있습니다.
+- **Play 상태/남은 차이**: Play Console에 AAB를 제출하지 않았고 공개도 하지 않았습니다. 별도 upload key, 공개 계정 삭제 웹 경로, 서버/SDK 보존 검증, Data safety·정책 답변, 스토어 자산이 남았습니다. Weeple과 전체 동등도 아닙니다. 다국어 UI, Weeple AI 모델·분석 범위, 파트너 실계정의 모든 화면 전이는 여전히 미완료 또는 미검증입니다.
+
 # v0.1.55 최종 검증 — 빠른 거래 추천·검색 키보드·AI 모션 안전성 (2026-10-14)
 
 - **빠른 입력 사용성 결함**: Fold4 `.qa`에서 거래처를 입력할 때 과거 내역 추천이 입력창 아래에 배치되어 삼성 키보드가 열린 상태에서는 후보가 가려졌습니다. 거래처에 포커스된 동안 후보를 입력창에 고정된 선택 메뉴로 보여 주고, 선택 한 번으로 가맹점·금액·분류·결제수단을 채우게 했습니다. 키보드가 내려간 뒤에도 후보가 남아 중복 노출되지 않게 했습니다. 실제 기기에서 합성 `공동 생활비` 후보를 캡처하고 선택 후 각 입력값을 확인했습니다.
